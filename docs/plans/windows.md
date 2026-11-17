@@ -92,7 +92,7 @@ The app and engine call these instead of OS APIs. A test per module runs on both
    - guard every macOS call;
    - `lightair-platform` with paths, files, hotkeys, credentials, realtime, displays;
    - GPUI's foreground executor instead of GCD;
-   - libobs from the submodule on Windows;
+   - libobs: OBS 33.0.0's official Windows build (the submodule's headers for the bindings);
    - CI on `windows-latest` running `cargo xtask test` (tests that need macOS frameworks marked
      per platform).
 
@@ -102,7 +102,7 @@ The app and engine call these instead of OS APIs. A test per module runs on both
    GPUI's foreground executor for plugin jobs; VST3 DLL loading and a Win32 editor window; a
    portable preview path (frames read back as BGRA, shown as images) until DXGI; the eyedropper
    hidden and camera effects stubbed until phase 3; Audio Unit tests marked macOS-only;
-   `.github/workflows/ci.yml` (libobs from the submodule, clippy, `cargo xtask test`).
+   `.github/workflows/ci.yml` (OBS 33.0.0's official build, clippy, `cargo xtask test`).
    Checking from a Mac: `PATH="/opt/homebrew/opt/llvm/bin:$PATH" cargo check --workspace
    --all-targets --target x86_64-pc-windows-msvc` (libobs-sys reads the headers as macOS's
    there and links nothing).
@@ -160,8 +160,10 @@ The app and engine call these instead of OS APIs. A test per module runs on both
 
 Recommended, to confirm as the work starts:
 
-- **libobs on Windows:** built from the pinned submodule, the same way macOS release builds will
-  be (IMPLEMENTATION.md, M13), so both platforms run the same libobs.
+- **libobs on Windows:** OBS 33.0.0's official build, as on macOS (its OBS.app): the pinned
+  submodule's headers make the bindings, unmodified, and the release bundles OBS's own binaries,
+  so Lightair's users never need OBS. (CI built libobs from the submodule at first; switched on
+  17 November 2026, it saved about an hour a run for the same version.)
 - **Portable project kinds:** the project stores Lightair's own kinds, not libobs ids. This is the
   one change that touches the model, so it comes early (phase 2).
 - **One-platform features** say so in the UI rather than disappearing: Audio Units (macOS); later,

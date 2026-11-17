@@ -114,26 +114,17 @@ jobs:
         with:
           submodules: recursive
 
-      # libobs from the pinned submodule, as CI builds it
-      - name: libobs cache
-        id: obs-cache
-        uses: actions/cache@v4
-        with:
-          path: obs
-          key: obs-windows-${{ hashFiles('.git/modules/third_party/obs-studio/HEAD') }}-v1
-      - name: Build libobs
-        if: steps.obs-cache.outputs.cache-hit != 'true'
+      # libobs as OBS releases it: OBS 33.0.0's official Windows build, the version the bindings
+      # come from (third_party/obs-studio, unmodified), installed on this build machine only.
+      # Lightair imports obs.dll by name and bundles it; its users never need OBS.
+      - name: OBS 33.0.0
         shell: pwsh
-        working-directory: third_party/obs-studio
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cmake --preset windows-x64 `
-            -DENABLE_UI=OFF -DENABLE_BROWSER=OFF -DENABLE_SCRIPTING=OFF -DENABLE_VST=OFF `
-            -DENABLE_AJA=OFF -DENABLE_VLC=OFF
-          cmake --build --preset windows-x64 --config RelWithDebInfo
-          cmake --install build_x64 --config RelWithDebInfo --prefix "$env:GITHUB_WORKSPACE/obs"
-          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE/obs/lib" | Out-Null
-          Copy-Item build_x64/libobs/RelWithDebInfo/obs.lib "$env:GITHUB_WORKSPACE/obs/lib/"
-
+          gh release download 33.0.0 --repo obsproject/obs-studio --pattern 'OBS-Studio-33.0.0-Windows-x64-Installer.exe' --dir $env:RUNNER_TEMP
+          Start-Process -Wait -FilePath "$env:RUNNER_TEMP\OBS-Studio-33.0.0-Windows-x64-Installer.exe" -ArgumentList '/S', '/D=C:\obs'
+          if (!(Test-Path 'C:\obs\bin\64bit\obs.dll')) { throw "OBS 33.0.0 didn't install" }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: ffmpeg
@@ -141,11 +132,11 @@ jobs:
 
       - name: Camera Studio module
         env:
-          OBS_DIR: ${{ github.workspace }}/obs
+          OBS_DIR: C:\obs
         run: cargo xtask modules
       - name: Build
         env:
-          OBS_DIR: ${{ github.workspace }}/obs
+          OBS_DIR: C:\obs
         run: cargo xtask dist
 
       - uses: actions/upload-artifact@v4
