@@ -21,6 +21,13 @@ pub fn plugin_dir() -> Option<PathBuf> {
     if let Some(plugins) = bundled_plugins() {
         return Some(plugins);
     }
+    // the shipped Windows app: OBS's layout, `bin\64bit\lightair.exe` and `obs-plugins\64bit`
+    if cfg!(windows) {
+        let shipped = exe.parent()?.parent()?.parent()?.join("obs-plugins").join("64bit");
+        if shipped.join("lightair-camera-fx.dll").exists() {
+            return Some(shipped);
+        }
+    }
     // macOS: the .plugin bundle; Windows: OBS's layout (obs-plugins/64bit, data/obs-plugins)
     let (dir, module) = if cfg!(windows) {
         ("modules/lightair-camera-fx/obs-plugins/64bit", "lightair-camera-fx.dll")

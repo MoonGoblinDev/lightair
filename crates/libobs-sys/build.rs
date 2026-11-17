@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest.join("../..").canonicalize().expect("workspace root");
+    let root = plain(manifest.join("../..").canonicalize().expect("workspace root"));
     let libobs = root.join("third_party/obs-studio/libobs");
     let simde = root.join("third_party/simde");
     assert!(libobs.join("obs.h").exists(), "libobs headers missing: run `git submodule update --init --depth 1`");
@@ -38,6 +38,11 @@ fn main() {
     // natively (MSVC, LLVM).
     let cross_check = target_os == "windows" && !cfg!(windows);
     let mut builder = bindgen::Builder::default();
+    if target_os == "windows" && !cross_check {
+        // util_uint64.h's inline helper calls MSVC's `_udiv128`, which clang's own intrin.h
+        // doesn't declare; only declarations are read, so the body needn't compile.
+        builder = builder.clang_arg("-Wno-error=implicit-function-declaration").clang_arg("-Wno-implicit-function-declaration");
+    }
     if cross_check {
         println!("cargo:warning=libobs bindings read as arm64 macOS: for checking the Windows build only");
         builder = builder.clang_arg("--target=arm64-apple-darwin");
@@ -61,7 +66,23 @@ fn main() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("bindgen failed for libobs");
-    bindings.write_to_file(out.join("bindings.rs")).expect("write bindings");
+    let mut code = bindings.to_string();
+    if target_os == "windows" && !cross_check {
+        code = unsigned_enums(&code);
+        // libobs's functions imported from obs.dll by name, without an import library: any
+        // OBS install (or the submodule's build) of the pinned version links as it is.
+        code = code.replace("unsafe extern \"C\" {", "#[link(name = \"obs\", kind = \"raw-dylib\")]\nunsafe extern \"C\" {");
+    }
+    if cross_check {
+        // libobs's Windows-only functions (inside `#ifdef _WIN32`, unseen when the headers are
+        // read as macOS) that Lightair's Windows code calls
+        code.push_str(
+            "\nunsafe extern \"C\" {\n    pub fn gs_texture_open_nt_shared(handle: u32) -> *mut gs_texture_t;\n}\n",
+        );
+    }
+    if fs::read_to_string(out.join("bindings.rs")).ok().as_deref() != Some(code.as_str()) {
+        fs::write(out.join("bindings.rs"), code).expect("write bindings");
+    }
 
     match target_os.as_str() {
         "macos" => {
@@ -70,16 +91,58 @@ fn main() {
             println!("cargo:rustc-link-lib=framework=libobs");
             println!("cargo:obs_app={obs_app}");
         }
-        // Windows: libobs's import library from the submodule's build (or an OBS install of the
-        // same version): `OBS_DIR\lib` or `OBS_DIR\bin\64bit` holding `obs.lib`.
+        // Windows: obs.dll is imported directly (raw-dylib, above); OBS_DIR names the OBS build
+        // or install it runs from (`bin\64bit`), for the tools that need its folder.
         "windows" if !cross_check => {
             let obs_dir = env::var("OBS_DIR").unwrap_or_else(|_| r"C:\Program Files\obs-studio".into());
-            for sub in ["lib", r"bin\64bit"] {
-                println!("cargo:rustc-link-search=native={obs_dir}\\{sub}");
-            }
-            println!("cargo:rustc-link-lib=dylib=obs");
             println!("cargo:obs_dir={obs_dir}");
         }
         _ => {}
     }
+}
+
+/// A path without Windows's `\\?\` prefix, which `canonicalize` adds and clang can't resolve
+/// the headers' own includes against.
+fn plain(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
+/// Enums as macOS has them: in the Microsoft ABI every C enum is an `int`, where elsewhere one
+/// without negative values is an `unsigned int`. The same Rust types on both platforms keep the
+/// code that compares them with libobs's `uint32_t` fields and flags the same.
+fn unsigned_enums(code: &str) -> String {
+    use std::collections::{HashMap, HashSet};
+    // every enum constant: `pub const NAME: TYPE = VALUE;`
+    let mut negative: HashSet<&str> = HashSet::new();
+    let mut seen: HashMap<&str, ()> = HashMap::new();
+    for line in code.lines() {
+        let Some(rest) = line.trim().strip_prefix("pub const ") else { continue };
+        let Some((_, rest)) = rest.split_once(": ") else { continue };
+        let Some((ty, value)) = rest.split_once(" = ") else { continue };
+        if ty.contains(':') || ty.contains(' ') {
+            continue;
+        }
+        seen.insert(ty, ());
+        if value.trim_end_matches(';').trim().starts_with('-') {
+            negative.insert(ty);
+        }
+    }
+    code.lines()
+        .map(|line| {
+            if let Some(rest) = line.strip_prefix("pub type ")
+                && let Some((name, ty)) = rest.split_once(" = ")
+                && ty == "::std::os::raw::c_int;"
+                && seen.contains_key(name)
+                && !negative.contains(name)
+            {
+                format!("pub type {name} = ::std::os::raw::c_uint;")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

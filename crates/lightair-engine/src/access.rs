@@ -90,7 +90,55 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Windows: camera and microphone have privacy switches (Settings › Privacy & security) for the
+/// whole PC, for the user, and for desktop apps; any of them off blocks Lightair, which then
+/// gets black frames or silence without an error. They're registry values Windows itself reads.
+/// Windows never prompts a desktop app: there's nothing to ask, only switches to point to.
+#[cfg(windows)]
+mod imp {
+    use super::Media;
+    use windows_sys::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain([0]).collect()
+    }
+
+    /// The switch's value ("Allow" / "Deny"), if it's set.
+    fn switch(root: HKEY, key: &str) -> Option<String> {
+        let (key, value) = (wide(key), wide("Value"));
+        let mut buf = [0u16; 32];
+        let mut len = (buf.len() * 2) as u32;
+        let r = unsafe {
+            RegGetValueW(root, key.as_ptr(), value.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut len)
+        };
+        (r == 0).then(|| String::from_utf16_lossy(&buf[..(len as usize / 2).saturating_sub(1)]))
+    }
+
+    pub fn needs_asking(_: Media) -> bool {
+        false
+    }
+
+    pub fn status(m: Media) -> isize {
+        let store = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\";
+        let cap = match m {
+            Media::Camera => "webcam",
+            Media::Microphone => "microphone",
+        };
+        let base = format!("{store}{cap}");
+        let denied = [
+            (HKEY_LOCAL_MACHINE, base.clone()),
+            (HKEY_CURRENT_USER, base.clone()),
+            (HKEY_CURRENT_USER, format!(r"{base}\NonPackaged")),
+        ]
+        .into_iter()
+        .any(|(root, key)| switch(root, &key).is_some_and(|v| v.eq_ignore_ascii_case("Deny")));
+        if denied { 2 } else { 3 }
+    }
+
+    pub fn ask(_: Media) {}
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 mod imp {
     use super::Media;
     pub fn needs_asking(_: Media) -> bool {

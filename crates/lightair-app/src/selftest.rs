@@ -221,6 +221,33 @@ fn virtual_camera(engine: &Engine) {
     println!("SELFTEST start: {started:?}");
     std::thread::sleep(Duration::from_secs(1));
     println!("SELFTEST state: {:?}", lightair_engine::outputs::runtime().get(lightair_engine::outputs::OutputKey::VirtualCamera).state);
+    // Windows: the camera opened by another program (ffmpeg, through DirectShow, as Zoom or
+    // Teams would), which reads the centre's colour
+    if cfg!(windows) {
+        let name = lightair_engine::vcam::camera().map_or("none", |c| c.name());
+        println!("SELFTEST camera: {name}");
+        let t = std::time::Instant::now();
+        let out = std::process::Command::new("ffmpeg")
+            // (Windows lists cameras added with MFCreateVirtualCamera with a suffix of its own)
+            .args(["-hide_banner", "-loglevel", "error", "-f", "dshow", "-i", &format!("video={name} (Windows Virtual Camera)")])
+            .args(["-rtbufsize", "64M", "-frames:v", "20", "-vf", "scale=16:9", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+            .output();
+        match out {
+            Ok(o) if o.stdout.len() >= 16 * 9 * 3 => {
+                // the last of the frames read
+                let last = &o.stdout[o.stdout.len() - 16 * 9 * 3..];
+                println!("SELFTEST frames read: {}", o.stdout.len() / (16 * 9 * 3));
+                let at = |x: usize, y: usize| &last[(y * 16 + x) * 3..][..3];
+                println!("SELFTEST colour back (RGB, magenta is 255/0/255): centre {:?} corner {:?} after {:?}", at(8, 4), at(1, 1), t.elapsed());
+            }
+            Ok(o) => println!("SELFTEST colour back: nothing ({})", String::from_utf8_lossy(&o.stderr).trim()),
+            Err(e) => println!("SELFTEST colour back: no ffmpeg ({e})"),
+        }
+        engine.call(|s| s.outputs.stop_virtual_camera());
+        std::thread::sleep(Duration::from_millis(500));
+        println!("SELFTEST stopped: {:?}", lightair_engine::outputs::runtime().get(lightair_engine::outputs::OutputKey::VirtualCamera).state);
+        return;
+    }
     // the virtual camera's device: Lightair's own when installed, else OBS's (by the UUID its
     // plugin declares)
     let ours = "2DF109AC-DE07-42DF-A0D7-098033FFE986".to_string();

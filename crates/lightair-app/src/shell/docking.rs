@@ -102,7 +102,7 @@ impl Panel for ShellPanel {
             Region::Hierarchy => {
                 let empty = shell.clone();
                 Some(vec![
-                    button("create-empty", "box", "Create empty (⇧⌘N)").on_click(move |_, window, cx| {
+                    button("create-empty", "box", crate::ui::keys_static("Create empty (⇧⌘N)")).on_click(move |_, window, cx| {
                         if let Some(s) = empty.upgrade() {
                             s.update(cx, |w, cx| w.create_empty(None, window, cx));
                         }

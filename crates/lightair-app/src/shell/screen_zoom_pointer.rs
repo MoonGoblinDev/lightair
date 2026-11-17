@@ -28,7 +28,7 @@ fn slider_row(name: &'static str, slider: Slider, value: String) -> Div {
         .gap_2()
         .child(label(name))
         .child(div().flex_1().child(slider))
-        .child(div().w(px(40.)).text_right().text_size(px(11.)).font_family("Menlo").text_color(tok::text_tertiary()).child(value))
+        .child(div().w(px(40.)).text_right().text_size(px(11.)).font_family(crate::ui::MONO).text_color(tok::text_tertiary()).child(value))
 }
 
 /// A label with its description on hover (an ⓘ beside it).
@@ -185,7 +185,7 @@ impl StudioWindow {
                         .rounded(px(4.))
                         .bg(tok::bg_raised())
                         .text_size(px(11.))
-                        .font_family("Menlo")
+                        .font_family(crate::ui::MONO)
                         .text_color(if keys.is_some() { tok::text() } else { tok::text_tertiary() })
                         .child(keys.clone().unwrap_or_else(|| "No key".into())),
                 )

@@ -6,13 +6,16 @@
 //!    and copied out, so the graphics thread never waits for the GPU.
 //! 3. The UI shows the newest copy as an image.
 //!
-//! One frame of extra latency and a copy per frame; the zero-copy path for Windows (DXGI shared
-//! textures into GPUI) replaces it (docs/plans/windows.md, phase 2).
+//! One frame of extra latency and a copy per frame. On Windows the window's canvas preview
+//! doesn't go this way: each frame is presented into a composition swap chain under the UI
+//! (`Layer`, `Preview::set_layer`), and frames are read back only while something asks for them
+//! (`latest_frame`: thumbnails, screenshots, the colour picker).
 
 use std::ffi::c_void;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Instant;
 
 use lightair_engine::sys;
 use parking_lot::Mutex;
@@ -121,6 +124,20 @@ struct Shared {
     source: Mutex<Option<SourceRef>>,
     /// Draw the source at its own size (a player), not in the canvas's coordinates.
     own_size: AtomicBool,
+    /// Windows: the swap chain each frame is presented to (the window's picture).
+    #[cfg(windows)]
+    layer: Mutex<Option<Arc<crate::Layer>>>,
+    /// When `latest_frame` was last asked (ms since `EPOCH`): with a layer, frames are read back
+    /// only while something reads them.
+    asked: AtomicU64,
+}
+
+/// Frames are read back while asked for within this long.
+const ASKED_FOR_MS: u64 = 2000;
+
+fn now_ms() -> u64 {
+    static EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
 }
 
 struct CanvasRef(*mut sys::obs_canvas_t);
@@ -171,6 +188,9 @@ impl Preview {
             canvas,
             source: Mutex::new(None),
             own_size: AtomicBool::new(false),
+            #[cfg(windows)]
+            layer: Mutex::new(None),
+            asked: AtomicU64::new(0),
         });
         unsafe { sys::obs_add_main_rendered_callback(Some(on_rendered), Arc::as_ptr(&shared) as *mut c_void) };
         Self(Arc::new(Handle { shared }))
@@ -192,8 +212,22 @@ impl Preview {
 
     /// Draws the source at its own size (a player: the whole picture, whatever the canvas),
     /// rather than where it sits on the canvas.
-    /// macOS shows frames in a Core Animation layer under the UI; here the UI draws them.
-    pub fn set_layer(&self, _layer: Option<*mut std::ffi::c_void>) {}
+    /// Presents each frame to `layer` too (Windows: a `Layer`, as `Arc::as_ptr` gives it; a
+    /// reference is taken here), or stops with `None`. Elsewhere the UI draws the frames.
+    pub fn set_layer(&self, layer: Option<*mut std::ffi::c_void>) {
+        #[cfg(windows)]
+        {
+            let new = layer.filter(|l| !l.is_null()).map(|l| unsafe {
+                let l = l as *const crate::Layer;
+                Arc::increment_strong_count(l);
+                Arc::from_raw(l)
+            });
+            let old = std::mem::replace(&mut *self.0.shared.layer.lock(), new);
+            drop(old);
+        }
+        #[cfg(not(windows))]
+        let _ = layer;
+    }
 
     pub fn set_own_size(&self, own: bool) {
         self.0.shared.own_size.store(own, Ordering::Relaxed);
@@ -208,7 +242,15 @@ impl Preview {
     }
 
     pub fn latest_frame(&self) -> Option<Frame> {
-        self.0.shared.latest.lock().clone()
+        let shared = &self.0.shared;
+        let now = now_ms();
+        let asked = shared.asked.swap(now, Ordering::Relaxed);
+        // presented to a layer and not read back lately: what's kept is stale
+        if shared.has_layer() && now.saturating_sub(asked) > ASKED_FOR_MS {
+            *shared.latest.lock() = None;
+            return None;
+        }
+        shared.latest.lock().clone()
     }
 
     pub fn frames(&self) -> u64 {
@@ -233,6 +275,15 @@ impl Drop for Handle {
     }
 }
 
+impl Shared {
+    fn has_layer(&self) -> bool {
+        #[cfg(windows)]
+        return self.layer.lock().is_some();
+        #[cfg(not(windows))]
+        return false;
+    }
+}
+
 unsafe extern "C" fn on_rendered(param: *mut c_void) {
     let shared = unsafe { &*(param as *const Shared) };
     if !shared.active.load(Ordering::Relaxed) {
@@ -252,8 +303,34 @@ unsafe extern "C" fn on_rendered(param: *mut c_void) {
             (ovi.base_width, ovi.base_height)
         }
     };
+    #[cfg(windows)]
+    let layer = shared.layer.lock().clone();
     let packed = shared.size.load(Ordering::Relaxed);
     let (w, h) = if packed == 0 { (base_w & !1, base_h & !1) } else { ((packed >> 32) as u32, packed as u32) };
+    // shown smaller than the canvas: rendered at the size it's shown (zoomed in: the canvas's own)
+    #[cfg(windows)]
+    let (w, h) = match layer.as_ref().and_then(|l| l.shown_at()) {
+        Some((sw, sh)) if packed == 0 && sw < w && sh < h => (sw, sh),
+        _ => (w, h),
+    };
+    let asked = now_ms().saturating_sub(shared.asked.load(Ordering::Relaxed)) <= ASKED_FOR_MS;
+    // the program as it is, at its own size, presented straight from libobs's texture
+    #[cfg(windows)]
+    if let Some(layer) = &layer
+        && !asked
+        && shared.canvas.is_none()
+        && (base_w, base_h) == (w, h)
+        && shared.source.lock().is_none()
+        && unsafe { layer.can_present(main) }
+    {
+        if unsafe { layer.present(main, w, h) } {
+            shared.frames.fetch_add(1, Ordering::Relaxed);
+        }
+        if let Some(pool) = shared.pool.lock().as_mut() {
+            pool.pending = None;
+        }
+        return;
+    }
     let mut guard = shared.pool.lock();
     if guard.as_ref().is_none_or(|p| p.width != w || p.height != h) {
         if let Some(mut old) = guard.take() {
@@ -274,9 +351,27 @@ unsafe extern "C" fn on_rendered(param: *mut c_void) {
         (None, Some(c)) => unsafe { draw_with(base_w, base_h, pool.target, w, h, || sys::obs_canvas_render(c.0)) },
     }
     drop(source);
+    #[cfg(windows)]
+    let presented = match &layer {
+        Some(layer) => {
+            if unsafe { layer.present(pool.target, w, h) } {
+                shared.frames.fetch_add(1, Ordering::Relaxed);
+            }
+            true
+        }
+        None => false,
+    };
+    #[cfg(not(windows))]
+    let presented = false;
+    if presented && !asked {
+        pool.pending = None;
+        return;
+    }
     if let Some(frame) = unsafe { pool.stage_and_read() } {
         *shared.latest.lock() = Some(Arc::new(frame));
-        shared.frames.fetch_add(1, Ordering::Relaxed);
+        if !presented {
+            shared.frames.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 

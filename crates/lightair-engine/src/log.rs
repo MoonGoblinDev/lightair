@@ -5,6 +5,8 @@ use std::sync::Once;
 
 use libobs_sys as sys;
 
+// The UCRT defines the printf family inline in its headers; this library has them as functions.
+#[cfg_attr(windows, link(name = "legacy_stdio_definitions"))]
 unsafe extern "C" {
     fn vsnprintf(buf: *mut c_char, size: usize, fmt: *const c_char, args: sys::va_list) -> c_int;
 }

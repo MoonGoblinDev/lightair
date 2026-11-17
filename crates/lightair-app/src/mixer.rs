@@ -689,7 +689,7 @@ impl MixerPanel {
             .items_center()
             .child(div().text_size(px(8.5)).font_weight(FontWeight::BOLD).text_color(tok::text_tertiary()).child(name))
             .child(dial)
-            .child(div().text_size(px(9.5)).font_family("Menlo").text_color(tok::text_secondary()).child(text))
+            .child(div().text_size(px(9.5)).font_family(crate::ui::MONO).text_color(tok::text_secondary()).child(text))
     }
 
     /// A track's or bus's place in the mix, on the strip: output, polarity, mono, recording,
@@ -1171,7 +1171,7 @@ impl MixerPanel {
             scale = scale.child(
                 label
                     .text_size(px(8.5))
-                    .font_family("Menlo")
+                    .font_family(crate::ui::MONO)
                     .whitespace_nowrap()
                     .text_color(tok::text_tertiary())
                     .child(if db == 0 { "0".to_string() } else { format!("{db}") }),
@@ -1186,7 +1186,7 @@ impl MixerPanel {
                 .h(px(18.))
                 .rounded(px(3.))
                 .text_size(px(10.))
-                .font_family("Menlo")
+                .font_family(crate::ui::MONO)
                 .child(text)
         };
         let meter = div()
@@ -1516,7 +1516,7 @@ fn loudness_readout<T: 'static>(cx: &mut Context<T>) -> Option<impl IntoElement>
             .rounded(px(5.))
             .cursor_pointer()
             .hover(|d| d.bg(tok::bg_raised()))
-            .font_family("Menlo")
+            .font_family(crate::ui::MONO)
             .text_size(px(11.))
             .child(div().text_color(tok::text_tertiary()).child("LUFS"))
             .child(div().text_color(colour).child(format!("S {}", show(r.short_term))))
@@ -1771,7 +1771,7 @@ impl Render for MeterOverlay {
                             let peak = shown.readout.0;
                             let text: SharedString = if peak > -90.0 { format!("{peak:.1}").into() } else { "-inf".into() };
                             let colour = if peak > -1.0 { tok::error() } else { tok::text_secondary() };
-                            let run = TextRun { len: text.len(), font: font("Menlo"), color: colour, background_color: None, underline: None, strikethrough: None };
+                            let run = TextRun { len: text.len(), font: font(crate::ui::MONO), color: colour, background_color: None, underline: None, strikethrough: None };
                             let size = px(10.);
                             let line = window.text_system().shape_line(text, size, &[run], None);
                             let line_h = px(12.);

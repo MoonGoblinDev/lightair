@@ -39,7 +39,8 @@ fn imported_collection_reconciles() {
     let engine = Engine::start(EngineConfig { canvas: (640, 360), output: (640, 360), ..Default::default() }).unwrap();
     let mut doc = Document::new(Workspace::new("Import"));
     let board = concat!(env!("CARGO_MANIFEST_DIR"), "/../../branding/final/board.png");
-    let collection = COLLECTION.replace("BOARD", board);
+    // (a Windows path's backslashes would be escapes in the JSON)
+    let collection = COLLECTION.replace("BOARD", &board.replace('\\', "/"));
     let (cmd, report) = lightair_store::import_obs_collection(&collection, doc.workspace()).unwrap();
     assert_eq!(report.kept_plugin.len(), 2, "{report:#?}");
     let change = doc.apply(&cmd).unwrap();

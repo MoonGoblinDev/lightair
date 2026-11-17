@@ -507,6 +507,10 @@ impl StudioWindow {
                     if this.moving() || n.is_multiple_of(15) {
                         cx.notify();
                     }
+                    // the preview under the UI follows its pictures' new sizes (Windows)
+                    if let Some(n) = this.native.borrow_mut().as_mut() {
+                        n.refit();
+                    }
                 });
                 if alive.is_err() {
                     break;
@@ -642,8 +646,12 @@ impl StudioWindow {
             place: Place::Live,
             library,
             editor: {
-                let s = studio.clone();
-                cx.new(|_| crate::editor::Editor::new(s))
+                let (s, n) = (studio.clone(), native.clone());
+                cx.new(|_| {
+                    let mut e = crate::editor::Editor::new(s);
+                    e.native = n;
+                    e
+                })
             },
             thumbnail_shot: None,
             studio_take_countdown: None,
@@ -1756,7 +1764,7 @@ impl StudioWindow {
     pub(super) fn add_text(&mut self, cx: &mut Context<Self>) {
         let settings = json!({
             "text": "Lightair",
-            "font": {"face": "Helvetica Neue", "size": 128, "flags": 1},
+            "font": {"face": crate::ui::TEXT_FACE, "size": 128, "flags": 1},
             "color1": 0xFFFFFFFFu32,
             "color2": 0xFFFFFFFFu32,
         });
@@ -1769,7 +1777,7 @@ impl StudioWindow {
             "mode": "countdown",
             "seconds": 300,
             "autostart": true,
-            "font": {"face": "Helvetica Neue", "size": 160, "flags": 1},
+            "font": {"face": crate::ui::TEXT_FACE, "size": 160, "flags": 1},
             "color1": 0xFFFFFFFFu32,
             "color2": 0xFFFFFFFFu32,
         });
@@ -1858,6 +1866,12 @@ impl StudioWindow {
             return false;
         }
         let mut native = self.native.borrow_mut();
+        // GPUI remade its composition (a lost device): the visuals go with it
+        #[cfg(windows)]
+        if native.as_ref().is_some_and(|n| !n.current()) {
+            *native = None;
+            self.native_layers.clear();
+        }
         if native.is_none() {
             *native = crate::native_preview::NativePreview::attach(window, tok::bg_app(), tok::bg_canvas_well());
         }
@@ -1873,6 +1887,7 @@ impl StudioWindow {
             n.forget(id);
         }
         n.set_visible(self.place == Place::Live);
+        n.show_player(self.place == Place::Editor);
         true
     }
 
@@ -2462,8 +2477,8 @@ impl StudioWindow {
                 OutputState::Starting | OutputState::Stopping => (true, "…".into(), ""),
                 _ if studio.is_recording() => (true, "Audio".into(), "Stop recording"),
                 _ => match mode {
-                    RecordMode::Program => (false, "Record".into(), "Record the show as it's on air (⌘R)"),
-                    RecordMode::StudioTake => (false, "Studio take".into(), "Record each screen, camera and the pointer, for the Editor (⌘R)"),
+                    RecordMode::Program => (false, "Record".into(), if cfg!(windows) { "Record the show as it's on air (Ctrl+R)" } else { "Record the show as it's on air (⌘R)" }),
+                    RecordMode::StudioTake => (false, "Studio take".into(), if cfg!(windows) { "Record each screen, camera and the pointer, for the Editor (Ctrl+R)" } else { "Record each screen, camera and the pointer, for the Editor (⌘R)" }),
                 },
             }
         };
@@ -2487,7 +2502,7 @@ impl StudioWindow {
             .when(active, |d| d.bg(tok::live()).text_color(rgb(0xFFFFFF)))
             .when(!active, |d| d.hover(|d| d.bg(tok::bg_selected())))
             .child(symbol)
-            .when(!(compact && !stop), |d| d.child(div().text_size(px(13.)).when(active, |d| d.font_family("Menlo")).child(label)))
+            .when(!(compact && !stop), |d| d.child(div().text_size(px(13.)).when(active, |d| d.font_family(crate::ui::MONO)).child(label)))
             .when(!tip.is_empty(), |d| d.tooltip(move |w, cx| Tooltip::new(tip).build(w, cx)))
             .on_click(cx.listener(|this, _, _, cx| this.record_click(cx)));
         let chevron = Button::new("record-mode")
@@ -2589,6 +2604,8 @@ impl StudioWindow {
         }
         let on = matches!(state, OutputState::Active { .. });
         let busy = matches!(state, OutputState::Starting | OutputState::Stopping);
+        let installed = lightair_engine::vcam::installed();
+        let ours_installable = lightair_engine::vcam::lightair_installable();
         let failed = match &state {
             OutputState::Failed(e) => Some(e.clone()),
             _ => None,
@@ -2597,6 +2614,8 @@ impl StudioWindow {
             format!("Virtual camera on, showing {shown_name}. In other apps, choose “{listed}”. Click to stop.").into()
         } else if busy {
             "Virtual camera starting…".into()
+        } else if let Some(e) = failed.as_ref().filter(|e| e.as_str() == lightair_engine::vcam::NOT_INSTALLED) {
+            format!("Virtual camera: {e} Install it from the menu (⌄): Windows asks for an administrator's approval.").into()
         } else if let Some(e) = &failed {
             format!("Virtual camera: {e} Click to try again.").into()
         } else {
@@ -2643,6 +2662,14 @@ impl StudioWindow {
                     .icon(ui::icon(if on || busy { "square" } else { "play" }))
                     .on_click(act(|s, cx| s.toggle_virtual_camera(cx))),
             );
+            // Windows: Lightair's camera isn't installed (OBS's may be): install it
+            if cfg!(windows) && (!installed || ours_installable) {
+                menu = menu.item(
+                    PopupMenuItem::new(if ours_installable { "Install Lightair Virtual Camera…" } else { "Install virtual camera…" })
+                        .icon(ui::icon("download"))
+                        .on_click(act(|s, cx| s.install_virtual_camera(cx))),
+                );
+            }
             // which scene: the one on air, or a scene of its own
             menu = menu.separator().item(PopupMenuItem::label("Shows")).item(
                 PopupMenuItem::new("Scene on air").icon(ui::icon("radio")).checked(on_air).on_click({
@@ -2810,7 +2837,7 @@ impl StudioWindow {
                 )
                 .child(
                     ui::icon_button("rec-marker", "bookmark", tok::text_secondary())
-                        .tooltip(|w, cx| Tooltip::new("Add marker (⌘M)").build(w, cx))
+                        .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Add marker (⌘M)").into_owned()).build(w, cx))
                         .on_click(cx.listener(|this, _, _, cx| this.studio.update(cx, |s, cx| s.add_marker(cx)))),
                 )
                 .when(!taking, |d| d.child(
@@ -2893,7 +2920,7 @@ impl StudioWindow {
             .when(!editor, |d| d.child(self.clip_control(cx)).child(self.virtual_camera_control(cx)))
             .child(
                 ui::icon_button("open-settings", "settings", tok::text_secondary())
-                    .tooltip(|w, cx| Tooltip::new("Settings (⌘,)").build(w, cx))
+                    .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Settings (⌘,)").into_owned()).build(w, cx))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_settings(cx))),
             )
     }
@@ -3121,7 +3148,7 @@ impl StudioWindow {
                         ui::icon_button("stinger-earlier", "minus", tok::text_secondary())
                             .on_click(cx.listener(move |this, _, _, cx| this.exec(earlier.clone(), cx))),
                     )
-                    .child(div().w(px(56.)).text_center().text_size(px(12.)).font_family("Menlo").child(format!("{:.1} s", st.cut_ms as f32 / 1000.0)))
+                    .child(div().w(px(56.)).text_center().text_size(px(12.)).font_family(crate::ui::MONO).child(format!("{:.1} s", st.cut_ms as f32 / 1000.0)))
                     .child(
                         ui::icon_button("stinger-later", "plus", tok::text_secondary())
                             .on_click(cx.listener(move |this, _, _, cx| this.exec(later.clone(), cx))),
@@ -3218,9 +3245,9 @@ impl StudioWindow {
                     d.child(
                         div()
                             .text_size(px(10.))
-                            .font_family("Menlo")
+                            .font_family(crate::ui::MONO)
                             .text_color(tok::text_tertiary())
-                            .child(format!("⌘{}", i + 1)),
+                            .child(crate::ui::keys_label(&format!("⌘{}", i + 1)).into_owned()),
                     )
                 })
                 .context_menu({
@@ -3310,7 +3337,7 @@ impl StudioWindow {
             .gap_0p5()
             .child(
                 ui::icon_button("zoom-out", "minus", tok::text_secondary())
-                    .tooltip(|w, cx| Tooltip::new("Zoom out (⌘−)").build(w, cx))
+                    .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Zoom out (⌘−)").into_owned()).build(w, cx))
                     .on_click(cx.listener(|this, _, _, cx| this.zoom_by(0.8, None, cx))),
             )
             .child(
@@ -3325,18 +3352,18 @@ impl StudioWindow {
                     .rounded(px(4.))
                     .cursor_pointer()
                     .text_size(px(11.))
-                    .font_family("Menlo")
+                    .font_family(crate::ui::MONO)
                     .text_color(if fitted { tok::text_secondary() } else { tok::text() })
                     .hover(|d| d.bg(tok::bg_raised()))
                     .child(format!("{percent:.0}%"))
-                    .tooltip(|w, cx| Tooltip::new("Fit (⌘0) · double-click: 100% (⌥⌘0)").build(w, cx))
+                    .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Fit (⌘0) · double-click: 100% (⌥⌘0)").into_owned()).build(w, cx))
                     .on_click(cx.listener(|this, ev: &ClickEvent, _, cx| {
                         if ev.click_count() == 2 { this.zoom_to_actual(cx) } else { this.zoom_to_fit(cx) }
                     })),
             )
             .child(
                 ui::icon_button("zoom-in", "plus", tok::text_secondary())
-                    .tooltip(|w, cx| Tooltip::new("Zoom in (⌘=)").build(w, cx))
+                    .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Zoom in (⌘=)").into_owned()).build(w, cx))
                     .on_click(cx.listener(|this, _, _, cx| this.zoom_by(1.25, None, cx))),
             );
         let safe = if vertical { self.safe_vertical } else { self.safe_landscape };
@@ -3461,7 +3488,7 @@ impl StudioWindow {
                 .child(ui::icon("lightair-cue").size(px(14.)).text_color(tok::text_secondary()))
                 .child("Cue scenes")
                 .tooltip(|w, cx| {
-                    Tooltip::new("Edit the next scene without viewers seeing it, then Take it live (⌘↩)").build(w, cx)
+                    Tooltip::new(crate::ui::keys_label("Edit the next scene without viewers seeing it, then Take it live (⌘↩)").into_owned()).build(w, cx)
                 })
                 .on_click(cx.listener(|this, _, _, cx| this.set_cue_scenes(!this.cue_scenes, cx))),
         );
@@ -3513,10 +3540,16 @@ impl StudioWindow {
         let studio = self.studio.read(cx);
         let bounds_map = self.stage_bounds.clone();
         let fid = shown.id;
-        let frame = self.previews.get(&fid).and_then(|p| p.latest_frame());
+        let native = self.native.borrow().is_some();
+        // drawn under the UI (native_preview): only whether it has started is needed here, and
+        // asking for a frame would have the preview read every frame back
+        let frame = match self.previews.get(&fid) {
+            Some(p) if native => (p.frames() > 0).then_some(None),
+            Some(p) => p.latest_frame().map(Some),
+            None => None,
+        };
         let editing = fid == self.canvas_id(workspace);
 
-        let native = self.native.borrow().is_some();
         let (rects, zoom, pan, (cw, ch)) = (self.native_rects.clone(), self.zoom, self.pan, (shown.width as f32, shown.height as f32));
         let mut stage = div()
             .absolute()
@@ -3542,8 +3575,8 @@ impl StudioWindow {
             )
             .child(match frame {
                 // drawn under the UI (native_preview)
-                Some(_) if native => div().into_any_element(),
-                Some(f) => match (self.mapping(workspace, fid), self.stage_bounds.borrow().get(&fid).copied()) {
+                Some(None) => div().into_any_element(),
+                Some(Some(f)) => match (self.mapping(workspace, fid), self.stage_bounds.borrow().get(&fid).copied()) {
                     // Placed where the shown is (zoomed and panned).
                     (Some((ox, oy, s)), Some(b)) => crate::frame_view::frame(f)
                         .absolute()
@@ -3895,7 +3928,7 @@ impl StudioWindow {
                             .rounded(px(5.))
                             .bg(tok::scrim())
                             .text_size(px(11.))
-                            .font_family("Menlo")
+                            .font_family(crate::ui::MONO)
                             .child(div().text_color(tok::gizmo_x()).child(format!("X {:.0}°", l.tilt_x)))
                             .child(div().text_color(tok::gizmo_y()).child(format!("Y {:.0}°", l.tilt_y)))
                             .child(div().text_color(tok::gizmo_z()).child(format!("Z {:.0}°", l.rotation))),
@@ -3961,7 +3994,7 @@ impl StudioWindow {
                             .bg(tok::accent_primary())
                             .text_color(tok::canvas_selection())
                             .text_size(px(11.))
-                            .font_family("Menlo")
+                            .font_family(crate::ui::MONO)
                             .whitespace_nowrap()
                             .child(text),
                     );
@@ -4368,7 +4401,7 @@ impl StudioWindow {
             .rounded(px(5.))
             .cursor_pointer()
             .text_size(px(11.))
-            .font_family("Menlo")
+            .font_family(crate::ui::MONO)
             .text_color(tok::text_secondary())
             .when(open, |d| d.bg(tok::bg_raised()))
             .hover(|d| d.bg(tok::bg_raised()))
@@ -4385,7 +4418,7 @@ impl StudioWindow {
                 .justify_between()
                 .gap_6()
                 .child(div().text_color(tok::text_secondary()).child(label))
-                .child(div().font_family("Menlo").text_color(tok::text()).child(value))
+                .child(div().font_family(crate::ui::MONO).text_color(tok::text()).child(value))
         };
         let share = if stats.total_frames > 0 {
             format!(" ({:.2}%)", stats.lagged_frames as f64 * 100.0 / stats.total_frames as f64)

@@ -115,7 +115,8 @@ fn text_filters_keyframes_and_a_crossfade() {
     let early = r.frame(100);
     let grey = at(&early, 600, 340);
     assert!(grey[0].abs_diff(grey[1]) < 12 && grey[0].abs_diff(grey[2]) < 12, "the red clip is grey: {grey:?}");
-    let g = at(&early, 120, 180);
+    // (in the box's padding above the words: where a glyph falls depends on the system's font)
+    let g = at(&early, 120, 142);
     assert!(g[1] > 180 && g[0] < 80, "the title's green box on the left at first: {g:?}");
     assert!(at(&early, 520, 180)[1] < 120, "and not on the right");
     let late = r.frame(3_900);

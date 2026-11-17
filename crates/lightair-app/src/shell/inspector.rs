@@ -106,7 +106,7 @@ impl StudioWindow {
             .rounded(px(6.))
             .bg(tok::bg_raised())
             .child(div().w(px(16.)).text_size(px(11.)).text_color(tok::text_tertiary()).child(label))
-            .child(div().flex_1().text_size(px(12.)).font_family("Menlo").child(value))
+            .child(div().flex_1().text_size(px(12.)).font_family(crate::ui::MONO).child(value))
             .child(small(0, "minus", minus))
             .child(small(1, "plus", plus))
     }
@@ -378,7 +378,7 @@ impl StudioWindow {
                             .w(px(40.))
                             .text_right()
                             .text_size(px(11.))
-                            .font_family("Menlo")
+                            .font_family(crate::ui::MONO)
                             .text_color(tok::text_tertiary())
                             .child(value),
                     )
@@ -436,7 +436,7 @@ impl StudioWindow {
                             .w(px(40.))
                             .text_right()
                             .text_size(px(11.))
-                            .font_family("Menlo")
+                            .font_family(crate::ui::MONO)
                             .text_color(tok::text_tertiary())
                             .child(value),
                     )

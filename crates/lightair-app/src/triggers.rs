@@ -42,10 +42,13 @@ fn watch_files(a: Automations) {
     }
 }
 
-/// "~/x" → the home folder's x.
+/// "~/x" → the home folder's x (Windows: "~\x" too, and the home is USERPROFILE: HOME is
+/// rarely set there).
 fn shellexpand(path: &str) -> String {
-    match (path.strip_prefix("~/"), std::env::var("HOME")) {
-        (Some(rest), Ok(home)) => format!("{home}/{rest}"),
+    let rest = path.strip_prefix("~/").or_else(|| if cfg!(windows) { path.strip_prefix("~\\") } else { None });
+    let home = std::env::var("HOME").ok().or_else(|| if cfg!(windows) { std::env::var("USERPROFILE").ok() } else { None });
+    match (rest, home) {
+        (Some(rest), Some(home)) => format!("{home}/{rest}"),
         _ => path.to_string(),
     }
 }

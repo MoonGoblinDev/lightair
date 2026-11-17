@@ -57,7 +57,7 @@ The Permissions page in Settings shows every permission's status, what uses it, 
 ## Code signing, notarisation, updates
 
 - **macOS:** Developer ID signed, hardened runtime, notarised and stapled. Every helper, plugin, framework and the system extension is signed in-bundle.
-- **Windows:** Authenticode-signed installer and binaries (MSIX and classic installer), with a portable zip for advanced users.
+- **Windows:** Authenticode-signed installer and binaries (MSIX and classic installer), with a portable zip for advanced users. Built today: the portable app and its zip (`cargo xtask dist` on Windows: `target\dist\Lightair`, laid out as OBS is, `bin\64bit\lightair.exe` beside libobs, its modules in `core\`, the MSVC runtime beside the programs); not yet signed or installed by an installer.
 - **Linux:** Flatpak on Flathub, plus AppImage.
 - **Updates:** Sparkle 2 (macOS) and an equivalent signed-feed updater on Windows, with EdDSA-signed appcasts. Channels: **Stable**, **Beta**, **Nightly**. Updates never install while live or recording; the app offers to install on quit.
 - **Release notes** are shown in-app after an update, linked to the changelog.

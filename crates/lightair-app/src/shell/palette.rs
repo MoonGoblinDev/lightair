@@ -254,7 +254,7 @@ impl StudioWindow {
                 }))
                 .child(ui::icon(e.icon).size(px(15.)).text_color(tok::text_secondary()))
                 .child(div().flex_1().child(e.label))
-                .child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child(e.hint))
+                .child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child(crate::ui::keys_label(e.hint).into_owned()))
         });
         Some(
             div()

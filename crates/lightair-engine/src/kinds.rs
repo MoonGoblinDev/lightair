@@ -24,7 +24,10 @@ use serde_json::{Value, json};
 /// The libobs source type and settings for a source, or `None` when its kind is libobs's own.
 pub fn resolve(kind: &str, settings: &Value) -> Option<(&'static str, Value)> {
     if kind == "ffmpeg_source" {
-        return native_media(settings).then(|| (NATIVE_MEDIA, settings.clone()));
+        if native_media(settings) {
+            return Some((NATIVE_MEDIA, settings.clone()));
+        }
+        return windows_hardware_decoding(settings).map(|s| ("ffmpeg_source", s));
     }
     let mut out = settings.as_object().cloned().unwrap_or_default();
     let mut take = |from: &str| out.remove(from);
@@ -44,6 +47,10 @@ pub fn resolve(kind: &str, settings: &Value) -> Option<(&'static str, Value)> {
     let id = if cfg!(windows) {
         match kind {
             SCREEN if mode == DISPLAY => {
+                // none chosen (a new capture, a project from a Mac): the primary monitor
+                let display = display
+                    .filter(|d| d.as_str().is_some_and(|s| !s.is_empty() && s != "DUMMY"))
+                    .or_else(|| crate::displays::main_display_uuid().map(Value::from));
                 set("monitor_id", display);
                 set("capture_cursor", Some(cursor));
                 "monitor_capture"
@@ -71,11 +78,19 @@ pub fn resolve(kind: &str, settings: &Value) -> Option<(&'static str, Value)> {
                 "window_capture"
             }
             CAMERA => {
+                let id = device.as_ref().and_then(|d| d.as_str()).map(str::to_owned);
                 set("video_device_id", device);
-                if let Some(h) = height {
-                    // custom resolution, 16:9
-                    set("res_type", Some(json!(1)));
-                    set("resolution", Some(json!(format!("{}x{h}", h * 16 / 9))));
+                // nothing off air runs (macOS: crate::on_screen); OBS's DirectShow source has
+                // this itself (display capture already stops while hidden on Windows)
+                set("deactivate_when_not_showing", Some(json!(true)));
+                // the camera's own format nearest the height asked for (DirectShow shows nothing
+                // at all when asked for one the camera doesn't have); none: the camera's default
+                match height.zip(id).and_then(|(h, id)| camera_resolution(&id, h)) {
+                    Some(res) => {
+                        set("res_type", Some(json!(1)));
+                        set("resolution", Some(json!(res)));
+                    }
+                    None => set("res_type", Some(json!(0))),
                 }
                 "dshow_input"
             }
@@ -151,6 +166,49 @@ pub fn resolve(kind: &str, settings: &Value) -> Option<(&'static str, Value)> {
     Some((id, Value::Object(out)))
 }
 
+/// Windows: the resolution ("1280x720") of the camera `device` (DirectShow's device id) that
+/// best gives `height`: the tallest it has up to that height, 16:9 first; `None` when its formats
+/// can't be read. DirectShow's own properties list them without opening the camera; remembered
+/// per camera and height (sources are resolved often).
+#[cfg(windows)]
+fn camera_resolution(device: &str, height: u64) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    /// (device, height) → the resolution chosen
+    type Seen = HashMap<(String, u64), Option<String>>;
+    static SEEN: OnceLock<Mutex<Seen>> = OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some(r) = seen.lock().ok()?.get(&(device.to_string(), height)) {
+        return r.clone();
+    }
+    let sizes: Vec<(u64, u64)> = crate::obs::property_items_with("dshow_input", "resolution", &json!({"video_device_id": device}))
+        .into_iter()
+        .filter_map(|(_, v)| {
+            let (w, h) = v.split_once('x')?;
+            Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+        })
+        .collect();
+    let wide = |&(w, h): &(u64, u64)| w * 9 == h * 16;
+    let fits: Vec<(u64, u64)> = sizes.iter().copied().filter(|&(_, h)| h <= height).collect();
+    let best = fits
+        .iter()
+        .copied()
+        .max_by_key(|s| (s.1, wide(s), s.0))
+        // nothing that small: the smallest it has
+        .or_else(|| sizes.iter().copied().min_by_key(|s| (s.1, !wide(s))));
+    let found = best.map(|(w, h)| format!("{w}x{h}"));
+    if let Ok(mut s) = seen.lock() {
+        s.insert((device.to_string(), height), found.clone());
+    }
+    found
+}
+
+#[cfg(not(windows))]
+#[allow(dead_code)]
+fn camera_resolution(_: &str, _: u64) -> Option<String> {
+    None
+}
+
 /// The cameras and capture cards: (name, the `device` setting). Call on the engine thread.
 pub fn cameras() -> Vec<(String, String)> {
     if cfg!(windows) {
@@ -179,6 +237,24 @@ pub fn native_media(settings: &Value) -> bool {
     let file = settings.get("local_file").and_then(Value::as_str).unwrap_or("");
     let ext = std::path::Path::new(file).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
     local && speed == 100 && matches!(ext.as_deref(), Some("mp4" | "m4v" | "mov"))
+}
+
+/// Windows: media files decode on the GPU's video decoder (D3D11VA), unless the source says
+/// otherwise. OBS leaves this off; on a PC it halves the app's CPU with two videos playing (a
+/// 1080p60 and a 720p30 file: 3.0 → 1.6 G cycles/s on an i5-9300H, docs/benchmarks), where on
+/// Apple Silicon software decoding is cheap and the copy back cost more (it stays off there).
+/// FFmpeg falls back to software by itself where the decoder can't. `LIGHTAIR_MEDIA_DECODE=software`
+/// turns it off (for comparison).
+fn windows_hardware_decoding(settings: &Value) -> Option<Value> {
+    if !cfg!(windows)
+        || settings.get("hw_decode").is_some()
+        || std::env::var("LIGHTAIR_MEDIA_DECODE").is_ok_and(|v| v == "software")
+    {
+        return None;
+    }
+    let mut s = settings.as_object().cloned().unwrap_or_default();
+    s.insert("hw_decode".into(), json!(true));
+    Some(Value::Object(s))
 }
 
 /// The libobs source type a source plays as (its own kind when that's libobs's).

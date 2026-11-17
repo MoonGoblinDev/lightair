@@ -154,9 +154,10 @@ Remaining:
 ## M13 · Engine from source & distribution 🔨
 Done:
 - `cargo xtask bundle`: a development `Lightair.app` (Info.plist with camera/microphone usage strings, the brand icon, OBS frameworks and plugins linked from an installed OBS 33, ad hoc signature), so macOS asks Lightair itself for privacy permissions.
+- Windows port: builds, passes the suite and runs on Windows 11; `cargo xtask dist` makes the self-contained portable app and zip (OBS's layout, libobs and modules from an installed OBS 33, the MSVC runtime beside it) ([plans/windows.md](docs/plans/windows.md)).
 
 Remaining:
-- Build libobs and core modules from the submodule; release bundle with everything copied in; Developer ID signing and notarisation (needs your certificate and Apple ID); updater; Windows and Linux ports.
+- Build libobs and core modules from the submodule; release bundle with everything copied in; Developer ID signing and notarisation (needs your certificate and Apple ID); updater; a Windows installer and Authenticode signing; the Linux port.
 
 ## M14 · Quality
 Performance budgets in CI, golden renders, A/V sync, soak tests, accessibility and localisation passes ([16](docs/16-quality-performance-accessibility.md)).

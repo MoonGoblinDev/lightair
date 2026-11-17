@@ -183,6 +183,59 @@ pub fn key(keys: &'static str) -> &'static str {
 pub const OS: &str = if cfg!(windows) { "Windows" } else { "macOS" };
 /// This computer, as people call it.
 pub const MACHINE: &str = if cfg!(windows) { "PC" } else { "Mac" };
+/// Where secrets are kept, as the system calls it.
+pub const KEYCHAIN: &str = if cfg!(windows) { "Windows Credential Manager" } else { "Keychain" };
+/// The fixed-width face for numbers and codes (every Windows has Consolas).
+pub const MONO: &str = if cfg!(windows) { "Consolas" } else { "Menlo" };
+/// A new text object's face.
+pub const TEXT_FACE: &str = if cfg!(windows) { "Segoe UI" } else { "Helvetica Neue" };
+/// [`keys_label`] for a fixed text, kept for the app's life (labels that must be `'static`).
+pub fn keys_static(text: &'static str) -> &'static str {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static MADE: OnceLock<Mutex<HashMap<&'static str, &'static str>>> = OnceLock::new();
+    match keys_label(text) {
+        std::borrow::Cow::Borrowed(t) => t,
+        std::borrow::Cow::Owned(made) => {
+            let mut map = MADE.get_or_init(Default::default).lock().unwrap();
+            map.entry(text).or_insert_with(|| Box::leak(made.into_boxed_str()))
+        }
+    }
+}
+
+/// Shortcuts as people write them on this computer: on a Mac as given ("⇧⌘Z"), elsewhere
+/// spelled out ("Ctrl+Shift+Z"; ⌘ is Ctrl there, ⌥ Alt, ↩ Enter). Any text around them is kept.
+pub fn keys_label(text: &str) -> std::borrow::Cow<'_, str> {
+    if cfg!(target_os = "macos") || !text.chars().any(|c| "⌘⌃⌥⇧↩⌫".contains(c)) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let (mut ctrl, mut alt, mut shift) = (false, false, false);
+    let mut out = String::with_capacity(text.len() + 16);
+    for c in text.chars() {
+        match c {
+            '⌘' | '⌃' => ctrl = true,
+            '⌥' => alt = true,
+            '⇧' => shift = true,
+            _ => {
+                if ctrl || alt || shift {
+                    for (on, name) in [(ctrl, "Ctrl+"), (shift, "Shift+"), (alt, "Alt+")] {
+                        if on {
+                            out.push_str(name);
+                        }
+                    }
+                    (ctrl, alt, shift) = (false, false, false);
+                }
+                match c {
+                    '↩' => out.push_str("Enter"),
+                    '⌫' => out.push_str("Backspace"),
+                    '−' => out.push('-'),
+                    _ => out.push(c),
+                }
+            }
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
 
 /// Icon for a source type (docs/06-design-system.md, Iconography).
 pub fn source_icon(kind: &str) -> &'static str {

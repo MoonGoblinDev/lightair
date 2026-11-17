@@ -22,3 +22,5 @@ mod studio_preview;
 mod track_picture;
 mod transform3d;
 mod transitions;
+#[cfg(windows)]
+mod virtual_camera;

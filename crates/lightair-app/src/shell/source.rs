@@ -82,7 +82,9 @@ pub(super) fn choices(key: &str, options: &[(String, Value)], hide: impl Fn(&Val
             "display" => {
                 let (name, rest) = label.split_once(": ").unwrap_or((label, ""));
                 let size = rest.split(" @").next().unwrap_or("").replace('x', " × ");
-                Choice { title: name.to_string(), detail: size, group: String::new(), value: value.clone() }
+                // (a monitor that reports no name of its own, as a laptop's panel may)
+                let title = if name.trim().is_empty() { format!("Display {}", out.len() + 1) } else { name.to_string() };
+                Choice { title, detail: size, group: String::new(), value: value.clone() }
             }
             "app" => {
                 // Windows lists the app's windows: the app is what's shown

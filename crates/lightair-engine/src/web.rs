@@ -6,9 +6,10 @@
 //! Settings: `url`; `width`, `height` (the frame's size: the page's in CSS pixels at 100%);
 //! `fps`; `zoom` (percent, as a browser's); `css` (added to the page each time it loads).
 //!
-//! On macOS Chromium shares its frames as IOSurfaces, which libobs draws as they are (as OBS's
-//! browser source does): no frame is read back to memory, copied or uploaded again. Elsewhere
-//! frames arrive as pixels, given to libobs like a camera's.
+//! On macOS Chromium shares its frames as IOSurfaces, and on Windows as Direct3D 11 shared
+//! textures, which libobs draws as they are (as OBS's browser source does): no frame is read
+//! back to memory, copied or uploaded again. Elsewhere frames arrive as pixels, given to libobs
+//! like a camera's.
 
 use std::ffi::{CStr, c_char, c_void};
 use std::sync::Arc;
@@ -36,7 +37,7 @@ struct Web {
     hidden_since: Mutex<Option<std::time::Instant>>,
     target: Target,
     options: Mutex<lightair_web::PageOptions>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     shared: Arc<shared::Frames>,
 }
 
@@ -61,7 +62,7 @@ fn options(settings: *mut sys::obs_data_t) -> lightair_web::PageOptions {
 fn open(
     o: &lightair_web::PageOptions,
     target: &Target,
-    #[cfg(target_os = "macos")] shared: Option<Arc<shared::Frames>>,
+    #[cfg(any(target_os = "macos", windows))] shared: Option<Arc<shared::Frames>>,
 ) -> Option<lightair_web::Page> {
     if o.url.trim().is_empty() {
         return None;
@@ -111,7 +112,7 @@ fn open(
             sys::obs_source_output_audio(source as *mut sys::obs_source_t, &audio);
         }
     });
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     if let Some(frames) = shared {
         let texture: lightair_web::TextureSink = Arc::new(move |surface, _w, _h| frames.put(surface));
         return Some(lightair_web::Page::open_shared(o.clone(), texture, sink, audio));
@@ -152,11 +153,11 @@ impl Web {
         let mut page = self.page.lock();
         if page.is_none() {
             let o = self.options.lock().clone();
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             {
                 *page = open(&o, &self.target, Some(self.shared.clone()));
             }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", windows)))]
             {
                 *page = open(&o, &self.target);
             }
@@ -183,7 +184,7 @@ unsafe extern "C" fn create(settings: *mut sys::obs_data_t, source: *mut sys::ob
         hidden_since: Mutex::new(None),
         target,
         options: Mutex::new(options(settings)),
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         shared: Arc::new(shared::Frames::default()),
     };
     Box::into_raw(Box::new(web)) as *mut c_void
@@ -266,8 +267,8 @@ pub fn register() {
         info.type_ = sys::OBS_SOURCE_TYPE_INPUT;
         // frames as they're painted, kept until the next (a still page paints once); its sound
         info.output_flags = sys::OBS_SOURCE_ASYNC_VIDEO | sys::OBS_SOURCE_AUDIO | sys::OBS_SOURCE_DO_NOT_DUPLICATE;
-        // macOS: Chromium's shared textures, drawn as they are
-        #[cfg(target_os = "macos")]
+        // macOS and Windows: Chromium's shared textures, drawn as they are
+        #[cfg(any(target_os = "macos", windows))]
         {
             info.output_flags = sys::OBS_SOURCE_VIDEO | sys::OBS_SOURCE_AUDIO | sys::OBS_SOURCE_DO_NOT_DUPLICATE | sys::OBS_SOURCE_CUSTOM_DRAW;
             info.video_render = Some(shared::video_render);
@@ -423,6 +424,129 @@ mod shared {
     fn size(data: *mut c_void) -> (u32, u32) {
         let web = unsafe { &*(data as *const Web) };
         let shown = web.shared.shown.lock().2;
+        if shown.0 > 0 {
+            shown
+        } else {
+            let o = web.options.lock();
+            (o.width, o.height)
+        }
+    }
+
+    pub unsafe extern "C" fn get_width(data: *mut c_void) -> u32 {
+        size(data).0
+    }
+
+    pub unsafe extern "C" fn get_height(data: *mut c_void) -> u32 {
+        size(data).1
+    }
+}
+
+/// Chromium's frames as Direct3D 11 shared textures (Windows): Chromium hands each paint's
+/// texture over as an NT handle valid during its paint call, so it's duplicated there and
+/// opened by libobs (on its own device) when it next draws; the texture opened last is drawn
+/// until a newer one arrives.
+#[cfg(windows)]
+mod shared {
+    use std::ffi::c_void;
+
+    use parking_lot::Mutex;
+    use windows_sys::Win32::Foundation::{CloseHandle, DUPLICATE_SAME_ACCESS, DuplicateHandle, HANDLE};
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    use super::Web;
+    use crate::sys;
+
+    /// A handle of our own to a shared texture, closed when dropped.
+    struct Handle(HANDLE);
+
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    // SAFETY: a kernel handle, usable from any thread.
+    unsafe impl Send for Handle {}
+
+    struct Texture(*mut sys::gs_texture_t);
+    // SAFETY: only touched on libobs's graphics thread (destroyed there too).
+    unsafe impl Send for Texture {}
+
+    #[derive(Default)]
+    pub struct Frames {
+        /// Painted, not yet opened.
+        next: Mutex<Option<Handle>>,
+        /// The texture drawn, and its size.
+        shown: Mutex<(Option<Texture>, (u32, u32))>,
+    }
+
+    impl Frames {
+        /// A new frame (Chromium's thread, during its paint): `handle` is Chromium's.
+        pub fn put(&self, handle: *mut c_void) {
+            if handle.is_null() {
+                return;
+            }
+            let mut own: HANDLE = std::ptr::null_mut();
+            let ok = unsafe {
+                let me = GetCurrentProcess();
+                DuplicateHandle(me, handle as HANDLE, me, &mut own, 0, 0, DUPLICATE_SAME_ACCESS)
+            };
+            if ok != 0 && !own.is_null() {
+                // the one it replaces (never drawn) is let go
+                *self.next.lock() = Some(Handle(own));
+            }
+        }
+    }
+
+    impl Drop for Frames {
+        fn drop(&mut self) {
+            if let Some(Texture(t)) = self.shown.get_mut().0.take() {
+                unsafe {
+                    sys::obs_enter_graphics();
+                    sys::gs_texture_destroy(t);
+                    sys::obs_leave_graphics();
+                }
+            }
+        }
+    }
+
+    fn frames<'a>(data: *mut c_void) -> &'a Frames {
+        unsafe { &(*(data as *const Web)).shared }
+    }
+
+    pub unsafe extern "C" fn video_render(data: *mut c_void, _effect: *mut sys::gs_effect_t) {
+        let f = frames(data);
+        let mut shown = f.shown.lock();
+        if let Some(next) = f.next.lock().take() {
+            // (NT handles are small numbers: libobs takes them as 32 bits)
+            let t = unsafe { sys::gs_texture_open_nt_shared(next.0 as usize as u32) };
+            if !t.is_null() {
+                if let Some(Texture(old)) = shown.0.take() {
+                    unsafe { sys::gs_texture_destroy(old) };
+                }
+                shown.1 = unsafe { (sys::gs_texture_get_width(t), sys::gs_texture_get_height(t)) };
+                shown.0 = Some(Texture(t));
+            }
+        }
+        let Some(Texture(tex)) = &shown.0 else { return };
+        let (w, h) = shown.1;
+        unsafe {
+            // Chromium's pixels are premultiplied (the blend says so)
+            let effect = sys::obs_get_base_effect(sys::OBS_EFFECT_DEFAULT);
+            let image = sys::gs_effect_get_param_by_name(effect, c"image".as_ptr());
+            sys::gs_effect_set_texture(image, *tex);
+            sys::gs_blend_state_push();
+            sys::gs_blend_function(sys::GS_BLEND_ONE, sys::GS_BLEND_INVSRCALPHA);
+            while sys::gs_effect_loop(effect, c"Draw".as_ptr()) {
+                sys::gs_draw_sprite(*tex, 0, w, h);
+            }
+            sys::gs_blend_state_pop();
+        }
+    }
+
+    fn size(data: *mut c_void) -> (u32, u32) {
+        let web = unsafe { &*(data as *const Web) };
+        let shown = web.shared.shown.lock().1;
         if shown.0 > 0 {
             shown
         } else {

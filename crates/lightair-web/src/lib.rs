@@ -64,6 +64,16 @@ pub fn set_cookies(list: Vec<CookieSpec>, done: impl FnOnce(usize) + Send + 'sta
 
 static PROFILE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
+/// The GPU Chromium renders on (Windows: an adapter LUID, "high,low"): the one libobs draws
+/// with, so the textures it shares open on libobs's device (on a laptop with two GPUs Chromium
+/// could otherwise pick the other).
+static GPU_ADAPTER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Has Chromium render on the adapter with this LUID (before the first page opens).
+pub fn set_gpu_adapter(high: i32, low: u32) {
+    let _ = GPU_ADAPTER.set(format!("{high},{low}"));
+}
+
 /// Where Chromium keeps its profile (cookies, storage), so sign-ins last (set once, before the
 /// first page; the default is a temporary folder).
 pub fn set_profile_dir(dir: std::path::PathBuf) {
@@ -172,12 +182,13 @@ impl Page {
         Page { id }
     }
 
-    /// Like [`Page::open`], but where Chromium can share its frames as GPU textures (macOS),
-    /// they go to `texture` instead of being read back into memory for `sink`.
+    /// Like [`Page::open`], but where Chromium can share its frames as GPU textures (macOS:
+    /// IOSurfaces; Windows: Direct3D 11 NT handles, valid during the call), they go to `texture`
+    /// instead of being read back into memory for `sink`.
     pub fn open_shared(options: PageOptions, texture: TextureSink, sink: FrameSink, audio: AudioSink) -> Page {
         let options = resolved(options);
         let id = imp::next_id();
-        let texture = cfg!(target_os = "macos").then_some(texture);
+        let texture = (cfg!(target_os = "macos") || cfg!(windows)).then_some(texture);
         imp::request(imp::Request::Open { id, options, sink, texture, audio, agent: None, window: None });
         Page { id }
     }
@@ -503,6 +514,7 @@ mod imp {
                 .into_iter()
                 .map(String::from)
                 // a developer's own, ";"-separated (host-resolver-rules, logging)
+                .chain(super::GPU_ADAPTER.get().map(|luid| format!("use-adapter-luid={luid}")))
                 .chain(std::env::var("LIGHTAIR_WEB_SWITCHES").unwrap_or_default().split(';').filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string()))
                 {
                     match switch.split_once('=') {
@@ -522,6 +534,8 @@ mod imp {
             Some(dir) => (dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(std::env::temp_dir), dir.clone()),
             None => (std::env::temp_dir(), std::env::temp_dir().join("lightair-web")),
         };
+        #[cfg(not(target_os = "macos"))]
+        let _ = temp;
         #[cfg(target_os = "macos")]
         {
             let alive = |pid: i32| pid > 0 && unsafe { libc::kill(pid, 0) } == 0;
@@ -577,6 +591,16 @@ mod imp {
             settings.browser_subprocess_path = CefString::from(helper.to_string_lossy().as_ref());
             settings.framework_dir_path = CefString::from(frameworks.join("Chromium Embedded Framework.framework").to_string_lossy().as_ref());
             settings.main_bundle_path = CefString::from(bundle.to_string_lossy().as_ref());
+        }
+        // Windows: Chromium's processes run as lightair-web-helper.exe beside Lightair (else
+        // Chromium starts Lightair itself for each, which hands them to `helper_main`)
+        #[cfg(windows)]
+        if let Some(helper) = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|d| d.join("lightair-web-helper.exe")))
+            .filter(|h| h.exists())
+        {
+            settings.browser_subprocess_path = CefString::from(helper.to_string_lossy().as_ref());
         }
         let cache = cache_dir();
         settings.root_cache_path = CefString::from(cache.to_string_lossy().as_ref());
@@ -933,7 +957,13 @@ mod imp {
         info.shared_texture_io_surface
     }
 
-    #[cfg(not(target_os = "macos"))]
+    /// The Direct3D 11 texture's NT handle (Windows), valid during the paint call.
+    #[cfg(windows)]
+    fn shared_surface(info: &AcceleratedPaintInfo) -> *mut std::ffi::c_void {
+        info.shared_texture_handle
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     fn shared_surface(_: &AcceleratedPaintInfo) -> *mut std::ffi::c_void {
         std::ptr::null_mut()
     }

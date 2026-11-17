@@ -55,7 +55,7 @@ pub struct Probe {
 
 pub fn probe(path: &Path) -> Result<Probe, MediaError> {
     let ffprobe = find("ffprobe").ok_or(MediaError::NoFfmpeg)?;
-    let out = Command::new(ffprobe)
+    let out = command(ffprobe)
         .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate:format=duration"])
         .args(["-of", "json"])
         .arg(path)
@@ -153,7 +153,7 @@ pub struct Contents {
 /// A file's audio tracks, by name (their title, else "Track 1", "Track 2"…).
 pub fn audio_tracks(path: &Path) -> Vec<String> {
     let Some(ffprobe) = find("ffprobe") else { return Vec::new() };
-    let Ok(out) = Command::new(ffprobe).args(["-v", "error", "-select_streams", "a", "-show_entries", "stream=index:stream_tags=title,handler_name", "-of", "json"]).arg(path).output() else {
+    let Ok(out) = command(ffprobe).args(["-v", "error", "-select_streams", "a", "-show_entries", "stream=index:stream_tags=title,handler_name", "-of", "json"]).arg(path).output() else {
         return Vec::new();
     };
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
@@ -178,7 +178,7 @@ const DEFAULT_TRACK_NAMES: [&str; 8] = ["SoundHandler", "VideoHandler", "Core Me
 
 pub fn contents(path: &Path) -> Result<Contents, MediaError> {
     let ffprobe = find("ffprobe").ok_or(MediaError::NoFfmpeg)?;
-    let out = Command::new(ffprobe)
+    let out = command(ffprobe)
         .args(["-v", "error", "-show_entries", "stream=codec_type,width,height,nb_frames:format=duration,format_name", "-of", "json"])
         .arg(path)
         .output()?;
@@ -210,7 +210,7 @@ fn scale_filter(fps: f64, size: (u32, u32)) -> String {
 
 /// One frame at `t_ms`, as RGBA at `size` (scrubbing).
 pub fn frame_at(path: &Path, t_ms: u64, size: (u32, u32)) -> Result<Vec<u8>, MediaError> {
-    let out = Command::new(ffmpeg()?)
+    let out = command(ffmpeg()?)
         .args(["-v", "error", "-ss", &format!("{:.3}", t_ms as f64 / 1000.0), "-i"])
         .arg(path)
         .args(["-frames:v", "1", "-vf", &format!("scale={}:{}", size.0, size.1), "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
@@ -238,7 +238,7 @@ pub struct Decoder {
 
 impl Decoder {
     pub fn open(path: &Path, start_ms: u64, fps: f64, size: (u32, u32)) -> Result<Decoder, MediaError> {
-        let mut child = Command::new(ffmpeg()?)
+        let mut child = command(ffmpeg()?)
             .args(["-v", "error", "-hwaccel", "auto", "-ss", &format!("{:.3}", start_ms as f64 / 1000.0), "-i"])
             .arg(path)
             .args(["-an", "-vf", &scale_filter(fps, size), "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
@@ -308,14 +308,53 @@ fn encoders() -> &'static Vec<String> {
     static LIST: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
     LIST.get_or_init(|| {
         let Ok(ff) = ffmpeg() else { return Vec::new() };
-        let Ok(out) = Command::new(ff).args(["-hide_banner", "-encoders"]).output() else { return Vec::new() };
+        let Ok(out) = command(ff).args(["-hide_banner", "-encoders"]).output() else { return Vec::new() };
         String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.split_whitespace().nth(1).map(String::from)).collect()
     })
+}
+
+/// Whether a hardware encoder FFmpeg lists really encodes here, tried once with a tenth of a
+/// second of black: a listed encoder may still lack its driver (NVENC on an older NVIDIA
+/// driver, AMF without an AMD GPU), and would fail the whole export.
+fn encodes(encoder: &str) -> bool {
+    static TRIED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> = std::sync::OnceLock::new();
+    let tried = TRIED.get_or_init(Default::default);
+    if let Some(ok) = tried.lock().unwrap().get(encoder) {
+        return *ok;
+    }
+    let ok = ffmpeg().ok().is_some_and(|ff| {
+        command(ff)
+            .args(["-v", "error", "-f", "lavfi", "-i", "color=c=black:s=256x256:r=30:d=0.1", "-c:v", encoder, "-f", "null", "-"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    });
+    if !ok {
+        tracing::info!(encoder, "FFmpeg lists this encoder but it doesn't encode here");
+    }
+    tried.lock().unwrap().insert(encoder.to_string(), ok);
+    ok
+}
+
+/// A command for FFmpeg and its kin. Windows: without a console window of its own (from a
+/// window app, each run would flash one).
+pub(crate) fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
 }
 
 /// The FFmpeg encoder and its options for a codec, best first.
 fn video_args(codec: Codec, size: (u32, u32), fps: f64) -> Vec<String> {
     let has = |e: &str| encoders().iter().any(|x| x == e);
+    let hardware = |e: &str| has(e) && (e == "libx264" || encodes(e));
     let kbps = ((size.0 as f64 * size.1 as f64 * fps) / 30_000.0).clamp(4_000.0, 60_000.0) as u32;
     let v = |s: &[&str]| s.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     match codec {
@@ -323,7 +362,7 @@ fn video_args(codec: Codec, size: (u32, u32), fps: f64) -> Vec<String> {
         Codec::ProRes => v(&["-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le"]),
         Codec::Gif => v(&["-loop", "0"]),
         Codec::H264 => {
-            let enc = ["h264_videotoolbox", "h264_nvenc", "h264_amf", "h264_qsv"].into_iter().find(|e| has(e)).unwrap_or("libx264");
+            let enc = ["h264_videotoolbox", "h264_nvenc", "h264_amf", "h264_qsv"].into_iter().find(|e| hardware(e)).unwrap_or("libx264");
             let mut a = v(&["-c:v", enc, "-b:v", &format!("{kbps}k"), "-pix_fmt", "yuv420p"]);
             if enc == "libx264" {
                 a.extend(v(&["-preset", "medium"]));
@@ -397,7 +436,7 @@ impl Encoder {
         subtitles: Option<&Path>,
         mix: Option<&str>,
     ) -> Result<Encoder, MediaError> {
-        let mut cmd = Command::new(ffmpeg()?);
+        let mut cmd = command(ffmpeg()?);
         cmd.args(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{}x{}", size.0, size.1)])
             .args(["-r", &format!("{fps}"), "-i", "-"]);
         if codec == Codec::Gif {
@@ -457,7 +496,7 @@ pub fn make_proxy(file: &Path, out: &Path, duration_ms: u64, mut progress: impl 
     let part = out.with_extension("part.mp4");
     let mut args = video_args(Codec::H264, (1920, 1080), 30.0);
     args.extend(["-g", "15"].map(String::from));
-    let mut child = Command::new(ffmpeg()?)
+    let mut child = command(ffmpeg()?)
         .args(["-v", "error", "-y", "-hwaccel", "auto", "-i"])
         .arg(file)
         .args(["-an", "-vf", "scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2"])
@@ -509,7 +548,7 @@ pub fn filmstrip(path: &Path, duration_ms: u64, every_ms: u64, height: u32, aspe
 }
 
 fn thumbnails(path: &Path, every_ms: u64, size: (u32, u32), keyframes: bool) -> Result<Vec<Vec<u8>>, MediaError> {
-    let mut cmd = Command::new(ffmpeg()?);
+    let mut cmd = command(ffmpeg()?);
     cmd.args(["-v", "error"]);
     if keyframes {
         cmd.args(["-skip_frame", "nokey"]);

@@ -62,10 +62,41 @@ add_library(lightair-camera-fx MODULE
 )
 target_compile_definitions(lightair-camera-fx PRIVATE BEAUTY_HAVE_LIBOBS PLUGIN_VERSION="${PROJECT_VERSION}"
   _USE_MATH_DEFINES NOMINMAX)
+# (libobs's threading.h includes <pthread.h>: OBS's own w32-pthreads on Windows)
 target_include_directories(lightair-camera-fx PRIVATE "${OBS_SRC}/libobs" "${GEN}" "${SIMDE_DIR}" src src/tracker
-  "${DEPS}/ort/build/native/include")
-target_link_directories(lightair-camera-fx PRIVATE "${OBS_DIR}/lib" "${OBS_DIR}/bin/64bit")
-target_link_libraries(lightair-camera-fx PRIVATE obs dxgi)
+  "${OBS_SRC}/deps/w32-pthreads" "${DEPS}/ort/build/native/include")
+# Import libraries for libobs and OBS's pthreads: from OBS_DIR when it's a build of OBS
+# (lib/<name>.lib); an installed OBS ships only the DLLs, so each library is made from its DLL's
+# exports (MSVC's dumpbin and lib).
+get_filename_component(MSVC_BIN "${CMAKE_LINKER}" DIRECTORY)
+function(obs_implib name out)
+  foreach(candidate "${OBS_DIR}/lib/${name}.lib" "${OBS_DIR}/bin/64bit/${name}.lib")
+    if(EXISTS "${candidate}")
+      set(${out} "${candidate}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  set(dll "${OBS_DIR}/bin/64bit/${name}.dll")
+  if(NOT EXISTS "${dll}")
+    message(FATAL_ERROR "no ${name}.lib or ${name}.dll in OBS_DIR (${OBS_DIR})")
+  endif()
+  find_program(DUMPBIN dumpbin HINTS "${MSVC_BIN}" REQUIRED)
+  find_program(MSVC_LIB lib HINTS "${MSVC_BIN}" REQUIRED)
+  execute_process(COMMAND "${DUMPBIN}" /nologo /exports "${dll}" OUTPUT_VARIABLE exports COMMAND_ERROR_IS_FATAL ANY)
+  string(REGEX MATCHALL "\n +[0-9]+ +[0-9A-F]+ +[0-9A-F]+ +[A-Za-z_][A-Za-z0-9_]*" rows "${exports}")
+  set(def "LIBRARY ${name}\nEXPORTS\n")
+  foreach(row ${rows})
+    string(REGEX REPLACE ".* ([A-Za-z_][A-Za-z0-9_]*)$" "\\1" symbol "${row}")
+    string(APPEND def "  ${symbol}\n")
+  endforeach()
+  file(WRITE "${GEN}/${name}.def" "${def}")
+  execute_process(COMMAND "${MSVC_LIB}" /nologo "/def:${GEN}/${name}.def" /machine:x64 "/out:${GEN}/${name}.lib"
+    OUTPUT_QUIET COMMAND_ERROR_IS_FATAL ANY)
+  set(${out} "${GEN}/${name}.lib" PARENT_SCOPE)
+endfunction()
+obs_implib(obs OBS_IMPLIB)
+obs_implib(w32-pthreads PTHREADS_IMPLIB)
+target_link_libraries(lightair-camera-fx PRIVATE "${OBS_IMPLIB}" "${PTHREADS_IMPLIB}" dxgi)
 set_target_properties(lightair-camera-fx PROPERTIES PREFIX ""
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/obs-plugins/64bit"
   LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/obs-plugins/64bit"

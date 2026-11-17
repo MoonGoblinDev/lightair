@@ -297,8 +297,10 @@ impl Package {
     pub fn compact(&mut self, workspace: &Workspace) -> Result<(), StoreError> {
         save(&self.dir, workspace)?;
         let path = self.dir.join("journal/current.log");
-        self.journal.set_len(0).map_err(io(&path))?;
-        self.journal.sync_all().map_err(io(&path))?;
+        // Emptied through a handle that may write anywhere: Windows opens an append-only file
+        // without the right to truncate it. Appends still land at the (new) end.
+        let truncate = OpenOptions::new().write(true).truncate(true).open(&path).map_err(io(&path))?;
+        truncate.sync_all().map_err(io(&path))?;
         self.pending = 0;
         Ok(())
     }

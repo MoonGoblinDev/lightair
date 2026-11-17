@@ -41,18 +41,40 @@ impl Runtime {
     }
 
     /// Windows: OBS's layout, `bin/64bit/obs.dll` (and the graphics backends beside it),
-    /// `obs-plugins/64bit/<module>.dll`, `data/obs-plugins/<module>/`.
+    /// `core/<module>/<module>.dll` with `core/<module>/data/` (OBS 33's layout; plugins of
+    /// the older flat layout are loaded from `obs-plugins/64bit`, `module_patterns`).
+    ///
+    /// libobs loads its graphics backend, `libobs-winrt` and each module's dependencies from
+    /// the default DLL folders only (not `PATH`), so libobs's folder is added to them: needed
+    /// where libobs isn't beside the executable (development, tests).
     #[cfg(windows)]
     pub fn detect() -> Result<Self, String> {
+        use std::os::windows::ffi::OsStrExt;
         let lib = loaded_libobs_path().ok_or("could not locate the loaded libobs image")?;
         let frameworks = lib.parent().map(Path::to_path_buf).ok_or("libobs has no folder")?;
         let root = frameworks.parent().and_then(Path::parent).unwrap_or(&frameworks).to_path_buf();
-        let plugins = root.join("obs-plugins").join("64bit");
+        let plugins = root.join("core");
         let in_bundle = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(Path::to_path_buf))
             .is_some_and(|dir| dir == frameworks);
+        static ADDED: std::sync::Once = std::sync::Once::new();
+        ADDED.call_once(|| {
+            let wide: Vec<u16> = frameworks.as_os_str().encode_wide().chain([0]).collect();
+            // SAFETY: a NUL-terminated path; the cookie is kept for the process's life.
+            unsafe { windows_sys::Win32::System::LibraryLoader::AddDllDirectory(wide.as_ptr()) };
+        });
         Ok(Self { frameworks, plugins, in_bundle })
+    }
+
+    /// libobs's own data (its effects): Windows, `data\libobs` in OBS's layout; macOS finds it
+    /// in libobs.framework itself.
+    pub fn libobs_data(&self) -> Option<PathBuf> {
+        if !cfg!(windows) {
+            return None;
+        }
+        let root = self.frameworks.parent().and_then(Path::parent)?;
+        Some(root.join("data").join("libobs")).filter(|d| d.join("default.effect").exists())
     }
 
     /// The graphics backend's library: Metal or OpenGL on macOS, Direct3D 11 on Windows.
@@ -69,8 +91,17 @@ impl Runtime {
     /// of `%module%` are.
     pub fn module_patterns(&self, dir: &Path) -> (String, String) {
         if cfg!(windows) {
-            let root = dir.parent().and_then(Path::parent).unwrap_or(dir);
-            (format!("{}/%module%.dll", dir.display()), format!("{}/data/obs-plugins/%module%/", root.display()))
+            // forward slashes, which libobs splits the module's name off by
+            let slashes = |p: &Path| p.display().to_string().replace('\\', "/");
+            if dir.file_name().is_some_and(|n| n == "64bit") {
+                // the flat layout: `<dir>/<module>.dll`, data in `<root>/data/obs-plugins/`
+                // (the folder alone: libobs then looks for `*.dll` in it)
+                let root = dir.parent().and_then(Path::parent).unwrap_or(dir);
+                (slashes(dir), format!("{}/data/obs-plugins/%module%/", slashes(root)))
+            } else {
+                // a folder per module: `<dir>/<module>/<module>.dll`, `<dir>/<module>/data/`
+                (format!("{}/%module%/", slashes(dir)), format!("{}/%module%/data/", slashes(dir)))
+            }
         } else {
             (
                 format!("{}/%module%.plugin/Contents/MacOS/", dir.display()),

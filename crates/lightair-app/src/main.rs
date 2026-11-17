@@ -1,5 +1,8 @@
 //! Lightair application entry point.
 
+// Windows: a window app, no console (development builds keep theirs, for the log)
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod activity_panel;
 mod assets;
 mod automations_panel;
@@ -65,6 +68,12 @@ fn workspaces_dir() -> PathBuf {
 }
 
 fn main() {
+    // Chromium's own processes, when Chromium started this program for one (Windows, where
+    // lightair-web-helper.exe isn't beside it)
+    #[cfg(windows)]
+    if let Some(code) = lightair_web::helper_main() {
+        std::process::exit(code);
+    }
     // a helper process listing a VST3 bundle's effects (plugin_scan)
     if let Some(code) = plugin_scan::probe_main() {
         std::process::exit(code);
@@ -86,7 +95,8 @@ fn main() {
     // The canvas size comes from the workspace's primary canvas; read it before starting libobs.
     // the one asked for, the one open last, or the default
     let workspace_dir = std::env::var_os("LIGHTAIR_PROJECT")
-        .map(PathBuf::from)
+        // (absolute: on Windows the engine works from libobs's folder once it starts)
+        .map(|p| std::path::absolute(&p).unwrap_or_else(|_| PathBuf::from(p)))
         .or_else(|| prefs::load_from(&prefs::path()).last_workspace.filter(|d| lightair_store::is_workspace(d)))
         .unwrap_or_else(|| workspaces_dir().join("Default.lightair"));
     let canvas = lightair_store::load_snapshot(&workspace_dir)
@@ -95,6 +105,10 @@ fn main() {
 
     // This Mac's preferences: the sample rate is fixed once libobs starts.
     let prefs = prefs::load_from(&prefs::path());
+    // the remote API's password, read while libobs starts (the API answers with the window)
+    if prefs.remote.enabled && (prefs.remote.require_password || prefs.remote.lan) && std::env::var_os("LIGHTAIR_REMOTE_OFF").is_none() {
+        secrets::read_remote_password_early();
+    }
     prefs::LOUDNESS_TARGET.store(prefs.loudness_target, std::sync::atomic::Ordering::Relaxed);
     let sample_rate = if prefs.sample_rate == 44_100 { 44_100 } else { 48_000 };
     prefs::RUNNING_SAMPLE_RATE.store(sample_rate, std::sync::atomic::Ordering::Relaxed);

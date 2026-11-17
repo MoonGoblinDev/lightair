@@ -663,7 +663,7 @@ impl Library {
                         .rounded(px(4.))
                         .bg(rgba(0x0000_00b0))
                         .text_size(px(11.))
-                        .font_family("Menlo")
+                        .font_family(crate::ui::MONO)
                         .text_color(rgb(0xFFFFFF))
                         .child(duration_label(ms)),
                 )
@@ -1066,7 +1066,7 @@ impl Library {
                                 .child(
                                     div()
                                         .text_size(px(12.))
-                                        .font_family("Menlo")
+                                        .font_family(crate::ui::MONO)
                                         .text_color(tok::text_secondary())
                                         .child(format!(
                                             "{} / {}",

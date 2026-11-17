@@ -7,7 +7,7 @@
 //! anywhere). It lives in Lightair's data folder, `models/`.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use crate::media;
 
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +68,7 @@ pub fn transcribe(audio: &[PathBuf], model: &Path) -> Result<Transcript, SpeechE
     std::fs::create_dir_all(&dir).map_err(|e| SpeechError::Failed(e.to_string()))?;
     // whisper takes 16 kHz mono
     let wav = dir.join("speech.wav");
-    let mut mix = Command::new(ffmpeg);
+    let mut mix = media::command(ffmpeg);
     mix.args(["-v", "error", "-y"]);
     for a in audio {
         mix.arg("-i").arg(a);
@@ -81,7 +81,7 @@ pub fn transcribe(audio: &[PathBuf], model: &Path) -> Result<Transcript, SpeechE
         return Err(SpeechError::Failed("couldn't read the audio".into()));
     }
     let base = dir.join("speech");
-    let out = Command::new(whisper)
+    let out = media::command(whisper)
         .arg("-m")
         .arg(model)
         .arg("-f")

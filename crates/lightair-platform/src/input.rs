@@ -185,7 +185,8 @@ impl Recorder {
     }
 
     fn halt(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
+        // (before waking: a thread not yet waiting sees it, `imp::listen`)
+        self.running.store(false, Ordering::SeqCst);
         imp::wake();
         for t in self.threads.drain(..) {
             let _ = t.join();
@@ -648,7 +649,7 @@ mod imp {
 
     pub fn listen(
         started: Instant,
-        _running: Arc<AtomicBool>,
+        running: Arc<AtomicBool>,
         samples: Arc<Mutex<Vec<Sample>>>,
     ) -> Option<std::thread::JoinHandle<()>> {
         std::thread::Builder::new()
@@ -689,7 +690,9 @@ mod imp {
                 RegisterRawInputDevices(devices.as_ptr(), 2, std::mem::size_of::<RAWINPUTDEVICE>() as u32);
                 THREAD.store(GetCurrentThreadId(), Ordering::SeqCst);
                 let mut msg: MSG = std::mem::zeroed();
-                while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
+                // stopped before the thread could be woken (`wake` found no thread yet, and
+                // `running` is cleared before it looks): nothing will post WM_QUIT
+                while running.load(Ordering::SeqCst) && GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
                     DispatchMessageW(&msg);
                 }
                 THREAD.store(0, Ordering::SeqCst);

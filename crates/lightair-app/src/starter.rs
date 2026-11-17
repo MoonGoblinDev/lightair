@@ -70,12 +70,12 @@ pub fn plain_workspace() -> Workspace {
     let title = Source::new(
         "Title",
         "text_ft2_source_v2",
-        json!({"text": "Lightair", "font": {"face": "Helvetica Neue", "size": 144, "flags": 1}, "color1": 0xFFFFFFFFu32, "color2": 0xFFFFFFFFu32}),
+        json!({"text": "Lightair", "font": {"face": crate::ui::TEXT_FACE, "size": 144, "flags": 1}, "color1": 0xFFFFFFFFu32, "color2": 0xFFFFFFFFu32}),
     );
     let timer = Source::new(
         "Countdown",
         lightair_engine::timers::TIMER_KIND,
-        json!({"mode": "countdown", "seconds": 300, "font": {"face": "Helvetica Neue", "size": 96, "flags": 0}, "color1": 0xFFFFFFFFu32, "color2": 0xFFFFFFFFu32}),
+        json!({"mode": "countdown", "seconds": 300, "font": {"face": crate::ui::TEXT_FACE, "size": 96, "flags": 0}, "color1": 0xFFFFFFFFu32, "color2": 0xFFFFFFFFu32}),
     );
     let icon = brand_icon();
     let logo = Source::new("Logo", "image_source", json!({"file": icon.to_string_lossy()}));

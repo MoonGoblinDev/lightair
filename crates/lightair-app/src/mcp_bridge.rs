@@ -59,10 +59,29 @@ fn error_for(line: &str, message: &str) -> Option<String> {
 /// Opens the app this binary belongs to and waits for its remote API.
 fn open_app(port: u16) -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
-    // …/Lightair.app/Contents/MacOS/lightair
-    let Some(bundle) = exe.ancestors().nth(3).filter(|b| b.extension().is_some_and(|e| e == "app")) else { return false };
-    if std::process::Command::new("open").arg("-g").arg(bundle).status().is_err() {
-        return false;
+    if cfg!(windows) {
+        // the app itself, on its own (not this bridge's child: it outlives the agent's session)
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const DETACHED_PROCESS: u32 = 0x0000_0008;
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+            let started = std::process::Command::new(&exe)
+                .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            if started.is_err() {
+                return false;
+            }
+        }
+    } else {
+        // …/Lightair.app/Contents/MacOS/lightair
+        let Some(bundle) = exe.ancestors().nth(3).filter(|b| b.extension().is_some_and(|e| e == "app")) else { return false };
+        if std::process::Command::new("open").arg("-g").arg(bundle).status().is_err() {
+            return false;
+        }
     }
     let until = Instant::now() + Duration::from_secs(40);
     while Instant::now() < until {

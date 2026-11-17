@@ -976,6 +976,44 @@ static void draw_band(const struct face_layout *L, const float *xy, int n, float
  * face away from the camera are dropped. No per-frame placement maths that noise could shake. */
 /* A mesh-space map: four independent masks (straight alpha), mipmapped so it stays smooth when the
  * face is small on screen. */
+/* Its mip levels made here (each a 2x2 box average of the one above), handed over with the
+ * picture: libobs's GS_BUILD_MIPMAPS has the GPU make them on OpenGL and Metal, but on Direct3D 11
+ * it asks for the whole chain while giving only the first level, which D3D11 refuses. 4 bytes a
+ * pixel (the maps are RGBA). */
+static gs_texture_t *create_mipmapped(uint32_t cx, uint32_t cy, enum gs_color_format format, const uint8_t *pixels)
+{
+	uint32_t levels = 1;
+	for (uint32_t w = cx, h = cy; w > 1 || h > 1; w = w > 1 ? w / 2 : 1, h = h > 1 ? h / 2 : 1)
+		levels++;
+	const uint8_t **data = bzalloc(sizeof(uint8_t *) * levels);
+	data[0] = pixels;
+	uint32_t w = cx, h = cy;
+	for (uint32_t l = 1; l < levels; l++) {
+		uint32_t nw = w > 1 ? w / 2 : 1, nh = h > 1 ? h / 2 : 1;
+		uint8_t *out = bmalloc((size_t)nw * nh * 4);
+		const uint8_t *in = data[l - 1];
+		for (uint32_t y = 0; y < nh; y++) {
+			for (uint32_t x = 0; x < nw; x++) {
+				uint32_t x0 = x * 2, y0 = y * 2;
+				uint32_t x1 = x0 + 1 < w ? x0 + 1 : x0, y1 = y0 + 1 < h ? y0 + 1 : y0;
+				for (int c = 0; c < 4; c++) {
+					uint32_t sum = in[((size_t)y0 * w + x0) * 4 + c] + in[((size_t)y0 * w + x1) * 4 + c] +
+						       in[((size_t)y1 * w + x0) * 4 + c] + in[((size_t)y1 * w + x1) * 4 + c];
+					out[((size_t)y * nw + x) * 4 + c] = (uint8_t)((sum + 2) / 4);
+				}
+			}
+		}
+		data[l] = out;
+		w = nw;
+		h = nh;
+	}
+	gs_texture_t *tex = gs_texture_create(cx, cy, format, levels, data, 0);
+	for (uint32_t l = 1; l < levels; l++)
+		bfree((void *)data[l]);
+	bfree((void *)data);
+	return tex;
+}
+
 static gs_texture_t *load_map(const char *name)
 {
 	gs_texture_t *tex = NULL;
@@ -983,9 +1021,11 @@ static gs_texture_t *load_map(const char *name)
 	if (path) {
 		gs_image_file_ex_t img;
 		gs_image_file_ex_init(&img, path, GS_IMAGE_ALPHA_STRAIGHT);
-		if (img.loaded && img.texture_data) {
+		if (img.loaded && img.texture_data && gs_get_format_bpp(img.format) == 32) {
+			tex = create_mipmapped(img.cx, img.cy, img.format, img.texture_data);
+		} else if (img.loaded && img.texture_data) {
 			const uint8_t *data = img.texture_data;
-			tex = gs_texture_create(img.cx, img.cy, img.format, 1, &data, GS_BUILD_MIPMAPS);
+			tex = gs_texture_create(img.cx, img.cy, img.format, 1, &data, 0);
 		}
 		gs_image_file_ex_free(&img);
 		bfree(path);

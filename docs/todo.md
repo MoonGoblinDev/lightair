@@ -98,6 +98,32 @@ with what's known about each. Keep it current: strike items as they land.
 - Pulsoid and Elgato Key Lights are untested without a token / a light; VTube Studio was tested
   against a stand-in server only.
 
+## Windows
+
+Built, tested (317 tests) and benchmarked on Windows 11 on 17 November 2026
+([plans/windows.md](plans/windows.md) §6 says what that took; numbers in
+[benchmarks/lightair-vs-obs-windows.md](benchmarks/lightair-vs-obs-windows.md)). Left:
+
+- **An installer and signing**: `cargo xtask dist` makes the portable app and its zip; an MSIX or
+  Inno Setup installer, Authenticode signing (a certificate), the updater.
+- ~~The virtual camera~~ (Lightair's own on Windows 11, OBS's elsewhere), ~~"Now playing"~~,
+  ~~"Use my browser's" sign-in~~ and ~~the Editor player without read back~~: done
+  (plans/windows.md §6). Left there: Google's app-bound cookies (sign in in Lightair's window
+  instead); Lightair Virtual Camera in Teams/Zoom/a browser (seen through Windows' Frame Server with ffmpeg;
+  needs `regsvr32 lightair_camera.dll` as administrator once, or the menu's "Install Lightair
+  Virtual Camera…"); the camera at sizes
+  other than 1080p (a canvas of another shape is stretched to 16:9); an installer that registers
+  it.
+- Windows Studio Effects from Lightair itself (the camera's extended controls): needs a Copilot+
+  PC to try on; Settings › Camera works meanwhile.
+- The zoom badge by the pointer; the system pointer's picture; pointer and follow-zoom on a second
+  monitor (`display_frame`); virtual cameras labelled as such in Add object.
+- Under the full parallel run, now and then: `media_on_air` (an off-air video still Playing),
+  `stream_sharing::identical_destinations_share_an_encoder`, `sequence::proxies_and_filmstrips`
+  (ffmpeg's hardware H.264 encoder shared by tests at once); each passes alone.
+- NVENC needs a newer NVIDIA driver than 560 for OBS 33's encoder (OBS says so too); Lightair
+  falls back to Quick Sync or x264 as OBS does. Worth a note in the Encoders choice.
+
 ## Known issues
 
 - ~~**`cargo xtask dist` sometimes leaves an invalid signature**~~ (found: the bad app was what

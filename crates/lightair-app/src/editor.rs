@@ -238,6 +238,8 @@ const FADE_KNOB: f32 = 16.0;
 
 pub struct Editor {
     studio: Entity<Studio>,
+    /// The window's layer under the UI (Windows: the player's frames are presented there).
+    pub native: crate::native_preview::Shared,
     workspace: Option<PathBuf>,
     project: Option<Project>,
     /// The workspace's Library, as the media panel lists it (read when it changes).
@@ -368,12 +370,15 @@ fn catch_up(r: &mut SequenceRenderer, pending: &Mutex<Pending>) {
 /// Preview sizes, smallest first: the player gets the first that covers it.
 const PREVIEW_BOXES: [(u32, u32); 5] = [(640, 360), (960, 540), (1280, 720), (1920, 1080), (2560, 1440)];
 
-/// A frame the player shows: an image, or (macOS) the IOSurface the renderer drew into.
+/// A frame the player shows: an image, or (macOS) the IOSurface the renderer drew into, or
+/// (Windows) a frame of this size presented under the UI (the window's player visual).
 #[derive(Clone)]
 enum Picture {
     Image(Arc<RenderImage>),
     #[cfg(target_os = "macos")]
     Surface(lightair_render::surface::Frame),
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Presented((u32, u32)),
 }
 
 impl Picture {
@@ -382,6 +387,8 @@ impl Picture {
             lightair_render::seqrender::Shown::Pixels(p) => image_of(p, size).map(Picture::Image),
             #[cfg(target_os = "macos")]
             lightair_render::seqrender::Shown::Surface(f) => Some(Picture::Surface(f)),
+            #[cfg(windows)]
+            lightair_render::seqrender::Shown::Presented => Some(Picture::Presented(size)),
         }
     }
 
@@ -390,6 +397,8 @@ impl Picture {
             Picture::Image(i) => img(ImageSource::Render(i)).absolute().size_full().object_fit(ObjectFit::Contain).into_any_element(),
             #[cfg(target_os = "macos")]
             Picture::Surface(f) => surface(f.0).absolute().size_full().object_fit(ObjectFit::Contain).into_any_element(),
+            // drawn under the UI: the player is left clear over it
+            Picture::Presented(_) => div().into_any_element(),
         }
     }
 }
@@ -504,6 +513,7 @@ impl Editor {
         lightair_render::sound::set_cache(lightair_platform::paths::data_dir().join("cache").join("sound"));
         Editor {
             studio,
+            native: Default::default(),
             workspace: None,
             project: None,
             library: Vec::new(),
@@ -748,6 +758,8 @@ impl Editor {
         self.pending.lock().unwrap().seq = None;
         let (r, tx, pending) = (self.renderer.clone(), self.tx.clone(), self.pending.clone());
         self.busy = true;
+        #[cfg(windows)]
+        let visual = self.native.borrow_mut().as_mut().map_or(0usize, |n| n.player_visual() as usize);
         std::thread::spawn(move || {
             let mut guard = r.lock().unwrap();
             let preview = pending.lock().unwrap().preview;
@@ -755,6 +767,11 @@ impl Editor {
             let frame = guard.as_mut().map(|r| {
                 // macOS: the player shows what the GPU drew, with no read back
                 r.set_zero_copy(true);
+                // Windows: presented into the player's visual under the UI
+                #[cfg(windows)]
+                if visual != 0 {
+                    r.set_visual(Some(visual as *mut std::ffi::c_void));
+                }
                 catch_up(r, &pending);
                 let shown = r.shown(0);
                 (Picture::of(shown, r.out_size()), r.placed().to_vec())
@@ -1163,11 +1180,50 @@ impl Editor {
         // frames are made ahead on one thread and shown in time on another
         let (made, ready) = std::sync::mpsc::sync_channel::<(u64, Option<Picture>)>(4);
         let render_flag = flag.clone();
+        let paced_clock = clock.clone();
+        let paced_tx = tx.clone();
         std::thread::spawn(move || {
             let mut guard = r.lock().unwrap();
             let Some(r) = guard.as_mut() else { return };
             catch_up(r, &pending);
             let size = r.out_size();
+            // Windows: frames presented as they're made go to the screen then, so each is made
+            // when it's due (made ahead, they'd show early, ahead of the sound)
+            if r.presents() {
+                drop(made);
+                let stopped = || render_flag.load(std::sync::atomic::Ordering::Relaxed);
+                if let Some(c) = &paced_clock {
+                    c.start();
+                }
+                let start = std::time::Instant::now();
+                let now = || match paced_clock.as_ref().and_then(|c| c.heard_ms()) {
+                    Some(ms) => ms,
+                    None if paced_clock.is_some() && start.elapsed() < std::time::Duration::from_secs(1) => 0,
+                    None => start.elapsed().as_millis() as u64,
+                };
+                r.play_paced(
+                    from,
+                    |t| {
+                        let due = t.saturating_sub(from);
+                        loop {
+                            let n = now();
+                            if stopped() {
+                                return None;
+                            }
+                            if n >= due {
+                                // more than two frames late: skipped
+                                return Some(n <= due + 2 * step);
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis((due - n).min(10)));
+                        }
+                    },
+                    |t, shown| !stopped() && paced_tx.send(Done::Frame(t, Picture::of(shown, size), Vec::new())).is_ok(),
+                );
+                if !stopped() {
+                    let _ = paced_tx.send(Done::Ended);
+                }
+                return;
+            }
             r.play_shown(from, |t, shown| made.send((t, Picture::of(shown, size))).is_ok() && !render_flag.load(std::sync::atomic::Ordering::Relaxed));
         });
         std::thread::spawn(move || {
@@ -1848,6 +1904,11 @@ impl Editor {
     }
 
     fn player(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let presented_size = match &self.preview {
+            Some(Picture::Presented(size)) => Some(*size),
+            _ => None,
+        };
+        let presented = presented_size.is_some();
         let duration = self.seq().map_or(0, |s| s.duration_ms());
         let size = self.seq().map_or((1920, 1080), |s| s.size);
         div()
@@ -1863,13 +1924,18 @@ impl Editor {
                     .m_2()
                     .rounded(px(6.))
                     .overflow_hidden()
-                    .bg(rgb(0x000000))
+                    // Windows: the frames are under the UI (with their own black behind them)
+                    .when(!presented, |d| d.bg(rgb(0x000000)))
                     .child({
                         let (cell, bounds) = (self.player_px.clone(), self.player_bounds.clone());
+                        let native = self.native.clone();
                         canvas(
                             move |b, window, _| {
                                 cell.set((f32::from(b.size.width) * window.scale_factor(), f32::from(b.size.height) * window.scale_factor()));
                                 *bounds.borrow_mut() = Some(b);
+                                if let Some(n) = native.borrow_mut().as_mut() {
+                                    n.place_player(presented_size.map(|frame| (b, frame)));
+                                }
                             },
                             |_, _, _, _| {},
                         )
@@ -1914,7 +1980,7 @@ impl Editor {
                         div()
                             .flex_1()
                             .text_size(px(12.))
-                            .font_family("Menlo")
+                            .font_family(crate::ui::MONO)
                             .child(div().flex().gap_1().child(div().text_color(tok::accent_primary()).child(clock(self.playhead))).child(div().text_color(tok::text_tertiary()).child(format!("/ {}", clock(duration))))),
                     )
                     .child(ui::icon_button("ed-play", if self.playing.is_some() { "pause" } else { "play" }, tok::text()).on_click(cx.listener(|this, _, _, cx| this.play(cx))))

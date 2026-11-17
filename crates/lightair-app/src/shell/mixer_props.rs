@@ -137,7 +137,7 @@ impl StudioWindow {
                             .flex_none()
                             .text_right()
                             .text_size(px(11.))
-                            .font_family("Menlo")
+                            .font_family(crate::ui::MONO)
                             .text_color(tok::text_secondary())
                             .child(format!("{:+.1}", s.level_db)),
                     )
@@ -205,10 +205,10 @@ impl StudioWindow {
         self.section("Mix", None, cx)
             .child(labelled("Output", route))
             .child(labelled("Pan", div().flex().items_center().gap_2().child(div().flex_1().child(pan)).child(
-                div().w(px(36.)).text_right().text_size(px(11.)).font_family("Menlo").child(pan_label),
+                div().w(px(36.)).text_right().text_size(px(11.)).font_family(crate::ui::MONO).child(pan_label),
             )))
             .child(labelled("Trim", div().flex().items_center().gap_2().child(div().flex_1().child(trim)).child(
-                div().w(px(36.)).text_right().text_size(px(11.)).font_family("Menlo").child(format!("{:+.1}", track.trim_db)),
+                div().w(px(36.)).text_right().text_size(px(11.)).font_family(crate::ui::MONO).child(format!("{:+.1}", track.trim_db)),
             )))
             .child(
                 div()

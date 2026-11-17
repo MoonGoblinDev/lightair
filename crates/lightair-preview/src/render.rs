@@ -48,9 +48,18 @@ pub(crate) unsafe fn draw_scaled(src: *mut sys::gs_texture_t, sw: u32, sh: u32, 
         sys::gs_set_viewport(0, 0, dw as i32, dh as i32);
         sys::gs_ortho(0.0, sw as f32, 0.0, sh as f32, -100.0, 100.0);
 
-        let effect = sys::obs_get_base_effect(sys::OBS_EFFECT_DEFAULT);
+        // much smaller than the source: libobs's area filter (each pixel the average of the ones
+        // it covers; bilinear would skip most of them and shimmer), as OBS scales its output
+        let area = dw * 3 / 2 < sw && dh * 3 / 2 < sh;
+        let effect = sys::obs_get_base_effect(if area { sys::OBS_EFFECT_AREA } else { sys::OBS_EFFECT_DEFAULT });
         let image = IMAGE.with(|n| sys::gs_effect_get_param_by_name(effect, n.as_ptr()));
         sys::gs_effect_set_texture(image, src);
+        if area {
+            let size = sys::vec2 { __bindgen_anon_1: sys::vec2__bindgen_ty_1 { __bindgen_anon_1: sys::vec2__bindgen_ty_1__bindgen_ty_1 { x: sw as f32, y: sh as f32 } } };
+            let inverse = sys::vec2 { __bindgen_anon_1: sys::vec2__bindgen_ty_1 { __bindgen_anon_1: sys::vec2__bindgen_ty_1__bindgen_ty_1 { x: 1.0 / sw as f32, y: 1.0 / sh as f32 } } };
+            sys::gs_effect_set_vec2(sys::gs_effect_get_param_by_name(effect, c"base_dimension".as_ptr()), &size);
+            sys::gs_effect_set_vec2(sys::gs_effect_get_param_by_name(effect, c"base_dimension_i".as_ptr()), &inverse);
+        }
         DRAW.with(|t| {
             while sys::gs_effect_loop(effect, t.as_ptr()) {
                 sys::gs_draw_sprite(src, 0, sw, sh);

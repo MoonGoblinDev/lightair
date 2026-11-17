@@ -149,7 +149,7 @@ impl StudioWindow {
             .items_center()
             .gap_2()
             .child(picker)
-            .child(div().flex_1().text_size(px(11.)).font_family("Menlo").text_color(tok::text_secondary()).child(hex))
+            .child(div().flex_1().text_size(px(11.)).font_family(crate::ui::MONO).text_color(tok::text_secondary()).child(hex))
             .when(crate::eyedropper::AVAILABLE, |row| {
                 row.child(
                     ui::icon_button(SharedString::from(format!("drop-{key}")), "pipette", tok::text_secondary())

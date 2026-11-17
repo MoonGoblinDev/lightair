@@ -237,10 +237,22 @@ unsafe fn bootstrap(cfg: &EngineConfig) -> Result<(Runtime, Capabilities, String
         in_bundle = runtime.in_bundle, "libobs runtime");
 
     let _ = std::fs::create_dir_all(&cfg.module_config_dir);
+    // Windows: OBS's modules find their own files from the working folder, OBS's `bin\64bit`
+    // (game capture's hooks in `..\..\core\win-capture\data`), as OBS sets it when it starts
+    #[cfg(windows)]
+    if let Err(e) = std::env::set_current_dir(&runtime.frameworks) {
+        tracing::warn!(%e, "couldn't work from libobs's folder: game capture may not hook");
+    }
     let locale = c(&cfg.locale);
     let config_dir = c(&cfg.module_config_dir.to_string_lossy());
     if !unsafe { sys::obs_startup(locale.as_ptr(), config_dir.as_ptr(), std::ptr::null_mut()) } {
         return Err(EngineError::Startup);
+    }
+    // Windows: libobs looks for its effects in `../../data/libobs/` from the working folder,
+    // which is OBS's own `bin\64bit` only when OBS runs; Lightair says where they are.
+    if let Some(data) = runtime.libobs_data() {
+        let data = c(&format!("{}/", data.display()));
+        unsafe { sys::obs_add_data_path(data.as_ptr()) };
     }
     let version = unsafe { CStr::from_ptr(sys::obs_get_version_string()) }.to_string_lossy().into_owned();
 
@@ -256,6 +268,11 @@ unsafe fn bootstrap(cfg: &EngineConfig) -> Result<(Runtime, Capabilities, String
     crate::loudness::attach(cfg.sample_rate, 2);
 
     let module = c(&runtime.graphics_module(cfg.graphics).to_string_lossy());
+    let (adapter, luid) = crate::gpu::preferred_adapter();
+    // Chromium renders on the same GPU, so the textures it shares open on libobs's device
+    if let Some((high, low)) = luid {
+        lightair_web::set_gpu_adapter(high, low);
+    }
     let mut video = sys::obs_video_info {
         graphics_module: module.as_ptr(),
         fps_num: cfg.fps.0,
@@ -265,7 +282,7 @@ unsafe fn bootstrap(cfg: &EngineConfig) -> Result<(Runtime, Capabilities, String
         output_width: cfg.output.0,
         output_height: cfg.output.1,
         output_format: sys::VIDEO_FORMAT_NV12,
-        adapter: 0,
+        adapter,
         gpu_conversion: true,
         colorspace: sys::VIDEO_CS_709,
         range: sys::VIDEO_RANGE_PARTIAL,
@@ -326,6 +343,7 @@ unsafe fn load_modules(cfg: &EngineConfig, runtime: &Runtime) {
     crate::pointer::register();
     crate::backdrop::register();
     crate::web::register();
+    crate::vcam::register();
     #[cfg(target_os = "macos")]
     crate::media_source::register();
     #[cfg(target_os = "macos")]

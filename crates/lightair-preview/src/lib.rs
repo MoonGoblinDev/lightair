@@ -14,6 +14,10 @@ mod render;
 mod mac;
 #[cfg(not(target_os = "macos"))]
 mod readback;
+#[cfg(windows)]
+mod layer;
+#[cfg(windows)]
+pub use layer::Layer;
 
 #[cfg(target_os = "macos")]
 pub use mac::{Frame, Preview, frame_is_nv12, frame_rgba, frame_size, nv12, sample_ycbcr};

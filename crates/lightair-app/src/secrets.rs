@@ -40,6 +40,21 @@ pub fn remote_password() -> Option<String> {
     Some(p)
 }
 
+/// The remote API's password, read on a thread of its own as the app starts (while libobs
+/// starts), so the API answers as soon as the window is up rather than a credential read later.
+static EARLY: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+pub fn read_remote_password_early() {
+    let _ = std::thread::Builder::new().name("lightair-secrets".into()).spawn(|| {
+        let _ = EARLY.set(remote_password());
+    });
+}
+
+/// What the early read found, once it has (`None`: not yet).
+pub fn early_remote_password() -> Option<Option<String>> {
+    EARLY.get().cloned()
+}
+
 /// A new remote API password (clients with the old one must reconnect with this).
 pub fn new_remote_password() -> Option<String> {
     let p = lightair_remote::new_password();

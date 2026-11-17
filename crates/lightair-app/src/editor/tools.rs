@@ -545,7 +545,7 @@ impl Editor {
             .child(button("ed-t-undo", "undo-2", "Undo").on_click(cx.listener(|this, _, _, cx| this.undo(true, cx))))
             .child(button("ed-t-redo", "redo-2", "Redo").on_click(cx.listener(|this, _, _, cx| this.undo(false, cx))))
             .child(sep())
-            .child(button("ed-split", "scissors", "Split at the playhead (⌘B)").on_click(cx.listener(|this, _, _, cx| this.split(cx))))
+            .child(button("ed-split", "scissors", crate::ui::keys_static("Split at the playhead (⌘B)")).on_click(cx.listener(|this, _, _, cx| this.split(cx))))
             .child(button("ed-t-dl", "arrow-left-to-line", "Delete left of the playhead (Q)").on_click(cx.listener(|this, _, _, cx| this.delete_side(true, cx))))
             .child(button("ed-t-dr", "arrow-right-to-line", "Delete right of the playhead (W)").on_click(cx.listener(|this, _, _, cx| this.delete_side(false, cx))))
             .child(button("ed-del", "trash", "Delete (⌫)").on_click(cx.listener(|this, _, _, cx| this.delete_selected(cx))))
@@ -593,16 +593,16 @@ impl Editor {
                 cx.notify();
             })))
             .child(sep())
-            .child(button("ed-zout", "zoom-out", "Zoom out (⌘−)").on_click(cx.listener(|this, _, _, cx| {
+            .child(button("ed-zout", "zoom-out", crate::ui::keys_static("Zoom out (⌘−)")).on_click(cx.listener(|this, _, _, cx| {
                 this.zoom = (this.zoom / 1.5).max(0.05);
                 cx.notify();
             })))
             .child(slider)
-            .child(button("ed-zin", "zoom-in", "Zoom in (⌘=)").on_click(cx.listener(|this, _, _, cx| {
+            .child(button("ed-zin", "zoom-in", crate::ui::keys_static("Zoom in (⌘=)")).on_click(cx.listener(|this, _, _, cx| {
                 this.zoom = (this.zoom * 1.5).min(40.0);
                 cx.notify();
             })))
-            .child(button("ed-zfit", "maximize-2", "Fit the timeline (⇧0)").on_click(cx.listener(|this, _, _, cx| this.zoom_to_fit(cx))))
+            .child(button("ed-zfit", "maximize-2", crate::ui::keys_static("Fit the timeline (⇧0)")).on_click(cx.listener(|this, _, _, cx| this.zoom_to_fit(cx))))
     }
 
     fn zoom_at(&mut self, x: Pixels, cx: &mut Context<Self>) {

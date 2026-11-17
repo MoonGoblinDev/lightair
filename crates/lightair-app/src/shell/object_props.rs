@@ -316,6 +316,8 @@ impl StudioWindow {
     }
 
     fn text_section(&self, source: &Source, cx: &mut Context<Self>) -> impl IntoElement {
+        // the system's own faces (what every Mac, or every Windows PC, has)
+        #[cfg(not(windows))]
         const FONTS: &[&str] = &[
             "Helvetica Neue",
             "Avenir Next",
@@ -327,14 +329,26 @@ impl StudioWindow {
             "Impact",
             "Marker Felt",
         ];
+        #[cfg(windows)]
+        const FONTS: &[&str] = &[
+            "Segoe UI",
+            "Arial",
+            "Bahnschrift",
+            "Calibri",
+            "Georgia",
+            "Trebuchet MS",
+            "Consolas",
+            "Impact",
+            "Segoe Print",
+        ];
         let (id, settings) = (source.id, source.settings.clone());
         let font = if settings["font"].is_object() {
             settings["font"].clone()
         } else {
-            json!({"face": "Helvetica Neue", "size": 128, "flags": 0})
+            json!({"face": crate::ui::TEXT_FACE, "size": 128, "flags": 0})
         };
         let size = font["size"].as_i64().unwrap_or(128);
-        let face = font["face"].as_str().unwrap_or("Helvetica Neue").to_string();
+        let face = font["face"].as_str().unwrap_or(crate::ui::TEXT_FACE).to_string();
         let flags = font["flags"].as_i64().unwrap_or(0);
         let set_font = {
             let (settings, font) = (settings.clone(), font.clone());
@@ -888,7 +902,7 @@ impl StudioWindow {
                     .flex()
                     .justify_between()
                     .text_size(px(11.))
-                    .font_family("Menlo")
+                    .font_family(crate::ui::MONO)
                     .text_color(tok::text_tertiary())
                     .child(clock(time))
                     .child(state_label)

@@ -83,6 +83,9 @@ pub struct SequenceRenderer {
     placed: Vec<Placed>,
     /// Previews drawn into IOSurfaces for the window (macOS), not read back.
     zero_copy: bool,
+    /// Windows: the composition visual previews are presented into (`IDCompositionVisual*`).
+    #[cfg(windows)]
+    visual: usize,
 }
 
 /// A frame for the player: its pixels (BGRA in a preview), or (macOS) an IOSurface picture.
@@ -90,6 +93,9 @@ pub enum Shown {
     Pixels(Vec<u8>),
     #[cfg(target_os = "macos")]
     Surface(crate::surface::Frame),
+    /// Windows: presented into the window's player visual (nothing for the UI to draw).
+    #[cfg(windows)]
+    Presented,
 }
 
 /// The size frames are made at: the sequence's, or fitted inside `preview` (never larger).
@@ -129,6 +135,8 @@ impl SequenceRenderer {
             proxies: HashMap::new(),
             placed: Vec::new(),
             zero_copy: false,
+            #[cfg(windows)]
+            visual: 0,
         })
     }
 
@@ -157,10 +165,28 @@ impl SequenceRenderer {
         self.attach();
     }
 
+    /// Windows: previews presented into `visual` (an `IDCompositionVisual*` the caller keeps
+    /// alive), with zero copy on; `None`: read back.
+    #[cfg(windows)]
+    pub fn set_visual(&mut self, visual: Option<*mut std::ffi::c_void>) {
+        self.visual = visual.map_or(0, |v| v as usize);
+        // (a new compositor: the old one's surface goes with it)
+        if let Ok(c) = crate::compose::Compositor::new_with(self.out, Look::default(), self.preview.is_some()) {
+            self.compositor = c;
+            self.takes.clear();
+            self.streams.clear();
+        }
+        self.attach();
+    }
+
     fn attach(&mut self) {
         #[cfg(target_os = "macos")]
         if self.zero_copy && self.preview.is_some() {
             self.compositor.attach_surface();
+        }
+        #[cfg(windows)]
+        if self.zero_copy && self.preview.is_some() && self.visual != 0 {
+            self.compositor.attach_visual(self.visual as *mut std::ffi::c_void);
         }
     }
 
@@ -172,6 +198,10 @@ impl SequenceRenderer {
             && let Some(f) = self.compositor.surface_frame()
         {
             return Shown::Surface(f);
+        }
+        #[cfg(windows)]
+        if pixels.is_empty() && self.compositor.presents() {
+            return Shown::Presented;
         }
         Shown::Pixels(pixels)
     }
@@ -192,6 +222,39 @@ impl SequenceRenderer {
             }
             i += 1;
         }
+    }
+
+    /// Frames for the player from `from` to the end, each made only once `due(t)` says so:
+    /// `Some(true)` make it now, `Some(false)` skip it (late), `None` stop. For frames presented
+    /// as they're made (Windows's player visual): made ahead, they'd show early.
+    pub fn play_paced(&mut self, from: u64, mut due: impl FnMut(u64) -> Option<bool>, mut each: impl FnMut(u64, Shown) -> bool) {
+        let end = self.seq.duration_ms();
+        let step = 1000.0 / self.fps;
+        let mut i = (from as f64 / step).ceil() as u64;
+        loop {
+            let t = (i as f64 * step) as u64;
+            if t >= end {
+                break;
+            }
+            i += 1;
+            match due(t) {
+                None => break,
+                Some(false) => continue,
+                Some(true) => {}
+            }
+            let f = self.shown(t);
+            if !each(t, f) {
+                break;
+            }
+        }
+    }
+
+    /// Windows: whether previews are presented into the player's visual.
+    pub fn presents(&self) -> bool {
+        #[cfg(windows)]
+        return self.compositor.presents();
+        #[cfg(not(windows))]
+        return false;
     }
 
     /// The size frames come at.

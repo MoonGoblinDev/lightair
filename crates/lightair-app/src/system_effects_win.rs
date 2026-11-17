@@ -1,6 +1,10 @@
 //! The OS's own camera effects on Windows: Windows Studio Effects, where the camera and PC have
-//! them (docs/plans/windows.md, phase 3). Until then nothing reports them on, and the button
-//! opens the camera settings, where they live.
+//! them (docs/plans/windows.md, phase 3). They need a Copilot+ PC's NPU (or a camera whose
+//! driver brings them); where present, Windows applies them inside the camera driver, so the
+//! picture OBS captures already has them, and they're switched in Settings › Camera, which the
+//! button opens. Lightair doesn't read or switch them itself: that's the camera's extended
+//! controls (KSPROPERTY_CAMERACONTROL_EXTENDED_BACKGROUNDSEGMENTATION), which can only be
+//! tried on hardware that has them.
 
 /// Opens Settings › Camera.
 pub fn open_video_effects() {
@@ -23,7 +27,6 @@ pub fn set_background_picture(_: &std::path::Path) -> bool {
 
 pub const GREEN: [u8; 3] = [0, 255, 0];
 pub const BLUE: [u8; 3] = [0, 0, 255];
-
 
 pub fn set_backgrounds_on(_: bool) -> bool {
     false

@@ -254,7 +254,18 @@ pub struct Compositor {
     /// Its frames are BGRA (an IOSurface can be drawn into).
     #[cfg(target_os = "macos")]
     bgra: bool,
+    /// Windows: frames presented into a DirectComposition visual's swap chain (the window's
+    /// player, under its UI), not read back.
+    #[cfg(windows)]
+    visual: Option<wgpu::Surface<'static>>,
+    #[cfg(windows)]
+    bgra_out: bool,
 }
+
+/// Windows: set when a visual's swap chain was (re)made: DirectComposition shows it once the
+/// window's composition is committed (the app does, and clears this).
+#[cfg(windows)]
+pub static VISUAL_CHANGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn rgb(c: u32) -> [f32; 4] {
     [((c >> 16) & 0xFF) as f32 / 255.0, ((c >> 8) & 0xFF) as f32 / 255.0, (c & 0xFF) as f32 / 255.0, 1.0]
@@ -267,15 +278,33 @@ pub fn fit(aspect: f32, x: f32, y: f32, w: f32, h: f32) -> (f32, f32, f32, f32) 
 }
 
 /// The graphics device, made once (making one takes a while) and shared by every compositor.
+fn instance() -> &'static wgpu::Instance {
+    static INSTANCE: std::sync::OnceLock<wgpu::Instance> = std::sync::OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        #[allow(unused_mut)]
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        // Windows: Direct3D 12, which can present into a DirectComposition visual (the player)
+        #[cfg(windows)]
+        if std::env::var_os("LIGHTAIR_EDITOR_VULKAN").is_none() {
+            desc.backends = wgpu::Backends::DX12;
+        }
+        wgpu::Instance::new(desc)
+    })
+}
+
+/// The adapter the shared device was made on.
+static ADAPTER: std::sync::OnceLock<wgpu::Adapter> = std::sync::OnceLock::new();
+
 fn gpu() -> Result<(wgpu::Device, wgpu::Queue), String> {
     static GPU: std::sync::OnceLock<Result<(wgpu::Device, wgpu::Queue), String>> = std::sync::OnceLock::new();
     GPU.get_or_init(|| {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let instance = instance();
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             ..Default::default()
         }))
         .map_err(|e| format!("no graphics adapter: {e}"))?;
+        let _ = ADAPTER.set(adapter.clone());
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).map_err(|e| format!("no graphics device: {e}"))
     })
     .clone()
@@ -397,6 +426,10 @@ impl Compositor {
             surface: None,
             #[cfg(target_os = "macos")]
             bgra,
+            #[cfg(windows)]
+            visual: None,
+            #[cfg(windows)]
+            bgra_out: bgra,
         };
         let pointer = rgb(0x0090FF);
         let col = [pointer[0], pointer[1], pointer[2]];
@@ -594,6 +627,53 @@ impl Compositor {
         self.surface.as_ref()?.frame()
     }
 
+    /// Windows: frames are presented into `visual` (an `IDCompositionVisual*`, kept alive by the
+    /// caller while this lives) from now on, not read back; for a BGRA compositor. False if the
+    /// surface couldn't be made (the frames are read back as before).
+    #[cfg(windows)]
+    pub fn attach_visual(&mut self, visual: *mut std::ffi::c_void) -> bool {
+        if !self.bgra_out || visual.is_null() {
+            return false;
+        }
+        let surface = match unsafe { instance().create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CompositionVisual(visual)) } {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(%e, "the player's composition surface");
+                return false;
+            }
+        };
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: wgpu::TextureFormat::Bgra8Unorm,
+            width: self.size.0,
+            height: self.size.1,
+            // the player paces itself; a frame never waits for the screen
+            present_mode: wgpu::PresentMode::Immediate,
+            desired_maximum_frame_latency: 1,
+            alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+            view_formats: vec![],
+            color_space: wgpu::SurfaceColorSpace::Auto,
+        };
+        let Some(adapter) = ADAPTER.get() else { return false };
+        let caps = surface.get_capabilities(adapter);
+        let config = wgpu::SurfaceConfiguration {
+            present_mode: if caps.present_modes.contains(&config.present_mode) { config.present_mode } else { wgpu::PresentMode::Fifo },
+            alpha_mode: if caps.alpha_modes.contains(&config.alpha_mode) { config.alpha_mode } else { caps.alpha_modes[0] },
+            ..config
+        };
+        surface.configure(&self.device, &config);
+        tracing::info!(size = ?self.size, mode = ?config.present_mode, "the Editor's frames are presented under the UI");
+        self.visual = Some(surface);
+        VISUAL_CHANGED.store(true, std::sync::atomic::Ordering::Release);
+        true
+    }
+
+    /// Windows: whether frames go to a visual.
+    #[cfg(windows)]
+    pub fn presents(&self) -> bool {
+        self.visual.is_some()
+    }
+
     /// Draws, then reads the frame back: RGBA (BGRA for a BGRA compositor), top row first;
     /// nothing when it draws into an IOSurface.
     fn draw(&mut self, draws: Vec<([f32; 60], Tex)>) -> Vec<u8> {
@@ -602,7 +682,17 @@ impl Compositor {
             Some(s) => s.texture.create_view(&Default::default()),
             None => self.target.create_view(&Default::default()),
         };
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        let presented = self.visual.as_ref().and_then(|s| match s.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Some(t),
+            _ => None,
+        });
+        #[cfg(windows)]
+        let view = match &presented {
+            Some(frame) => frame.texture.create_view(&Default::default()),
+            None => self.target.create_view(&Default::default()),
+        };
+        #[cfg(not(any(target_os = "macos", windows)))]
         let view = self.target.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let groups: Vec<wgpu::BindGroup> = draws
@@ -660,6 +750,12 @@ impl Compositor {
             // the IOSurface is complete once the GPU is done
             self.queue.submit([encoder.finish()]);
             let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+            return Vec::new();
+        }
+        #[cfg(windows)]
+        if let Some(frame) = presented {
+            self.queue.submit([encoder.finish()]);
+            self.queue.present(frame);
             return Vec::new();
         }
         let row = padded_row(self.size.0);

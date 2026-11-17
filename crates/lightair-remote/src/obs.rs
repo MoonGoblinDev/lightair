@@ -226,8 +226,19 @@ fn scene_list(scenes: &[Value]) -> Vec<Value> {
         .collect()
 }
 
-/// OBS's names for Lightair's own kinds.
+/// OBS's names for Lightair's own kinds (as OBS on this platform calls them).
 fn obs_kind(kind: &str) -> &str {
+    if cfg!(windows) {
+        return match kind {
+            "lightair_screen" => "monitor_capture",
+            "lightair_camera" => "dshow_input",
+            "lightair_mic" | "lightair_audio_device" => "wasapi_input_capture",
+            "lightair_desktop_audio" => "wasapi_output_capture",
+            "lightair_app_audio" => "wasapi_process_output_capture",
+            "lightair_web" => "browser_source",
+            k => k,
+        };
+    }
     match kind {
         "lightair_screen" => "screen_capture",
         "lightair_camera" => "macos-avcapture",
@@ -559,7 +570,11 @@ impl Session {
                 json!({"inputs": inputs})
             }
             "GetInputKindList" => {
-                json!({"inputKinds": ["browser_source", "color_source_v3", "ffmpeg_source", "image_source", "text_ft2_source_v2", "screen_capture", "macos-avcapture", "coreaudio_input_capture"]})
+                if cfg!(windows) {
+                    json!({"inputKinds": ["browser_source", "color_source_v3", "ffmpeg_source", "image_source", "text_ft2_source_v2", "monitor_capture", "window_capture", "game_capture", "dshow_input", "wasapi_input_capture", "wasapi_output_capture", "wasapi_process_output_capture"]})
+                } else {
+                    json!({"inputKinds": ["browser_source", "color_source_v3", "ffmpeg_source", "image_source", "text_ft2_source_v2", "screen_capture", "macos-avcapture", "coreaudio_input_capture"]})
+                }
             }
             "GetSpecialInputs" => json!({"desktop1": Value::Null, "desktop2": Value::Null, "mic1": Value::Null, "mic2": Value::Null, "mic3": Value::Null, "mic4": Value::Null}),
             "GetInputSettings" => {

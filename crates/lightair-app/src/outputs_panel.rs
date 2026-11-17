@@ -141,7 +141,7 @@ fn canvas_badge(id: impl Into<ElementId>, workspace: &Workspace, canvas: Option<
         .border_1()
         .border_color(tok::border_strong())
         .text_size(px(10.))
-        .font_family("Menlo")
+        .font_family(crate::ui::MONO)
         .text_color(tok::text_secondary())
         .when(workspace.canvases.len() > 1, |d| d.cursor_pointer().hover(|d| d.bg(tok::bg_selected())))
         .child(aspect_label(f))
@@ -358,7 +358,7 @@ impl OutputsPanel {
 
     fn import_sign_in(&mut self, browser: &'static str, platform: &str, cx: &mut Context<Self>) {
         let p = platform.to_string();
-        self.import_note = Some(format!("Asking macOS for {browser}'s key…"));
+        self.import_note = Some(if cfg!(windows) { format!("Reading {browser}'s sign-in…") } else { format!("Asking macOS for {browser}'s key…") });
         cx.spawn(async move |this, cx| {
             let q = p.clone();
             let result = cx.background_executor().spawn(async move { crate::browser_import::import(browser, &q) }).await;
@@ -570,7 +570,7 @@ impl OutputsPanel {
         }
         let key = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Saved in your Keychain · paste a new key to replace it")
+                .placeholder(if cfg!(windows) { "Saved in Windows Credential Manager · paste a new key to replace it" } else { "Saved in your Keychain · paste a new key to replace it" })
                 .masked(true)
         });
         let chat = chat_input(platform, d.chat.as_deref(), window, cx);
@@ -821,7 +821,7 @@ impl OutputsPanel {
                         .w(px(84.))
                         .text_center()
                         .text_size(px(12.))
-                        .font_family("Menlo")
+                        .font_family(crate::ui::MONO)
                         .child(format!("{:.1} Mbps", enc.bitrate_kbps as f32 / 1000.0)),
                 )
                 .child(
@@ -1189,7 +1189,7 @@ impl OutputsPanel {
         });
         let key = form_row(
             if p.id == "custom" { "Key or token" } else { "Stream key" },
-            Some("Kept in your Keychain, never in the workspace's files.".into()),
+            Some(format!("Kept in your {}, never in the workspace's files.", crate::ui::KEYCHAIN).into()),
             div().flex_1().child(Input::new(&c.key).small().mask_toggle()),
         );
         // Canvas: the workspace's canvases, the ones the platform takes marked with a dot.
@@ -1344,7 +1344,7 @@ impl Render for OutputsPanel {
                 )
         };
         let status = |(text, color): (String, Hsla)| {
-            div().flex_none().text_size(px(11.)).font_family("Menlo").text_color(color).child(text)
+            div().flex_none().text_size(px(11.)).font_family(crate::ui::MONO).text_color(color).child(text)
         };
 
         // ---- Recording: each canvas, recorded or not (Record records all that are on).
@@ -1446,7 +1446,7 @@ impl Render for OutputsPanel {
                         .child(ui::icon("hard-drive").size(px(12.)).text_color(tok::text_tertiary()))
                         .child(
                             div()
-                                .when(recording, |d| d.font_family("Menlo"))
+                                .when(recording, |d| d.font_family(crate::ui::MONO))
                                 .text_color(if recording { colour } else { tok::text_secondary() })
                                 .child(format!("{} free", crate::storage::bytes(free, recording))),
                         )

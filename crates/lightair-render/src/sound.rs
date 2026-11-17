@@ -37,7 +37,7 @@ pub fn decode(path: &Path, rate: u32, channels: u32) -> Result<Vec<f32>, MediaEr
 /// One of a file's audio tracks (`None`: its first), decoded.
 pub fn decode_track(path: &Path, track: Option<u32>, rate: u32, channels: u32) -> Result<Vec<f32>, MediaError> {
     let map = format!("0:a:{}", track.unwrap_or(0));
-    let mut child = Command::new(media::ffmpeg()?)
+    let mut child = media::command(media::ffmpeg()?)
         .args(["-v", "error", "-i"])
         .arg(path)
         .args(["-map", &map, "-f", "f32le", "-ac", &channels.to_string(), "-ar", &rate.to_string(), "-"])
@@ -304,7 +304,7 @@ pub fn mix_of(seq: &Sequence) -> (Vec<PathBuf>, Option<String>) {
 fn mixing(seq: &Sequence) -> Result<Option<Command>, MediaError> {
     let (inputs, mix) = mix_of(seq);
     let Some(mix) = mix else { return Ok(None) };
-    let mut cmd = Command::new(media::ffmpeg()?);
+    let mut cmd = media::command(media::ffmpeg()?);
     cmd.args(["-v", "error", "-y"]);
     for i in &inputs {
         cmd.arg("-i").arg(i);

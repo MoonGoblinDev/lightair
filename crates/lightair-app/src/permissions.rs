@@ -115,6 +115,17 @@ pub fn all() -> Vec<Permission> {
     };
     #[cfg(not(target_os = "macos"))]
     let bluetooth = State::AskedOnUse;
+    // Windows: only camera and microphone have privacy switches for desktop apps (screen and
+    // desktop audio capture, input and the network need no permission there)
+    #[cfg(windows)]
+    {
+        let _ = (screen, music, bluetooth);
+        vec![
+            Permission { key: "camera", name: "Camera", why: "Camera objects and Camera Studio (Settings › Privacy & security › Camera)", state: av(Media::Camera) },
+            Permission { key: "microphone", name: "Microphone", why: "Microphones in the mixer, recording and streaming (Settings › Privacy & security › Microphone)", state: av(Media::Microphone) },
+        ]
+    }
+    #[cfg(not(windows))]
     vec![
         Permission { key: "screen", name: "Screen recording", why: "Display, window and app capture, and their thumbnails", state: screen },
         Permission { key: "camera", name: "Camera", why: "Camera objects and Camera Studio", state: av(Media::Camera) },
@@ -181,5 +192,13 @@ pub fn open_settings(key: &str) {
     };
     if cfg!(target_os = "macos") {
         let _ = std::process::Command::new("/usr/bin/open").arg(format!("x-apple.systempreferences:com.apple.preference.security?{pane}")).spawn();
+    } else if cfg!(windows) {
+        let page = match key {
+            "camera" => "ms-settings:privacy-webcam",
+            "microphone" => "ms-settings:privacy-microphone",
+            _ => "ms-settings:privacy",
+        };
+        // (Explorer opens Settings at a page given by its address)
+        let _ = std::process::Command::new("explorer.exe").arg(page).spawn();
     }
 }

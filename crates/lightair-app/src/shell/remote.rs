@@ -242,8 +242,11 @@ impl StudioWindow {
         let port = std::env::var("LIGHTAIR_REMOTE_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(p.port);
         let needs = p.enabled && (p.require_password || p.lan) && std::env::var_os("LIGHTAIR_REMOTE_OFF").is_none();
         let password = if needs {
-            match self.remote.password.clone() {
-                Some(p) => p,
+            match self.remote.password.clone().or_else(crate::secrets::early_remote_password) {
+                Some(p) => {
+                    self.remote.password = Some(p.clone());
+                    p
+                }
                 None => {
                     // started once the Keychain answers
                     self.read_remote_password(false, cx);
@@ -255,7 +258,7 @@ impl StudioWindow {
         };
         if needs && password.is_none() {
             self.remote.server = None;
-            self.remote.error = Some("The Keychain didn't give Lightair a password for the remote API.".into());
+            self.remote.error = Some(format!("The {} didn't give Lightair a password for the remote API.", crate::ui::KEYCHAIN));
             return;
         }
         let config = Config { port, lan: p.lan, password };
@@ -911,7 +914,7 @@ impl StudioWindow {
             "text" | "text_ft2_source_v2" | "text_ft2_source" => {
                 defaults(&mut s, json!({
                     "text": "Text",
-                    "font": {"face": "Helvetica Neue", "size": 128, "flags": 1},
+                    "font": {"face": crate::ui::TEXT_FACE, "size": 128, "flags": 1},
                     "color1": 0xFFFFFFFFu32, "color2": 0xFFFFFFFFu32,
                 }));
                 let n = s["text"].as_str().unwrap_or("Text").chars().count().clamp(4, 40) as f32;
@@ -994,7 +997,7 @@ impl StudioWindow {
             "timer" | lightair_engine::timers::TIMER_KIND => {
                 defaults(&mut s, json!({
                     "mode": "countdown", "seconds": 300, "autostart": true,
-                    "font": {"face": "Helvetica Neue", "size": 160, "flags": 1},
+                    "font": {"face": crate::ui::TEXT_FACE, "size": 160, "flags": 1},
                     "color1": 0xFFFFFFFFu32, "color2": 0xFFFFFFFFu32,
                 }));
                 NewSource { kind: lightair_engine::timers::TIMER_KIND.into(), settings: s, size: (560.0, 200.0), sound: false, name: "Countdown".into() }
@@ -1098,8 +1101,32 @@ fn merged(base: &Value, over: &Value) -> Value {
     }
 }
 
+/// This process's CPU time (seconds) and resident memory (bytes: its working set).
+#[cfg(windows)]
+fn process_usage() -> (f64, u64) {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+    unsafe {
+        let me = GetCurrentProcess();
+        let zero = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+        let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+        // (100-nanosecond units)
+        let secs = |t: FILETIME| ((t.dwHighDateTime as u64) << 32 | t.dwLowDateTime as u64) as f64 / 1e7;
+        let cpu = if GetProcessTimes(me, &mut created, &mut exited, &mut kernel, &mut user) != 0 {
+            secs(kernel) + secs(user)
+        } else {
+            0.0
+        };
+        let mut mem: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
+        mem.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+        let resident = if K32GetProcessMemoryInfo(me, &mut mem, mem.cb) != 0 { mem.WorkingSetSize as u64 } else { 0 };
+        (cpu, resident)
+    }
+}
+
 /// This process's CPU time (seconds) and resident memory (bytes).
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn process_usage() -> (f64, u64) {
     (0.0, 0)
 }
