@@ -80,6 +80,28 @@ pub(crate) fn stream_deck_plugin(dest: &Path) -> anyhow::Result<()> {
     run(Command::new("/usr/bin/ditto").args(["-c", "-k", "--keepParent", "--norsrc", "--noextattr", "--noqtn"]).arg(root().join("streamdeck/app.lightair.sdPlugin")).arg(dest))
 }
 
+/// The publisher's private release settings, from `release.env` at the repository's root (kept
+/// out of git: .gitignore): `KEY=value` lines, set for the build unless already set. Lightair's
+/// registered apps (LIGHTAIR_YOUTUBE_CLIENT_ID, …: compiled in, docs/official-apis.md) and
+/// LIGHTAIR_NOTARY_PROFILE.
+pub(crate) fn release_env() {
+    let Ok(text) = std::fs::read_to_string(root().join("release.env")) else { return };
+    let mut set = Vec::new();
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let Some((k, v)) = line.split_once('=') else { continue };
+        let (k, v) = (k.trim(), v.trim().trim_matches('"'));
+        if v.is_empty() || std::env::var_os(k).is_some() {
+            continue;
+        }
+        // SAFETY: set before any thread starts
+        unsafe { std::env::set_var(k, v) };
+        set.push(k.to_string());
+    }
+    if !set.is_empty() {
+        eprintln!("release.env: {}", set.join(", "));
+    }
+}
+
 /// The speech helper for voice-phrase automations (tools/speech, Swift: Apple's speech
 /// recognition), built once into target/ and copied to `dest`. macOS only; without Swift it's
 /// left out (voice phrases then say so).

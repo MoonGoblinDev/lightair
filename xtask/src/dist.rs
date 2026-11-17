@@ -58,6 +58,7 @@ const TOOLS: &[&str] = &["ffmpeg", "ffprobe", "whisper-cli"];
 /// stopped mid-signing (helpers signed alone, their bundles not yet sealed), its half-signed app
 /// then installed and checked.
 pub fn dist() -> anyhow::Result<()> {
+    crate::release_env();
     let result = build();
     if result.is_err() {
         let out = root().join("target/dist");

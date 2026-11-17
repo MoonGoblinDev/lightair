@@ -7,3 +7,5 @@
 /modules/*/data/models/*.onnx
 /modules/*/build
 /screenshots
+# the publisher's client ids and secrets, and the notary profile (xtask release_env)
+/release.env

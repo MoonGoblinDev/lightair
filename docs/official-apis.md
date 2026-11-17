@@ -16,6 +16,8 @@ LIGHTAIR_KICK_CLIENT_ID=… LIGHTAIR_KICK_CLIENT_SECRET=… \
 cargo xtask dist
 ```
 
+Or put them in `release.env` at the repository's root (never committed: .gitignore; it also
+holds `LIGHTAIR_NOTARY_PROFILE`), which `cargo xtask dist` reads.
 The same variables set when Lightair runs override the built-in ones (for trying an app out).
 Without a rebuild: Settings › Connections › Official sign-in › **Use your own app** takes an
 app's client ID (and secret, where the platform wants one) from the clipboard and keeps it in the
