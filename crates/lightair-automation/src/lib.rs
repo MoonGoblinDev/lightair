@@ -148,6 +148,10 @@ pub fn context(e: Option<&ChatEvent>, args: &[String]) -> Value {
             "roles": user.map(|u| u.roles.clone()).unwrap_or_default(),
         });
         ctx["platform"] = json!(e.platform);
+        // a channel-points redemption: which reward
+        if let Some(p) = e.paid.as_ref().filter(|p| p.currency == "CHANNEL_POINTS") {
+            ctx["reward"] = json!(p.display);
+        }
         ctx["channel"] = json!(e.channel);
         ctx["message"] = json!(e.text);
         ctx["kind"] = json!(e.alert_kind().unwrap_or("message"));

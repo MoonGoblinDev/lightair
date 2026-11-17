@@ -70,15 +70,17 @@ with what's known about each. Keep it current: strike items as they land.
   ~~hotkeys~~ (done, untested by pressing); ~~MIDI, game controllers, file changes~~ (done:
   triggers.rs; files tested end to end, MIDI and controllers without a device here); voice
   phrases left (needs live on-device recognition: whisper here transcribes files only).
-- Platform steps: title, category, ads, polls, predictions, rewards, raids, shoutouts with a clip,
-  clips, markers, moderation (need the platform's session or official API).
+- ~~Platform steps~~ (built on the official APIs: change the title or category on any platform
+  signed in officially; on Twitch ads, polls, predictions, raids, shoutouts, clips, markers;
+  untested until an app is registered). Rewards management left.
 - ~~A block editor beyond the current list~~ (done: If's conditions, Then and Otherwise, and
   Random's choices edited in place, nested to any depth; moving a step between lists is still
   delete and add).
 - ~~Streamer.bot import~~ (done: Automations › New › Import from Streamer.bot, from a copied
   export; all 141 public exports found import, C# kept as comments to port, older If/Else and
-  some OBS steps listed as not brought over). Twitch channel-point redemptions (EventSub with
-  the official sign-in's token) left.
+  some OBS steps listed as not brought over). ~~Twitch channel-point redemptions~~ (built:
+  EventSub over WebSocket with the official sign-in; trigger "Channel-points redemptions",
+  `{{ reward }}`; untested until an app is registered).
 
 ## Integrations
 
@@ -91,8 +93,8 @@ with what's known about each. Keep it current: strike items as they land.
 - ~~Philips Hue~~ (done: Settings › Connections › Philips Hue, automation step "Philips Hue
   light"; tested against a stand-in bridge only). ~~A Lightair Stream Deck plugin~~ (done:
   streamdeck/, Settings › Remote API › Stream Deck; tested with a stand-in Stream Deck against a
-  real Lightair, not yet on a real Stream Deck). Left: bring-your-own official API credentials,
-  Spotify's own API.
+  real Lightair, not yet on a real Stream Deck). ~~Bring-your-own official API credentials~~
+  (done: Settings › Connections › Official sign-in › Use your own app). Spotify's own API left.
 - **The relay** (`relay/`, Ko-fi) isn't deployed: needs a Cloudflare account
   (`npx wrangler deploy`), then Settings › Connections › Ko-fi.
 - Pulsoid and Elgato Key Lights are untested without a token / a light; VTube Studio was tested

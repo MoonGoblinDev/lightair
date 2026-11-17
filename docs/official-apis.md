@@ -17,6 +17,9 @@ cargo xtask dist
 ```
 
 The same variables set when Lightair runs override the built-in ones (for trying an app out).
+Without a rebuild: Settings › Connections › Official sign-in › **Use your own app** takes an
+app's client ID (and secret, where the platform wants one) from the clipboard and keeps it in the
+Keychain; it's used ahead of the build's.
 Tokens are kept in the Keychain ("Lightair connection", `oauth-<platform>`). The code:
 `crates/lightair-live/src/oauth.rs` (sign-in) and `official.rs` (the APIs).
 

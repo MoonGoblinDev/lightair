@@ -93,7 +93,7 @@ impl ChatEvent {
     }
 
     /// What an alert calls it: "follow", "sub", "paid" (a donation, Super Chat, gift), "cheer"
-    /// (Twitch bits), "raid"; `None` for chat and the rest.
+    /// (Twitch bits), "raid", "redeem" (a channel-points reward); `None` for chat and the rest.
     pub fn alert_kind(&self) -> Option<&'static str> {
         match &self.kind {
             Kind::Follow => Some("follow"),
@@ -101,6 +101,7 @@ impl ChatEvent {
             Kind::Raid { .. } => Some("raid"),
             Kind::Paid if self.paid.as_ref().is_some_and(|p| p.currency == "BITS") => Some("cheer"),
             Kind::Paid => Some("paid"),
+            Kind::Notice if self.paid.as_ref().is_some_and(|p| p.currency == "CHANNEL_POINTS") => Some("redeem"),
             _ => None,
         }
     }

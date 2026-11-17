@@ -258,6 +258,7 @@ pub fn call(method: &str, p: &Value) -> Option<Result<Value, String>> {
             Ok(serde_json::from_str(&text).unwrap_or(Value::Null))
         })(),
         "hue.lights" | "hue.set" => hue_call(method, p),
+        m if crate::official::is_action(m) => crate::official::action(m, p),
         _ => return None,
     })
 }

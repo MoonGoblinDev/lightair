@@ -3,7 +3,7 @@
 //! Mac's. Each destination has its own settings too, in Outputs (click it).
 
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::menu::DropdownMenu;
+use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -1314,7 +1314,7 @@ impl StudioWindow {
                 (Some(n), _, _) => n.clone(),
                 (None, Some((_, who)), _) => format!("Signed in as {who}: Lightair uses {name}'s own API for {does}."),
                 (None, None, true) => format!("Sign in, as with OBS, and Lightair uses {name}'s own API for {does}."),
-                (None, None, false) => format!("This copy of Lightair has no {name} app registered (docs/official-apis.md); the signed-in pages are used."),
+                (None, None, false) => format!("No {name} app in this copy of Lightair: register your own (docs/official-apis.md) and choose Use your own app; meanwhile the signed-in pages are used."),
             };
             official = official.child(row(
                 name,
@@ -1327,6 +1327,31 @@ impl StudioWindow {
                         d.child(Button::new(SharedString::from(format!("oauth-in-{provider}"))).label("Sign in").xsmall().outline().disabled(!available || busy).on_click(cx.listener(
                             move |this, _, _, cx| this.official_sign_in(provider, cx),
                         )))
+                    })
+                    // the person's own registered app (docs/official-apis.md): its id, and secret
+                    .when(account.is_none(), |d| {
+                        let own = lightair_live::oauth::has_own_app(provider);
+                        d.child(
+                            Button::new(SharedString::from(format!("oauth-app-{provider}")))
+                                .label(if own { "Your app ✓" } else { "Use your own app" })
+                                .xsmall()
+                                .ghost()
+                                .dropdown_menu(move |menu, _, _| {
+                                    let menu = menu
+                                        .item(PopupMenuItem::new("Paste its client ID").on_click(move |_, _, cx| own_app_paste(provider, "id", cx)))
+                                        .when(lightair_live::oauth::wants_secret(provider) || provider == "x", |m| {
+                                            m.item(PopupMenuItem::new("Paste its client secret").on_click(move |_, _, cx| own_app_paste(provider, "secret", cx)))
+                                        });
+                                    if own {
+                                        menu.separator().item(PopupMenuItem::new("Forget your app").on_click(move |_, _, _| {
+                                            lightair_live::oauth::set_own_app(provider, "id", "");
+                                            lightair_live::oauth::set_own_app(provider, "secret", "");
+                                        }))
+                                    } else {
+                                        menu
+                                    }
+                                }),
+                        )
                     })
                     .when(account.is_some(), |d| {
                         d.child(Button::new(SharedString::from(format!("oauth-out-{provider}"))).label("Sign out").xsmall().ghost().on_click(cx.listener(
@@ -1675,5 +1700,13 @@ fn reveal_button(id: impl Into<ElementId>, dir: Option<std::path::PathBuf>) -> A
             })
             .into_any_element(),
         None => div().into_any_element(),
+    }
+}
+
+/// Copies the person's own app's id or secret from the clipboard (never shown again).
+fn own_app_paste(provider: &str, part: &str, cx: &mut App) {
+    let text = cx.read_from_clipboard().and_then(|c| c.text()).map(|t| t.trim().to_string()).unwrap_or_default();
+    if !text.is_empty() && !text.contains(char::is_whitespace) {
+        lightair_live::oauth::set_own_app(provider, part, &text);
     }
 }

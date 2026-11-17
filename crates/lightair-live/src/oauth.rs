@@ -44,8 +44,33 @@ fn app(provider: &str) -> Option<App> {
         _ => return None,
     };
     let var = |k: &str| std::env::var(format!("LIGHTAIR_{}_{k}", provider.to_uppercase())).ok().filter(|v| !v.is_empty());
-    let client_id = var("CLIENT_ID").or(id.map(String::from)).filter(|v| !v.is_empty())?;
-    Some(App { client_id, secret: var("CLIENT_SECRET").or(secret.map(String::from)).filter(|v| !v.is_empty()) })
+    // the environment, then the person's own app (Settings › Connections), then the build's
+    let own_id = own(provider, "id");
+    let from_own = own_id.is_some();
+    let client_id = var("CLIENT_ID").or(own_id).or(id.map(String::from)).filter(|v| !v.is_empty())?;
+    let secret = var("CLIENT_SECRET").or_else(|| if from_own { own(provider, "secret") } else { secret.map(String::from) });
+    Some(App { client_id, secret: secret.filter(|v| !v.is_empty()) })
+}
+
+/// The person's own registered app for `provider` ("id" or "secret"), set in Settings.
+fn own(provider: &str, part: &str) -> Option<String> {
+    kept(&format!("oauth-app-{provider}-{part}"))
+}
+
+/// Uses the person's own app on `provider` (their client id, and secret where the platform
+/// wants one); empty forgets it.
+pub fn set_own_app(provider: &str, part: &str, value: &str) {
+    keep(&format!("oauth-app-{provider}-{part}"), value.trim());
+}
+
+/// Whether the person's own app is set for `provider`.
+pub fn has_own_app(provider: &str) -> bool {
+    own(provider, "id").is_some()
+}
+
+/// Whether `provider`'s token request wants a secret (Twitch's device flow doesn't).
+pub fn wants_secret(provider: &str) -> bool {
+    matches!(provider, "youtube" | "kick")
 }
 
 /// Whether this copy of Lightair has `provider`'s app (an id to sign in with).
@@ -285,7 +310,9 @@ fn code_flow(provider: &str, app: &App, prompt: &Prompt) -> Result<Value, String
 }
 
 fn twitch_device(app: &App, prompt: &Prompt) -> Result<Value, String> {
-    let scopes = "channel:manage:broadcast user:write:chat user:read:chat moderator:manage:banned_users moderator:manage:chat_messages";
+    let scopes = "channel:manage:broadcast user:write:chat user:read:chat moderator:manage:banned_users moderator:manage:chat_messages \
+                  channel:read:redemptions channel:edit:commercial channel:manage:polls channel:manage:predictions channel:manage:raids \
+                  moderator:manage:shoutouts clips:edit";
     let v = post_form("https://id.twitch.tv/oauth2/device", &[("client_id", &app.client_id), ("scopes", scopes)])?;
     let (Some(device), Some(code), Some(uri)) = (v["device_code"].as_str(), v["user_code"].as_str(), v["verification_uri"].as_str()) else {
         return Err(format!("Twitch didn't start the sign-in: {}", v["message"].as_str().unwrap_or("")));

@@ -18,6 +18,13 @@ fn text<'a>(p: &'a Value, key: &str) -> Option<&'a str> {
 
 /// Starts the automations; their steps call Lightair through `jobs` (the remote API's queue).
 pub(super) fn start_automations(hub: &lightair_live::Hub, jobs: super::remote::JobSender) -> Automations {
+    // Twitch channel-points redemptions, while signed in to Twitch officially
+    {
+        let hub = hub.clone();
+        let _ = std::thread::Builder::new()
+            .name("lightair-twitch-events".into())
+            .spawn(move || lightair_live::official::watch_twitch_events(hub, Arc::new(std::sync::atomic::AtomicBool::new(false))));
+    }
     let chat = hub.clone();
     let host: Host = Arc::new(move |method: &str, params: Value| {
         // (sending takes a moment: on the automation's own thread)
