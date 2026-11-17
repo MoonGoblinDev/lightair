@@ -273,6 +273,8 @@ impl StudioWindow {
             // a tab dragged inside this window ("dock-drag:1338,60>1432,600", in points), held
             // over its drop a while, then dropped; the right dock's layout logged
             Ok(hook) if hook.starts_with("dock-drag:") => {
+                // (with LIGHTAIR_TEST_EVENTS: the widgets and Activity filled in meanwhile)
+                self.send_test_events(window, cx);
                 let nums: Vec<f32> = hook[10..].split([',', '>']).filter_map(|n| n.parse().ok()).collect();
                 if let [x0, y0, x1, y1] = nums[..] {
                     cx.spawn_in(window, async move |this, cx| {
@@ -313,6 +315,8 @@ impl StudioWindow {
                     .detach();
                 }
             }
+            // LIGHTAIR_TEST_EVENTS sent to the widgets already in the show (screenshots)
+            Ok("test-events") => self.send_test_events(window, cx),
             // a panel in a window of its own ("popout-chat")
             Ok(hook) if hook.starts_with("popout-") => {
                 // ("…-back": then back in the dock after a few seconds)
