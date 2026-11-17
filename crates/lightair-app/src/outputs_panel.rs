@@ -869,7 +869,11 @@ impl OutputsPanel {
                 .child(div().h(px(1.)).bg(tok::border()))
                 .child(row(
                     "Encoder",
-                    Some("H.264 plays everywhere; HEVC streams to YouTube (most other platforms need H.264); x264 encodes on the CPU."),
+                    Some(if cfg!(windows) {
+                        "H.264 plays everywhere; HEVC streams to YouTube (most other platforms need H.264); x264 encodes on the CPU. NVIDIA's encoder needs a driver newer than 560 (OBS 33's too); with an older one Lightair uses Quick Sync or x264."
+                    } else {
+                        "H.264 plays everywhere; HEVC streams to YouTube (most other platforms need H.264); x264 encodes on the CPU."
+                    }),
                     div().flex().items_center().gap_2().child(encoders).when(hevc, |d| {
                         d.child(div().text_size(px(11.)).text_color(tok::warn()).child("YouTube only"))
                     }).into_any_element(),

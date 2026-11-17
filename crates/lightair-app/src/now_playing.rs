@@ -24,6 +24,10 @@ return ""
 
 /// The track playing now (`null` when nothing is).
 pub fn now() -> Value {
+    // Spotify's own API where signed in officially: any device, with progress and artwork
+    if let Some(v) = lightair_live::official::spotify_now() {
+        return v;
+    }
     #[cfg(windows)]
     {
         windows_now().unwrap_or(Value::Null)

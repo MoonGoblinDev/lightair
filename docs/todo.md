@@ -61,7 +61,8 @@ with what's known about each. Keep it current: strike items as they land.
 - ~~Featured message, prediction, emote combo~~ (done: Chat › a message › Feature; Prediction
   bets Lightair points with `!bet 1 100`, winners split the pot; Emote combo). Countdown: the
   Timer object covers it.
-- A widget gallery. ~~Streamlabs custom-widget shim~~ (done: sl-shim.js, chosen when the widget's
+- ~~A widget gallery~~ (done: Add object › Widgets, by what they're for, each with what it does).
+  ~~Streamlabs custom-widget shim~~ (done: sl-shim.js, chosen when the widget's
   script listens on `document`; untested with a real Streamlabs widget).
 - ~~Multi-line text fields in the widget Inspector~~ (done: field type `textarea`; the social
   rotator takes one a line).
@@ -96,7 +97,9 @@ with what's known about each. Keep it current: strike items as they land.
   light"; tested against a stand-in bridge only). ~~A Lightair Stream Deck plugin~~ (done:
   streamdeck/, Settings › Remote API › Stream Deck; tested with a stand-in Stream Deck against a
   real Lightair, not yet on a real Stream Deck). ~~Bring-your-own official API credentials~~
-  (done: Settings › Connections › Official sign-in › Use your own app). Spotify's own API left.
+  (done: Settings › Connections › Official sign-in › Use your own app). ~~Spotify's own API~~
+  (done: official sign-in; Now playing then shows any of your devices, untested until an app is
+  registered).
 - **The relay** (`relay/`, Ko-fi) isn't deployed: needs a Cloudflare account
   (`npx wrangler deploy`), then Settings › Connections › Ko-fi.
 - Pulsoid and Elgato Key Lights are untested without a token / a light; VTube Studio was tested
@@ -126,7 +129,7 @@ Built, tested (317 tests) and benchmarked on Windows 11 on 17 November 2026
   `stream_sharing::identical_destinations_share_an_encoder`, `sequence::proxies_and_filmstrips`
   (ffmpeg's hardware H.264 encoder shared by tests at once); each passes alone.
 - NVENC needs a newer NVIDIA driver than 560 for OBS 33's encoder (OBS says so too); Lightair
-  falls back to Quick Sync or x264 as OBS does. Worth a note in the Encoders choice.
+  falls back to Quick Sync or x264 as OBS does. ~~Worth a note in the Encoders choice~~ (done).
 
 ## Known issues
 

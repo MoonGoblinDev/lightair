@@ -481,6 +481,36 @@ fn redemption(ev: &Value, channel: &str) -> Option<crate::ChatEvent> {
     Some(if input.is_empty() { e } else { e.with_fragments(crate::event::text_fragments(input)) })
 }
 
+// ---- Spotify ----
+
+/// What Spotify is playing on any of the person's devices (signed in officially): the Now
+/// playing shape (app, title, artist, album, artwork, progress and length in ms), or None.
+pub fn spotify_now() -> Option<Value> {
+    if !signed_in("spotify") {
+        return None;
+    }
+    let v = call("spotify", "GET", "https://api.spotify.com/v1/me/player/currently-playing?additional_types=episode", None).ok()?;
+    if v["is_playing"].as_bool() != Some(true) {
+        return None;
+    }
+    let item = &v["item"];
+    let names = |list: &Value| list.as_array().into_iter().flatten().filter_map(|a| a["name"].as_str()).collect::<Vec<_>>().join(", ");
+    let (artist, album, images) = if item["type"].as_str() == Some("episode") {
+        (item["show"]["publisher"].as_str().unwrap_or("").to_string(), item["show"]["name"].as_str().unwrap_or("").to_string(), &item["images"])
+    } else {
+        (names(&item["artists"]), item["album"]["name"].as_str().unwrap_or("").to_string(), &item["album"]["images"])
+    };
+    Some(json!({
+        "app": "spotify",
+        "title": item["name"].as_str().unwrap_or(""),
+        "artist": artist,
+        "album": album,
+        "artwork": images[0]["url"].as_str().unwrap_or(""),
+        "progress_ms": v["progress_ms"],
+        "duration_ms": item["duration_ms"],
+    }))
+}
+
 // ---- actions for automations and the remote API ----
 
 /// The platform actions automation steps (and remote clients) can take through the official

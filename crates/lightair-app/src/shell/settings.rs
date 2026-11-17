@@ -1306,6 +1306,7 @@ impl StudioWindow {
             ("twitch", "Twitch", "title and category; chat; delete, timeouts and bans"),
             ("kick", "Kick", "title and category; chat; timeouts and bans"),
             ("x", "X", "going live with your title when you stream, ending it after; chat (X's approval needed)"),
+            ("spotify", "Spotify", "what's playing on any of your devices, for Now playing"),
         ] {
             let account = lightair_live::oauth::account(provider);
             let available = lightair_live::oauth::available(provider);

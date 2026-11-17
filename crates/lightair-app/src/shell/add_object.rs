@@ -314,30 +314,41 @@ impl StudioWindow {
                     }
                     body = body.child(heading(group)).child(grid);
                 }
-                // widgets: Lightair's own, and StreamElements' brought in
+                // the widget gallery: Lightair's own by what they're for, each with what it does;
+                // and widgets brought in (.lwidget, StreamElements, Streamlabs)
                 let builtins: Vec<_> = lightair_widgets::catalog::BUILTIN
                     .iter()
-                    .filter(|b| matches(&query, &[b.name, b.about, "widget", "overlay", "alert"]))
+                    .filter(|b| matches(&query, &[b.name, b.about, "widget", "overlay", "alert", widget_group(b.kind)]))
                     .collect();
-                let import = matches(&query, &["StreamElements", "custom widget", "import", "widget"]);
+                let import = matches(&query, &["StreamElements", "Streamlabs", "custom widget", "import", "widget"]);
                 if !builtins.is_empty() || import {
-                    let mut grid = div().grid().grid_cols(3).gap_2();
-                    for (i, b) in builtins.into_iter().enumerate() {
-                        let kind = b.kind;
-                        grid = grid.child(
-                            tile(("widget", i).into(), b.icon, b.name)
-                                .tooltip(ui::tip(b.about))
-                                .on_click(cx.listener(move |this, _, window, cx| this.add_widget(kind, None, window, cx))),
-                        );
+                    body = body.child(heading("Widgets"));
+                    for group in WIDGET_GROUPS {
+                        let members: Vec<_> = builtins.iter().filter(|b| widget_group(b.kind) == *group).collect();
+                        if members.is_empty() {
+                            continue;
+                        }
+                        let mut grid = div().grid().grid_cols(2).gap_1();
+                        for b in members {
+                            let kind = b.kind;
+                            grid = grid.child(
+                                card(SharedString::from(format!("widget-{kind}")).into(), b.icon, b.name.to_string(), b.about.to_string())
+                                    .on_click(cx.listener(move |this, _, window, cx| this.add_widget(kind, None, window, cx))),
+                            );
+                        }
+                        body = body.child(div().px_2().pt_1().text_size(px(11.)).text_color(tok::text_tertiary()).child(*group)).child(grid);
                     }
                     if import {
-                        grid = grid.child(
-                            tile("widget-import".into(), "folder-open", "Import widget")
-                                .tooltip(ui::tip("A .lwidget package, or a StreamElements custom widget's folder (its HTML, CSS, JS and fields files)"))
-                                .on_click(cx.listener(|this, _, window, cx| this.import_widget(window, cx))),
+                        body = body.child(
+                            card(
+                                "widget-import".into(),
+                                "folder-open",
+                                "Import a widget".into(),
+                                "A .lwidget package, or a StreamElements or Streamlabs custom widget's folder".into(),
+                            )
+                            .on_click(cx.listener(|this, _, window, cx| this.import_widget(window, cx))),
                         );
                     }
-                    body = body.child(heading("Widgets")).child(grid);
                 }
             }
             Step::Web => {
@@ -620,5 +631,19 @@ impl StudioWindow {
                 )
                 .into_any_element(),
         )
+    }
+}
+
+/// The widget gallery's groups, in order.
+const WIDGET_GROUPS: &[&str] = &["Alerts and events", "Chat", "Goals and timers", "Viewers play", "Info"];
+
+/// Which gallery group a built-in widget is in.
+fn widget_group(kind: &str) -> &'static str {
+    match kind {
+        "alert-box" | "event-list" | "credits" | "featured" => "Alerts and events",
+        "chat-box" | "emote-wall" | "emote-combo" => "Chat",
+        "goal" | "counter" | "subathon" => "Goals and timers",
+        "poll" | "prediction" | "wheel" | "leaderboard" => "Viewers play",
+        _ => "Info",
     }
 }

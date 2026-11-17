@@ -74,6 +74,18 @@ it (`POST /2/broadcasts`), and ends that broadcast when the stream stops. Chat: 
 (`POST /2/broadcasts/:id/chat`, 140 characters); X delivers chat to a public webhook (its
 Activity API), which needs the relay, so reading X chat isn't built yet.
 
+## Spotify
+
+1. [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) › Create app: name
+   "Lightair", redirect URI **`http://127.0.0.1:47803/callback`**, the Web API.
+2. Its Client ID is `LIGHTAIR_SPOTIFY_CLIENT_ID` (sign-in uses PKCE: no secret in Lightair).
+   In development mode up to 25 Spotify accounts can sign in (add them under User Management);
+   more needs Spotify's extended quota.
+
+Scopes asked: `user-read-currently-playing user-read-playback-state`. Now playing then shows
+what plays on any of the person's devices, with its artwork and progress; without it, Lightair
+asks the Spotify or Music app on this computer.
+
 ## Not offered (yet)
 
 - **TikTok, Facebook, Instagram, LinkedIn**: their live APIs need app review or business

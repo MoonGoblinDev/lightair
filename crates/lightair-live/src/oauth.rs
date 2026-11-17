@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 use crate::net;
 
 /// The platforms with an official sign-in Lightair supports.
-pub const PROVIDERS: &[&str] = &["youtube", "twitch", "kick", "x"];
+pub const PROVIDERS: &[&str] = &["youtube", "twitch", "kick", "x", "spotify"];
 
 struct App {
     client_id: String,
@@ -41,6 +41,7 @@ fn app(provider: &str) -> Option<App> {
         "twitch" => (option_env!("LIGHTAIR_TWITCH_CLIENT_ID"), None),
         "kick" => (option_env!("LIGHTAIR_KICK_CLIENT_ID"), option_env!("LIGHTAIR_KICK_CLIENT_SECRET")),
         "x" => (option_env!("LIGHTAIR_X_CLIENT_ID"), option_env!("LIGHTAIR_X_CLIENT_SECRET")),
+        "spotify" => (option_env!("LIGHTAIR_SPOTIFY_CLIENT_ID"), None),
         _ => return None,
     };
     let var = |k: &str| std::env::var(format!("LIGHTAIR_{}_{k}", provider.to_uppercase())).ok().filter(|v| !v.is_empty());
@@ -246,7 +247,7 @@ pub fn sign_in(provider: &str, prompt: Prompt) -> Result<String, String> {
     let app = app(provider).ok_or_else(|| format!("this copy of Lightair has no {provider} app to sign in with (docs/official-apis.md)"))?;
     let token = match provider {
         "twitch" => twitch_device(&app, &prompt)?,
-        "youtube" | "kick" | "x" => code_flow(provider, &app, &prompt)?,
+        "youtube" | "kick" | "x" | "spotify" => code_flow(provider, &app, &prompt)?,
         other => return Err(format!("no official sign-in for {other}")),
     };
     let mut record = token;
@@ -262,6 +263,7 @@ fn code_flow(provider: &str, app: &App, prompt: &Prompt) -> Result<Value, String
     let fixed = match provider {
         "kick" => Some(47801),
         "x" => Some(47802),
+        "spotify" => Some(47803),
         _ => None,
     };
     let port: u16 = match fixed {
@@ -280,6 +282,7 @@ fn code_flow(provider: &str, app: &App, prompt: &Prompt) -> Result<Value, String
     let (auth, scope) = match provider {
         "youtube" => ("https://accounts.google.com/o/oauth2/v2/auth", "https://www.googleapis.com/auth/youtube"),
         "x" => ("https://x.com/i/oauth2/authorize", "broadcast.read broadcast.write tweet.read users.read offline.access"),
+        "spotify" => ("https://accounts.spotify.com/authorize", "user-read-currently-playing user-read-playback-state"),
         _ => ("https://id.kick.com/oauth/authorize", "user:read channel:read channel:write chat:write moderation:ban"),
     };
     let mut url = format!(
@@ -343,6 +346,7 @@ fn token_url(provider: &str) -> &'static str {
         "youtube" => "https://oauth2.googleapis.com/token",
         "twitch" => "https://id.twitch.tv/oauth2/token",
         "x" => "https://api.x.com/2/oauth2/token",
+        "spotify" => "https://accounts.spotify.com/api/token",
         _ => "https://id.kick.com/oauth/token",
     }
 }
@@ -382,6 +386,10 @@ fn whoami(provider: &str, token: &str) -> Result<(String, String), String> {
             let v = get("https://api.twitch.tv/helix/users", Some(("Client-Id", &client)))?;
             let u = &v["data"][0];
             Ok((u["id"].as_str().ok_or("Twitch didn't say who signed in")?.to_string(), u["login"].as_str().unwrap_or("").to_string()))
+        }
+        "spotify" => {
+            let v = get("https://api.spotify.com/v1/me", None)?;
+            Ok((v["id"].as_str().ok_or("Spotify didn't say who signed in")?.to_string(), v["display_name"].as_str().or(v["id"].as_str()).unwrap_or("").to_string()))
         }
         "x" => {
             let v = get("https://api.x.com/2/users/me", None)?;
