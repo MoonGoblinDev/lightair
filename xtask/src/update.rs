@@ -107,12 +107,22 @@ pub fn manifest(version: &str, dir: &str, notes: Option<&str>) -> anyhow::Result
 /// Puts this Mac's release secrets into the repository's GitHub secrets (through `gh`): the
 /// update key, and release.env's app ids. Says which ones only you can add.
 pub fn ci_secrets() -> anyhow::Result<()> {
+    // GitHub's API times out now and then: each secret is tried a few times
     let set = |name: &str, value: &str| -> anyhow::Result<()> {
-        let mut child = Command::new("gh").args(["secret", "set", name, "--repo", REPO]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).spawn()?;
-        std::io::Write::write_all(child.stdin.as_mut().unwrap(), value.as_bytes())?;
-        anyhow::ensure!(child.wait()?.success(), "gh couldn't set {name}");
-        println!("set {name}");
-        Ok(())
+        for attempt in 1..=4 {
+            let mut child = Command::new("gh").args(["secret", "set", name, "--repo", REPO]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).spawn()?;
+            std::io::Write::write_all(child.stdin.as_mut().unwrap(), value.as_bytes())?;
+            drop(child.stdin.take());
+            if child.wait()?.success() {
+                println!("set {name}");
+                return Ok(());
+            }
+            if attempt < 4 {
+                eprintln!("trying {name} again…");
+                std::thread::sleep(std::time::Duration::from_secs(3 * attempt));
+            }
+        }
+        anyhow::bail!("gh couldn't set {name} (GitHub didn't answer): run `cargo xtask ci-secrets` again")
     };
     set("LIGHTAIR_UPDATE_KEY", &hex(&signing_key()?.to_bytes()))?;
     if let Ok(text) = std::fs::read_to_string(crate::root().join("release.env")) {
