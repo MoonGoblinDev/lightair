@@ -19,13 +19,13 @@ use serde_json::Value;
 
 use crate::net;
 
-/// The rules' public key (Ed25519, 32 bytes as hex): `cargo xtask rules-key` makes the pair and
-/// prints this. Unset: only the built-in rules are used.
-pub const PUBLIC_KEY: Option<&str> = None;
+/// The rules' public key (Ed25519, 32 bytes as hex): `cargo xtask rules-key` made the pair (the
+/// private half is in the publisher's Keychain).
+pub const PUBLIC_KEY: Option<&str> = Some("a8bdd842fef6c26049fe19d7e7eef2d11f2dbb3b9a70df24493f22a1b98b9eb7");
 
-/// Where the newest rules are published (`LIGHTAIR_RULES_URL` overrides). Unset until there's a
-/// place to publish them.
-const ADDRESS: Option<&str> = None;
+/// Where the newest rules are published (`LIGHTAIR_RULES_URL` overrides): `rules/rules.json` in
+/// Lightair's public repository, with its `.sig` next to it.
+const ADDRESS: Option<&str> = Some("https://raw.githubusercontent.com/MoonGoblinDev/lightair/main/rules/rules.json");
 
 static DIR: OnceLock<PathBuf> = OnceLock::new();
 /// The newest verified rules (None: built-in only).
