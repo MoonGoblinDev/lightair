@@ -30,8 +30,9 @@ with what's known about each. Keep it current: strike items as they land.
   live program's comments with `LIGHTAIR_LIVE_CHECK=niconico:lv… cargo test -p lightair-live
   live_check`).
 - ~~**SOOP** subscriptions~~ (done: new, renewed, gifted; also ad, video and sub-broadcast
-  balloons, Quick View, OGQ and mission gifts; untested on a live stream). **YouTube** raids,
-  **Bilibili** emoticons (sent as `[name]` text now).
+  balloons, Quick View, OGQ and mission gifts; untested on a live stream). ~~**YouTube** raids~~
+  (done: its raid banner; YouTube gives no viewer count), ~~**Bilibili** emoticons~~ (done:
+  stickers and `[name]` emoticons drawn as images; untested on a live room).
 - **YouTube Private streams**: readable only signed in as the owner; Unlisted works from the
   stream's link. Could find the owner's own live (Private/Unlisted) through the signed-in
   session.
@@ -51,7 +52,8 @@ with what's known about each. Keep it current: strike items as they land.
 - Chat panel: ~~tabs per platform, reply to a message~~ (done); ~~moderation~~ (built: delete,
   10-minute timeout, ban with a second click; Twitch by typing `/delete`, `/timeout`, `/ban`
   into its chat box in a signed-in hidden page, Kick through its site's requests from one;
-  untested on a real chat. YouTube left.) Twitch's API (Helix) answers 404 to the site's
+  untested on a real chat. YouTube: bans and timeouts through the official sign-in; deleting a
+  message there isn't possible, its API numbers messages differently.) Twitch's API (Helix) answers 404 to the site's
   session; the Stream panel's Twitch edit now uses the dashboard's GraphQL mutation.
 
 ## Widgets

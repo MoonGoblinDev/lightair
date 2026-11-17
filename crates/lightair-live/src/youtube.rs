@@ -144,6 +144,21 @@ pub fn parse_action(action: &Value, channel: &str) -> Option<ChatEvent> {
     if let Some(del) = action.get("markChatItemsByAuthorAsDeletedAction") {
         return Some(ChatEvent::new("youtube", channel, Kind::Deletion { native_id: None, user_id: del["externalChannelId"].as_str().map(String::from) }));
     }
+    // another channel raiding: YouTube says so with a banner ("@name and their viewers just
+    // joined")
+    if let Some(r) = action["addBannerToLiveChatCommand"]["bannerRenderer"]["liveChatBannerRenderer"]["contents"].get("liveChatBannerRedirectRenderer") {
+        let text = yt_text(&r["bannerMessage"]);
+        let lower = text.to_lowercase();
+        if lower.contains("joined") || lower.contains("raid") {
+            let who = r["bannerMessage"]["runs"][0]["text"].as_str().unwrap_or("").trim().trim_start_matches('@').to_string();
+            let mut e = ChatEvent::new("youtube", channel, Kind::Raid { viewers: 0 });
+            e.user = Some(User { id: who.clone(), login: who.clone(), display_name: who, ..Default::default() });
+            e.headline = Some(text);
+            e.native_id = action["addBannerToLiveChatCommand"]["bannerRenderer"]["liveChatBannerRenderer"]["actionId"].as_str().map(String::from);
+            return Some(e);
+        }
+        return None;
+    }
     let item = &action["addChatItemAction"]["item"];
     let (kind, r) = item.as_object()?.iter().next()?;
     let mut e = match kind.as_str() {
@@ -298,6 +313,10 @@ mod tests {
             "id": "s1", "authorName": {"simpleText": "New"}, "headerSubtext": {"runs": [{"text": "Welcome to "}, {"text": "Members"}]}
         }}}});
         assert_eq!(parse_action(&member, "@x").unwrap().headline.as_deref(), Some("Welcome to Members"));
+        let raid = serde_json::json!({"addBannerToLiveChatCommand": {"bannerRenderer": {"liveChatBannerRenderer": {"actionId": "b1", "contents": {"liveChatBannerRedirectRenderer": {
+            "bannerMessage": {"runs": [{"text": "@Friendly Streamer"}, {"text": " and their viewers just joined. Say hello!"}]}}}}}}});
+        let r = parse_action(&raid, "x").unwrap();
+        assert_eq!((r.kind.clone(), r.name()), (Kind::Raid { viewers: 0 }, "Friendly Streamer"));
         let del = serde_json::json!({"markChatItemAsDeletedAction": {"targetItemId": "m1"}});
         assert_eq!(parse_action(&del, "@x").unwrap().kind, Kind::Deletion { native_id: Some("m1".into()), user_id: None });
     }

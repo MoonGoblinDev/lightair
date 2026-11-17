@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use tungstenite::Message;
 
-use crate::event::{ChatEvent, Kind, Paid, Status, User, text_fragments};
+use crate::event::{ChatEvent, Fragment, Kind, Paid, Status, User, text_fragments};
 use crate::hub::{Sink, sleep_unless};
 use crate::net;
 
@@ -111,6 +111,43 @@ fn who(name: &str, id: Option<u64>) -> User {
 }
 
 /// One message (by its `cmd`).
+/// A danmaku's text with its emoticons as images: a sticker sent on its own (`info[0][13]`), or
+/// `[name]` emoticons inside the text (`info[0][15].extra` names their images).
+fn emote_fragments(text: &str, meta: &Value) -> Vec<Fragment> {
+    let emote = |code: &str, v: &Value| -> Option<Fragment> {
+        let image = v["url"].as_str().filter(|u| !u.is_empty())?.replace("http://", "https://");
+        Some(Fragment::Emote { provider: "bilibili".into(), id: v["emoticon_unique"].as_str().unwrap_or(code).to_string(), code: code.to_string(), image })
+    };
+    if let Some(f) = emote(text, &meta[13]) {
+        return vec![f];
+    }
+    let extra: Value = meta[15]["extra"].as_str().and_then(|x| serde_json::from_str(x).ok()).unwrap_or(Value::Null);
+    let Some(emots) = extra["emots"].as_object().filter(|m| !m.is_empty()) else { return text_fragments(text) };
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('[') {
+        let Some(len) = rest[start..].find(']') else { break };
+        let code = &rest[start..start + len + 1];
+        match emots.get(code).and_then(|v| emote(code, v)) {
+            Some(f) => {
+                if start > 0 {
+                    out.extend(text_fragments(&rest[..start]));
+                }
+                out.push(f);
+                rest = &rest[start + len + 1..];
+            }
+            None => {
+                out.extend(text_fragments(&rest[..start + 1]));
+                rest = &rest[start + 1..];
+            }
+        }
+    }
+    if !rest.is_empty() {
+        out.extend(text_fragments(rest));
+    }
+    out
+}
+
 pub fn parse(m: &Value, channel: &str) -> Option<ChatEvent> {
     let cmd = m["cmd"].as_str()?;
     // "DANMU_MSG:4:0:2:2:2:0" and the like
@@ -122,7 +159,7 @@ pub fn parse(m: &Value, channel: &str) -> Option<ChatEvent> {
             let text = info[1].as_str()?;
             let mut e = ChatEvent::new("bilibili", channel, Kind::Message);
             e.user = Some(who(info[2][1].as_str().unwrap_or(""), info[2][0].as_u64()));
-            Some(e.with_fragments(text_fragments(text)))
+            Some(e.with_fragments(emote_fragments(text, &info[0])))
         }
         "SEND_GIFT" => {
             let n = d["num"].as_u64().unwrap_or(1);
@@ -181,6 +218,14 @@ mod tests {
         assert_eq!(out.len(), 2);
         let e = parse(&out[0], "x").unwrap();
         assert_eq!((e.text.as_str(), e.name()), ("你好", "观众"));
+        // emoticons inside the text, and a sticker on its own
+        let extra = json!({"emots": {"[dog]": {"url": "http://i0.hdslb.com/dog.png", "emoticon_unique": "emoji_1"}}}).to_string();
+        let m = json!({"cmd": "DANMU_MSG", "info": [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, "{}", 14, {"extra": extra}], "hi[dog]!", [42, "观众"]]});
+        let e = parse(&m, "x").unwrap();
+        assert_eq!(e.fragments.len(), 3);
+        assert!(matches!(&e.fragments[1], Fragment::Emote { image, code, .. } if image == "https://i0.hdslb.com/dog.png" && code == "[dog]"));
+        let sticker = json!({"cmd": "DANMU_MSG", "info": [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, {"url": "https://i0.hdslb.com/big.png", "emoticon_unique": "official_9"}], "赞", [42, "观众"]]});
+        assert!(matches!(&parse(&sticker, "x").unwrap().fragments[..], [Fragment::Emote { .. }]));
         let g = parse(&out[1], "x").unwrap();
         assert_eq!((g.kind, g.paid.unwrap().amount), (Kind::Paid, 2.0));
         assert_eq!(room("https://live.bilibili.com/21452505?from=x"), "21452505");
