@@ -32,6 +32,7 @@ mod object_props;
 mod canvas_text;
 mod colour_field;
 mod connections;
+mod console_panel;
 mod live_api;
 mod widget_props;
 mod menus;
@@ -372,6 +373,9 @@ pub struct StudioWindow {
     pan: (f32, f32),
     /// The performance panel under the FPS readout is open.
     perf_open: bool,
+    /// The devices connected now (looked at every few seconds) and whether the console is open.
+    connected: Option<crate::console::Connected>,
+    console_open: bool,
     /// macOS's camera effects as last set (`effects::sync_macos_effects`); `None` before the
     /// first look.
     macos_fx: Option<effects::MacosEffects>,
@@ -642,6 +646,8 @@ impl StudioWindow {
         cx.defer_in(window, |this, _, cx| {
             this.sync_remote(cx);
             this.load_connections(cx);
+            // what's connected (for the console): looked at every few seconds
+            this.watch_devices(cx);
         });
         Self {
             previews: HashMap::from([(primary, preview)]),
@@ -721,6 +727,8 @@ impl StudioWindow {
             pan: (0.0, 0.0),
             macos_fx: None,
             perf_open: false,
+            connected: None,
+            console_open: false,
             panning: None,
             space_down: false,
             sizes: RefCell::default(),
@@ -2796,9 +2804,6 @@ impl StudioWindow {
     fn title_bar(&self, workspace: &Workspace, width: f32, cx: &mut Context<Self>) -> impl IntoElement {
         let editor = self.place == Place::Editor;
         let studio = self.studio.read(cx);
-        let stats = studio.stats;
-        let recent_lagged = studio.recent_lagged;
-        let fps_color = if stats.active_fps > 0.0 && recent_lagged == 0 { tok::ok() } else { tok::warn() };
         let has_destination = workspace.outputs.destinations.iter().any(|d| d.enabled);
 
         let taking = studio.is_taking();
@@ -2915,7 +2920,6 @@ impl StudioWindow {
             .child(div().flex_1())
             // the Editor: undo, redo and export here; what records and streams only while it does
             .when(editor, |d| d.child(self.editor.update(cx, |e, cx| e.title_right(cx))))
-            .when(!editor, |d| d.child(self.performance(fps_color, compact, cx)))
             .when(!editor || streaming, |d| d.child(go_live))
             .children(recording_tools.filter(|_| !taking))
             .when(!editor || recording || taking, |d| d.child(record))
@@ -4432,7 +4436,7 @@ impl StudioWindow {
                 div()
                     .id("performance-panel")
                     .absolute()
-                    .top(px(30.))
+                    .bottom(px(30.))
                     .right_0()
                     .w(px(260.))
                     .p_3()
@@ -4469,6 +4473,7 @@ impl StudioWindow {
     fn status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let studio = self.studio.read(cx);
         let issue = studio.issue.clone();
+        let fps_color = if studio.stats.active_fps > 0.0 && studio.recent_lagged == 0 { tok::ok() } else { tok::warn() };
         div()
             .flex()
             .items_center()
@@ -4479,8 +4484,11 @@ impl StudioWindow {
             .border_color(tok::border())
             .text_size(px(11.))
             .text_color(tok::text_secondary())
+            .children(self.console_chip(cx))
             .children(issue.map(|i| div().child(i)))
             .child(div().flex_1())
+            // the frame rate and frame time (their details open upward)
+            .child(self.performance(fps_color, false, cx))
             .child(div().text_color(tok::text_tertiary()).child(concat!("Lightair ", env!("CARGO_PKG_VERSION"))))
     }
 }

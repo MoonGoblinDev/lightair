@@ -90,6 +90,8 @@ pub struct Slider {
     disabled: bool,
     accessibility_label: Option<SharedString>,
     reverse: bool,
+    /// Lightair patch: the value the fill starts from (a pan's centre), when set.
+    origin: Option<f32>,
 }
 
 impl Slider {
@@ -102,6 +104,7 @@ impl Slider {
             disabled: false,
             accessibility_label: None,
             reverse: false,
+            origin: None,
         }
     }
 
@@ -142,6 +145,14 @@ impl Slider {
         self.reverse = true;
         self
     }
+
+    /// Lightair patch: fills the track from `origin` (a value in the slider's range) to the
+    /// thumb, on whichever side it is: a pan or a trim fills outward from its centre. Single
+    /// values only; ignored for range sliders.
+    pub fn fill_from(mut self, origin: f32) -> Self {
+        self.origin = Some(origin);
+        self
+    }
 }
 
 impl Styled for Slider {
@@ -156,7 +167,15 @@ impl RenderOnce for Slider {
         let state = self.state.read(cx);
         let is_range = state.value().is_range();
         let percentage = state.percentage();
-        let (bar_start, bar_end) = if self.reverse && !is_range {
+        let centred = self.origin.filter(|_| !is_range).map(|o| {
+            let (min, max) = (state.min_value(), state.max_value());
+            if max > min { ((o - min) / (max - min)).clamp(0., 1.) } else { 0. }
+        });
+        let (bar_start, bar_end) = if let Some(o) = centred {
+            // from the origin to the thumb, on either side
+            let p = percentage.end;
+            (relative(o.min(p)), relative(1. - o.max(p)))
+        } else if self.reverse && !is_range {
             // Fill from the thumb to the max end (remaining side).
             (relative(percentage.end), relative(0.))
         } else {

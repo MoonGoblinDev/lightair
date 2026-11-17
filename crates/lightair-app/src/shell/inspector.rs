@@ -188,7 +188,9 @@ impl StudioWindow {
         } else if let Some(s) = sliders.get_mut(&key) {
             s.on_change = on_change;
         }
-        Slider::new(&sliders[&key].state)
+        let slider = Slider::new(&sliders[&key].state);
+        // a range around zero (pan, trim, bipolar effects): filled outward from the centre
+        if range.0 < 0. && range.1 > 0. { slider.fill_from(0.) } else { slider }
     }
 
     /// The Inspector for one object.

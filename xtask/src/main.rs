@@ -81,6 +81,12 @@ pub(crate) fn stream_deck_plugin(dest: &Path) -> anyhow::Result<()> {
     run(Command::new("/usr/bin/ditto").args(["-c", "-k", "--keepParent", "--norsrc", "--noextattr", "--noqtn"]).arg(root().join("streamdeck/app.lightair.sdPlugin")).arg(dest))
 }
 
+/// Where the CEF crate keeps its Chromium build: CEF_PATH (CI keeps it outside target/, cached on
+/// its own), else target/cef (.cargo/config.toml).
+fn cef_dir() -> PathBuf {
+    std::env::var_os("CEF_PATH").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| root().join("target/cef"))
+}
+
 /// The publisher's private release settings, from `release.env` at the repository's root (kept
 /// out of git: .gitignore): `KEY=value` lines, set for the build unless already set. Lightair's
 /// registered apps (LIGHTAIR_YOUTUBE_CLIENT_ID, …: compiled in, docs/official-apis.md) and
@@ -251,7 +257,7 @@ fn bundle(release: bool) -> anyhow::Result<()> {
 /// `copy`: the framework copied in (the shipped app) rather than linked; `id`: the app's bundle
 /// identifier, the helpers' prefix.
 fn bundle_chromium(root: &Path, app: &Path, profile: &str, copy: bool, id: &str) -> anyhow::Result<()> {
-    let framework = std::fs::read_dir(root.join("target/cef"))
+    let framework = std::fs::read_dir(cef_dir())
         .into_iter()
         .flatten()
         .flatten()
@@ -468,7 +474,7 @@ fn msvc_runtime() -> Option<PathBuf> {
 /// Windows: copies Chromium's runtime (CEF's Release folder and its Resources, as fetched
 /// into target/cef) into `dir`, where only what's changed is copied again.
 fn chromium_runtime(dir: &Path) -> anyhow::Result<()> {
-    let Some(cef) = std::fs::read_dir(root().join("target/cef"))
+    let Some(cef) = std::fs::read_dir(cef_dir())
         .into_iter()
         .flatten()
         .flatten()
@@ -943,8 +949,18 @@ fn test(args: Vec<String>) -> anyhow::Result<()> {
             expanded.push(bin);
             continue;
         }
-        let out = Command::new(&bin.exe).args(["--list", "--format", "terse"]).current_dir(&bin.dir).output()?;
-        anyhow::ensure!(out.status.success(), "{} --list failed", bin.name);
+        let mut list = Command::new(&bin.exe);
+        // (Windows: obs.dll through PATH, as when the tests run below)
+        if cfg!(windows) {
+            let path = std::env::var_os("PATH").unwrap_or_default();
+            let mut dirs = vec![obs_bin()];
+            dirs.extend(std::env::split_paths(&path));
+            if let Ok(joined) = std::env::join_paths(dirs) {
+                list.env("PATH", joined);
+            }
+        }
+        let out = list.args(["--list", "--format", "terse"]).current_dir(&bin.dir).output()?;
+        anyhow::ensure!(out.status.success(), "{} --list failed: {}", bin.name, String::from_utf8_lossy(&out.stderr).trim());
         for test in String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.strip_suffix(": test")) {
             if filter.as_deref().is_some_and(|f| !test.contains(f)) {
                 continue;

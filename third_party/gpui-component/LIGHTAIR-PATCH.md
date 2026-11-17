@@ -7,6 +7,7 @@ the tab group not to draw it as a cached view (the mixer: its cached strips besi
 overlay that moves 30 times a second; `src/dock/panel.rs`, `src/dock/tab_panel.rs`), and `Panel::transparent`, which lets a panel's
 tab group leave its background unpainted (the canvas, whose preview is drawn under the
 window's UI), and a transparent window's root leaves its background unpainted
-(`src/root.rs`). The
+(`src/root.rs`), and `Slider::fill_from`, a fill from a centre value to the thumb (pan, trim:
+`src/slider.rs`). The
 workspace uses it through
 `[patch.crates-io]` in the root `Cargo.toml`. Drop it once upstream offers the switch.

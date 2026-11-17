@@ -796,6 +796,16 @@ impl StudioWindow {
                 }
                 self.exec(lightair_core::Command::SetStripColor { strip: lightair_core::MixerStrip::Master, color: Some(0x30A46C) }, cx);
             }
+            Ok("console") => {
+                // the console open, the first track selected (its pan in the Inspector)
+                self.console_open = true;
+                let first = self.studio.read(cx).workspace().tracks.first().map(|t| t.id);
+                self.studio.update(cx, |s, cx| {
+                    s.selected_object = None;
+                    s.select_track(first);
+                    cx.notify();
+                });
+            }
             Ok("audio-template") => {
                 // the Streaming template (it changes no preferences), the mic selected
                 self.use_audio_template(lightair_core::templates::Template::Streaming, cx);

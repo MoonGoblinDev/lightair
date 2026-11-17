@@ -7,6 +7,7 @@ mod activity_panel;
 mod assets;
 mod automations_panel;
 mod browser_import;
+mod console;
 mod triggers;
 mod updater;
 mod camera_studio;

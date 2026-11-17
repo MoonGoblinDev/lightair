@@ -12,10 +12,18 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 120
+    env:
+      CEF_PATH: ${{ github.workspace }}/cef
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # Chromium (CEF), outside target/ so the Rust cache can't leave half of it behind
+      - name: CEF cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/cef
+          key: cef-156.0.28-${{ runner.os }}
 
       # libobs as OBS releases it: OBS 33.0.0's official Windows build, the version the bindings
       # come from (third_party/obs-studio, unmodified), installed on this build machine only.
@@ -56,10 +64,18 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 60
+    env:
+      CEF_PATH: ${{ github.workspace }}/cef
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # Chromium (CEF), outside target/ so the Rust cache can't leave half of it behind
+      - name: CEF cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/cef
+          key: cef-156.0.28-${{ runner.os }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
