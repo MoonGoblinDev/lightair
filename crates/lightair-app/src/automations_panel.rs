@@ -51,6 +51,7 @@ fn fields(a: &Automation) -> Vec<(String, &'static str, bool)> {
             f.push(("trigger.number".into(), "Which note or control (−1: any)", true));
             f.push(("trigger.channel".into(), "Channel (1–16, 0: any)", true));
         }
+        Trigger::Voice { .. } => f.push(("trigger.phrase".into(), "Phrase (said into your microphone)", false)),
         Trigger::Controller { .. } => f.push(("trigger.button".into(), "Button (South, East, Start, DPadUp, LeftTrigger…; empty: any)", false)),
         Trigger::Manual | Trigger::Output { .. } | Trigger::Start => {}
     }
@@ -533,6 +534,7 @@ impl AutomationsPanel {
                 ("A MIDI pad or key", Trigger::Midi { message: "note".into(), number: -1, channel: 0 }),
                 ("A MIDI knob or fader", Trigger::Midi { message: "cc".into(), number: -1, channel: 0 }),
                 ("A game controller button", Trigger::Controller { button: "South".into() }),
+                ("A phrase you say", Trigger::Voice { phrase: "clip that".into() }),
                 ("Only by hand", Trigger::Manual),
             ];
             for (label, t) in options {

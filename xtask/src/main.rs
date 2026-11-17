@@ -80,6 +80,30 @@ pub(crate) fn stream_deck_plugin(dest: &Path) -> anyhow::Result<()> {
     run(Command::new("/usr/bin/ditto").args(["-c", "-k", "--keepParent", "--norsrc", "--noextattr", "--noqtn"]).arg(root().join("streamdeck/app.lightair.sdPlugin")).arg(dest))
 }
 
+/// The speech helper for voice-phrase automations (tools/speech, Swift: Apple's speech
+/// recognition), built once into target/ and copied to `dest`. macOS only; without Swift it's
+/// left out (voice phrases then say so).
+pub(crate) fn speech_helper(dest: &Path) -> anyhow::Result<()> {
+    if !cfg!(target_os = "macos") {
+        return Ok(());
+    }
+    let src = root().join("tools/speech/main.swift");
+    let built = root().join("target/lightair-speech");
+    let stale = match (std::fs::metadata(&src).and_then(|m| m.modified()), std::fs::metadata(&built).and_then(|m| m.modified())) {
+        (Ok(s), Ok(b)) => s > b,
+        _ => true,
+    };
+    if stale {
+        let ok = Command::new("swiftc").args(["-O", "-suppress-warnings"]).arg(&src).arg("-o").arg(&built).status().is_ok_and(|s| s.success());
+        if !ok {
+            eprintln!("left out the speech helper (no Swift compiler): voice-phrase automations won't hear");
+            return Ok(());
+        }
+    }
+    std::fs::copy(&built, dest)?;
+    Ok(())
+}
+
 fn modules() -> anyhow::Result<()> {
     let root = root();
     for entry in std::fs::read_dir(root.join("modules"))? {
@@ -123,7 +147,7 @@ const INFO_PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 	<key>NSBluetoothAlwaysUsageDescription</key><string>Signing in to a platform with a passkey on your phone uses Bluetooth to reach it.</string>
 	<key>NSLocationUsageDescription</key><string>A web page in Lightair asked where you are.</string>
 	<key>NSLocationWhenInUseUsageDescription</key><string>A web page in Lightair asked where you are.</string>
-	<key>NSSpeechRecognitionUsageDescription</key><string>A web page in Lightair asked to recognise speech.</string>
+	<key>NSSpeechRecognitionUsageDescription</key><string>Lightair listens for the phrases your automations run on (on this Mac where the language allows), and web pages in Lightair may ask to recognise speech.</string>
 	<key>NSAppleEventsUsageDescription</key><string>Lightair asks Spotify and Music what's playing, for the Now playing widget.</string>
 	<key>NSLocalNetworkUsageDescription</key><string>Lightair finds network video sources and serves the remote control API.</string>
 </dict>
@@ -158,6 +182,7 @@ fn bundle(release: bool) -> anyhow::Result<()> {
         std::fs::copy(icns, app.join("Resources/Lightair.icns"))?;
     }
     stream_deck_plugin(&app.join("Resources/Lightair.streamDeckPlugin"))?;
+    speech_helper(&app.join("MacOS/lightair-speech"))?;
     for (from, to) in
         [(obs.join("Contents/Frameworks"), app.join("Frameworks")), (obs.join("Contents/PlugIns"), app.join("PlugIns"))]
     {

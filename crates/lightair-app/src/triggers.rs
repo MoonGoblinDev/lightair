@@ -12,6 +12,8 @@ pub fn watch(a: Automations) {
     let _ = std::thread::Builder::new().name("lightair-trigger-files".into()).spawn(move || watch_files(files));
     let midi = a.clone();
     let _ = std::thread::Builder::new().name("lightair-trigger-midi".into()).spawn(move || watch_midi(midi));
+    let voice = a.clone();
+    let _ = std::thread::Builder::new().name("lightair-trigger-voice".into()).spawn(move || watch_voice(voice));
     let _ = std::thread::Builder::new().name("lightair-trigger-controllers".into()).spawn(move || watch_controllers(a));
 }
 
@@ -123,6 +125,77 @@ fn watch_controllers(a: Automations) {
     }
 }
 
+/// Normalised for matching: lowercase words, no punctuation.
+pub fn words(text: &str) -> String {
+    text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The phrases newly heard in `heard` (whole words), not yet `fired` in this utterance.
+pub fn newly_said<'a>(phrases: &'a [String], heard: &str, fired: &mut Vec<String>) -> Vec<&'a str> {
+    let text = format!(" {} ", words(heard));
+    let mut out = Vec::new();
+    for p in phrases {
+        let want = format!(" {} ", words(p));
+        let times = text.matches(&want).count();
+        let before = fired.iter().filter(|f| *f == p).count();
+        if times > before {
+            fired.push(p.clone());
+            out.push(p.as_str());
+        }
+    }
+    out
+}
+
+/// Voice phrases: Apple's speech recognition (the bundled `lightair-speech` helper, next to
+/// Lightair) while an automation listens for one. macOS only for now.
+fn watch_voice(a: Automations) {
+    use std::io::BufRead;
+    loop {
+        std::thread::sleep(Duration::from_secs(3));
+        if !cfg!(target_os = "macos") || !a.wants("voice") {
+            continue;
+        }
+        let Some(helper) = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join("lightair-speech"))).filter(|p| p.exists()) else {
+            tracing::warn!("voice phrases: the speech helper isn't in this build");
+            std::thread::sleep(Duration::from_secs(60));
+            continue;
+        };
+        let child = std::process::Command::new(&helper).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).spawn();
+        let Ok(mut child) = child else { continue };
+        let Some(out) = child.stdout.take() else { continue };
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        let mut fired = Vec::new();
+        loop {
+            match rx.recv_timeout(Duration::from_secs(3)) {
+                Ok(line) => {
+                    if let Some(text) = line.strip_prefix("TEXT ") {
+                        let phrases = a.voice_phrases();
+                        for p in newly_said(&phrases, text, &mut fired) {
+                            a.said(p, text);
+                        }
+                    } else if line == "DONE" {
+                        fired.clear();
+                    } else if let Some(why) = line.strip_prefix("ERROR ") {
+                        tracing::warn!(%why, "voice phrases");
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if a.wants("voice") => {}
+                // nothing listens any more, or the helper ended
+                _ => break,
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -132,5 +205,20 @@ mod tests {
         assert_eq!(super::midi_message(&[0x90, 36, 0]), None);
         assert_eq!(super::midi_message(&[0xb1, 7, 64]), Some(("cc", 2, 7, 64)));
         assert_eq!(super::midi_message(&[0xf8]), None);
+    }
+
+    #[test]
+    fn phrases_fire_once_per_saying() {
+        let phrases = vec!["scene two".to_string(), "clip that".to_string()];
+        let mut fired = Vec::new();
+        assert!(super::newly_said(&phrases, "okay", &mut fired).is_empty());
+        assert_eq!(super::newly_said(&phrases, "okay clip", &mut fired), Vec::<&str>::new());
+        assert_eq!(super::newly_said(&phrases, "okay clip that", &mut fired), vec!["clip that"]);
+        // the same utterance, longer: not again
+        assert!(super::newly_said(&phrases, "okay clip that please", &mut fired).is_empty());
+        // said again in it: again
+        assert_eq!(super::newly_said(&phrases, "okay clip that please, Clip that!", &mut fired), vec!["clip that"]);
+        // whole words only
+        assert!(super::newly_said(&phrases, "scene twofold", &mut Vec::new()).is_empty());
     }
 }

@@ -431,6 +431,7 @@ impl Automations {
                 | Trigger::Hotkey { .. }
                 | Trigger::File { .. }
                 | Trigger::Midi { .. }
+                | Trigger::Voice { .. }
                 | Trigger::Controller { .. } => continue,
             };
             if !fires || !self.cooled(&a, e) {
@@ -505,7 +506,9 @@ impl Automations {
 
     /// Whether any automation listens to MIDI / game controllers (devices are opened only then).
     pub fn wants(&self, what: &str) -> bool {
-        self.list().iter().any(|a| a.enabled && matches!((&a.trigger, what), (Trigger::Midi { .. }, "midi") | (Trigger::Controller { .. }, "controller")))
+        self.list().iter().any(|a| {
+            a.enabled && matches!((&a.trigger, what), (Trigger::Midi { .. }, "midi") | (Trigger::Controller { .. }, "controller") | (Trigger::Voice { .. }, "voice"))
+        })
     }
 
     /// `path` changed; `text`: what it holds now (the start of it).
@@ -520,6 +523,27 @@ impl Automations {
             |t| matches!(t, Trigger::Midi { message, number: n, channel: c } if message == kind && (*n < 0 || *n == number as i32) && (*c == 0 || *c == channel)),
             json!({"midi": {"kind": kind, "channel": channel, "number": number, "value": value, "device": device}}),
             &format!("MIDI {kind} {number}"),
+        );
+    }
+
+    /// The phrases automations listen for (lowercase).
+    pub fn voice_phrases(&self) -> Vec<String> {
+        self.list()
+            .into_iter()
+            .filter(|a| a.enabled)
+            .filter_map(|a| match a.trigger {
+                Trigger::Voice { phrase } if !phrase.trim().is_empty() => Some(phrase.trim().to_lowercase()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `phrase` was said (`heard`: the whole utterance).
+    pub fn said(&self, phrase: &str, heard: &str) {
+        self.signal(
+            |t| matches!(t, Trigger::Voice { phrase: p } if p.trim().eq_ignore_ascii_case(phrase)),
+            json!({"voice": {"phrase": phrase, "heard": heard}}),
+            &format!("You said “{phrase}”"),
         );
     }
 

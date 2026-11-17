@@ -71,8 +71,10 @@ with what's known about each. Keep it current: strike items as they land.
 
 - Triggers: ~~stream/recording start and stop, app start, a web address per automation~~ (done);
   ~~hotkeys~~ (done, untested by pressing); ~~MIDI, game controllers, file changes~~ (done:
-  triggers.rs; files tested end to end, MIDI and controllers without a device here); voice
-  phrases left (needs live on-device recognition: whisper here transcribes files only).
+  triggers.rs; files tested end to end, MIDI and controllers without a device here);
+  ~~voice phrases~~ (done on macOS: Apple's speech recognition in the bundled `lightair-speech`
+  helper, on the Mac where the language allows; untested by speaking: it asks for the
+  microphone and speech recognition the first time. Windows left).
 - ~~Platform steps~~ (built on the official APIs: change the title or category on any platform
   signed in officially; on Twitch ads, polls, predictions, raids, shoutouts, clips, markers;
   untested until an app is registered). Rewards management left.

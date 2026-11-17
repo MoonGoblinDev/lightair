@@ -105,6 +105,8 @@ pub enum Trigger {
         #[serde(default)]
         channel: u8,
     },
+    /// You say `phrase` (heard by the microphone, recognised on this computer where it can be).
+    Voice { phrase: String },
     /// A game controller's button ("South", "Start", "DPadUp", …; empty: any).
     Controller {
         #[serde(default)]
@@ -219,6 +221,7 @@ impl Trigger {
                 let which = if *number < 0 { "any".to_string() } else { number.to_string() };
                 if *channel == 0 { format!("{what} {which}") } else { format!("{what} {which} (channel {channel})") }
             }
+            Trigger::Voice { phrase } => format!("When you say “{phrase}”"),
             Trigger::Controller { button } => {
                 if button.is_empty() { "Any controller button".into() } else { format!("Controller {button}") }
             }

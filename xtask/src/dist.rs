@@ -93,6 +93,7 @@ fn build() -> anyhow::Result<()> {
     std::fs::copy(root.join("branding/final/icon/Lightair.icns"), c.join("Resources/Lightair.icns"))?;
     std::fs::copy(root.join("branding/final/icon/lightair-icon-512.png"), c.join("Resources/lightair-icon-512.png"))?;
     crate::stream_deck_plugin(&c.join("Resources/Lightair.streamDeckPlugin"))?;
+    crate::speech_helper(&c.join("MacOS/lightair-speech"))?;
 
     // libobs, its graphics backends and mux helper, the modules Lightair loads
     let obs_frameworks = obs.join("Contents/Frameworks");
