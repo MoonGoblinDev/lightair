@@ -1,4 +1,4 @@
-//! Camera Studio's data for the effect stack (docs/plans/effects-revamp.md): the module bundle and
+//! The effect stack's data (docs/plans/effects-revamp.md): the module bundle and
 //! its preset collections (makeup looks, stickers, lights, grades, ambience, motion). The face effects themselves are in the
 //! catalog (`lightair_core::catalog`); the engine merges them into one `lightair_camera_studio`
 //! filter.
@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 /// The libobs filter all face effects run on.
 pub const KIND: &str = catalog::STUDIO_FILTER;
 
-/// Where the Camera Studio module bundle lives: the app's own `Contents/PlugIns` (the shipped
-/// app, `cargo xtask dist`), or `target/modules/lightair-camera-fx` in development (found from
+/// Where the Lightair Effect Stack module bundle lives: the app's own `Contents/PlugIns` (the shipped
+/// app, `cargo xtask dist`), or `target/modules/lightair-effect-stack` in development (found from
 /// the executable, also inside the development `Lightair.app`).
 pub fn plugin_dir() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
@@ -24,15 +24,15 @@ pub fn plugin_dir() -> Option<PathBuf> {
     // the shipped Windows app: OBS's layout, `bin\64bit\lightair.exe` and `obs-plugins\64bit`
     if cfg!(windows) {
         let shipped = exe.parent()?.parent()?.parent()?.join("obs-plugins").join("64bit");
-        if shipped.join("lightair-camera-fx.dll").exists() {
+        if shipped.join("lightair-effect-stack.dll").exists() {
             return Some(shipped);
         }
     }
     // macOS: the .plugin bundle; Windows: OBS's layout (obs-plugins/64bit, data/obs-plugins)
     let (dir, module) = if cfg!(windows) {
-        ("modules/lightair-camera-fx/obs-plugins/64bit", "lightair-camera-fx.dll")
+        ("modules/lightair-effect-stack/obs-plugins/64bit", "lightair-effect-stack.dll")
     } else {
-        ("modules/lightair-camera-fx", "lightair-camera-fx.plugin")
+        ("modules/lightair-effect-stack", "lightair-effect-stack.plugin")
     };
     exe.ancestors().map(|a| a.join(dir)).find(|dir| dir.join(module).exists())
 }
@@ -42,16 +42,16 @@ pub fn plugin_dir() -> Option<PathBuf> {
 pub fn bundled_plugins() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let plugins = exe.parent()?.parent()?.join("PlugIns");
-    (cfg!(target_os = "macos") && plugins.join("lightair-camera-fx.plugin").exists()).then_some(plugins)
+    (cfg!(target_os = "macos") && plugins.join("lightair-effect-stack.plugin").exists()).then_some(plugins)
 }
 
 /// The module's data folder (presets, shaders, models).
 fn data_dir() -> Option<PathBuf> {
     let dir = plugin_dir()?;
     Some(if cfg!(windows) {
-        dir.parent()?.parent()?.join("data/obs-plugins/lightair-camera-fx")
+        dir.parent()?.parent()?.join("data/obs-plugins/lightair-effect-stack")
     } else {
-        dir.join("lightair-camera-fx.plugin/Contents/Resources")
+        dir.join("lightair-effect-stack.plugin/Contents/Resources")
     })
 }
 

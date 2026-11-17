@@ -132,7 +132,7 @@ Official Elgato Stream Deck plugin with dynamic key images (live scene thumbnail
 | Go live, record, pause, clip, marker, screenshot | |
 | Replay controls, media controls | Play, pause, seek, restart, next |
 | Widget controls | Timer start/stop/add, counter ±, wheel spin, confetti |
-| Camera Studio | Apply look (face thumbnail), background blur toggle, intensity dial |
+| Lightair Effect Stack | Apply look (face thumbnail), background blur toggle, intensity dial |
 | Run macro | |
 | Privacy cut, mute all | |
 

@@ -109,7 +109,7 @@ Respect "Reduce motion": everything becomes a cross-fade or instant.
 ### Iconography
 
 - **Lucide** (bundled by gpui-kit) as the base set, 16 px default, 1.5 px stroke.
-- Lightair-specific glyphs drawn to the same grid: layer types (counter, chat, phone camera), effect categories, Camera Studio tabs, platform marks (official assets, unmodified).
+- Lightair-specific glyphs drawn to the same grid: layer types (counter, chat, phone camera), effect categories, Lightair Effect Stack tabs, platform marks (official assets, unmodified).
 - Status glyphs pair colour with shape (⚠ triangle, ● dot, ✕) so state never relies on colour alone.
 
 ## Themes
@@ -136,7 +136,7 @@ Custom components built on gpui-base. Each has a spec covering anatomy, states, 
 | `OutputRow` | Platform icon, account/destination name, format badge, live toggle, health dot, bitrate sparkline when live. |
 | `HealthStrip` | Title-bar cluster: overall health ring, disk, FPS, CPU; click opens Stats. |
 | `PrimaryAction` | Go Live / Record / Clip buttons with idle, armed, active, stopping and error states plus elapsed time. Go Live: `accent.primary` when idle, `state.live` with a white label and timer while live. Record: outlined, with a red dot and timer while recording. Clip: outlined |
-| `LookTile` | Camera Studio thumbnail rendered from the user's own camera, with intensity ring and selected state. |
+| `LookTile` | Lightair Effect Stack thumbnail rendered from the user's own camera, with intensity ring and selected state. |
 | `TimecodeLabel` | Tabular mono timer with colour by state. |
 | `CurveEditor` | Bézier curves for colour grading and easing; shared by effects and transitions. |
 | `GradientPicker`, `ColorPicker` | HSV/RGB/hex with eyedropper (samples from the canvas), saved swatches. |
@@ -147,7 +147,7 @@ Custom components built on gpui-base. Each has a spec covering anatomy, states, 
 - **Inline over modal**: properties edit in the Inspector or in popovers anchored to what you clicked.
 - **Progressive disclosure**: rows show essentials; hover reveals actions; "Edit" expands detail; the command palette reaches everything.
 - **Immediate apply with undo**: no "OK/Apply/Cancel". Changes apply live; undo reverts.
-- **Presets everywhere**: every effect and Camera Studio section has built-in presets and "Save as preset".
+- **Presets everywhere**: every effect and Lightair Effect Stack section has built-in presets and "Save as preset".
 - **Empty states teach**: an empty Layers panel shows the three most likely layers for this scene type as buttons.
 - **Errors are actionable**: every error states what happened and offers the fix as a button.
 

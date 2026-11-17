@@ -1,5 +1,5 @@
 // Shared by every clip effect in fx.wgsl (prepended by fx.rs). A port of
-// modules/lightair-camera-fx/data/fx/common.inc.
+// modules/lightair-effect-stack/data/fx/common.inc.
 //
 // An effect `name` (the catalog's "fx.name") is one pass, `fs_name_0`, or several,
 // `fs_name_0`, `fs_name_1`, … run in order: each reads `image` (the input, or the previous

@@ -38,8 +38,8 @@ fn the_tracker_finds_the_face() {
         eprintln!("LIGHTAIR_FACE_IMAGE not set; skipping");
         return;
     };
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-camera-fx");
-    if !dir.join("lightair-camera-fx.plugin").exists() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-effect-stack");
+    if !dir.join("lightair-effect-stack.plugin").exists() {
         eprintln!("module not built; skipping");
         return;
     }
@@ -53,7 +53,7 @@ fn the_tracker_finds_the_face() {
     let mut doc = Document::new(Workspace::new("Face"));
     let f = doc.workspace().primary_canvas().id;
     let mut source = Source::new("Face", "image_source", json!({"file": image.to_string_lossy()}));
-    let mut studio = Effect::new("Camera Studio", "lightair_camera_studio", json!({"debug_view": 2}));
+    let mut studio = Effect::new("Lightair Effect Stack", "lightair_camera_studio", json!({"debug_view": 2}));
     studio.enabled = false;
     let eid = studio.id;
     source.effects.push(studio);
@@ -112,8 +112,8 @@ fn the_background_is_replaced_around_the_person() {
         eprintln!("LIGHTAIR_FACE_IMAGE not set; skipping");
         return;
     };
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-camera-fx");
-    if !dir.join("lightair-camera-fx.plugin").exists() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-effect-stack");
+    if !dir.join("lightair-effect-stack.plugin").exists() {
         eprintln!("module not built; skipping");
         return;
     }
@@ -172,7 +172,7 @@ fn the_background_is_replaced_around_the_person() {
     }
 
     // Blur keeps the background's own colours: nothing red.
-    // (one face effect for another: the same Camera Studio filter, updated in place)
+    // (one face effect for another: the same Lightair Effect Stack filter, updated in place)
     let blur = Effect::new("Blur", "studio.bg_blur", json!({"bg_blur": 80}));
     apply(&engine, &mut doc, Command::AddSourceEffect { source: iid, effect: blur, index: None });
     apply(&engine, &mut doc, Command::RemoveSourceEffect { source: iid, effect: eid });
@@ -199,8 +199,8 @@ fn background_edges_hold_still() {
     if std::env::var("LIGHTAIR_FACE_EXPECTED").is_ok_and(|v| v == "0") {
         return;
     }
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-camera-fx");
-    if !dir.join("lightair-camera-fx.plugin").exists() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-effect-stack");
+    if !dir.join("lightair-effect-stack.plugin").exists() {
         eprintln!("module not built; skipping");
         return;
     }
@@ -300,8 +300,8 @@ fn background_edges_steady_in_motion() {
     if std::env::var("LIGHTAIR_FACE_EXPECTED").is_ok_and(|v| v == "0") {
         return;
     }
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-camera-fx");
-    if !dir.join("lightair-camera-fx.plugin").exists() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-effect-stack");
+    if !dir.join("lightair-effect-stack.plugin").exists() {
         eprintln!("module not built; skipping");
         return;
     }

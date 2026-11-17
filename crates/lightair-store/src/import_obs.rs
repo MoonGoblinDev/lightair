@@ -129,9 +129,9 @@ const CORE_FILTERS: &[&str] = &[
 
 /// Filters Lightair replaces with built-in features: (OBS id, Lightair kind or None, what).
 const REPLACED_FILTERS: &[(&str, Option<&str>, &str)] = &[
-    ("obs_beauty_filter", Some("lightair_camera_studio"), "Dewy → Camera Studio"),
-    ("background_removal", None, "Background removal → Camera Studio background (coming)"),
-    ("vision_background_removal_filter", None, "Background removal → Camera Studio background (coming)"),
+    ("obs_beauty_filter", Some("lightair_camera_studio"), "Dewy → Effects"),
+    ("background_removal", None, "Background removal → Effects background (coming)"),
+    ("vision_background_removal_filter", None, "Background removal → Effects background (coming)"),
 ];
 
 /// Sources with no picture: in a scene they become mixer tracks, not objects.
@@ -262,7 +262,7 @@ fn effects_of(source: &Value, report: &mut ImportReport) -> Vec<Effect> {
             match to {
                 Some(kind) => {
                     let mut e = Effect::new(name_of(f), *kind, f["settings"].clone());
-                    e.name = "Camera Studio".into();
+                    e.name = "Effects".into();
                     e.enabled = enabled;
                     out.push(e);
                     report.replaced.push(format!("{label}: {what}"));

@@ -1,5 +1,5 @@
 // Core ML plumbing for the macOS build (Objective-C++ only): compiled models (.mlmodelc, made
-// from data/models/coreml/*.mlpackage at build time) are loaded once and shared by every Camera Studio
+// from data/models/coreml/*.mlpackage at build time) are loaded once and shared by every Lightair Effect Stack
 // filter; each user has its own BGRA input buffer and results.
 #pragma once
 

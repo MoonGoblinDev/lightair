@@ -199,7 +199,7 @@ Lightair runs on Metal with `LIGHTAIR_GRAPHICS=metal`: the preview's frames are 
 by libobs into IOSurfaces (on OpenGL they're converted to NV12), and the views GPUI draws (the
 program monitor, display thumbnails, the Library player) get an NV12 copy made by VideoToolbox,
 once per frame and only when one of them is showing. All 20 preview tests pass on both
-renderers. Camera Studio's green key didn't compile on Metal: libobs's Metal shader converter
+renderers. Lightair Effect Stack's green key didn't compile on Metal: libobs's Metal shader converter
 breaks a call to a function with no arguments that reads a uniform (`f()` becomes
 `f(, uniforms)`), so the helper takes its value as an argument now.
 

@@ -81,7 +81,7 @@ lightair-app ──────────────────────�
 
 **Feature crates** (`lightair-features/*`) each own one area of the UI and depend only on `lightair-ui`, `lightair-core` (types + command constructors) and a read-only telemetry interface. They never depend on `lightair-engine`:
 
-`layers`, `scenes`, `canvas`, `mixer`, `outputs`, `inspector`, `camera-studio`, `chat`, `activity`, `clips`, `settings`, `onboarding`, `multiview`, `stats`.
+`layers`, `scenes`, `canvas`, `mixer`, `outputs`, `inspector`, `effect-stack`, `chat`, `activity`, `clips`, `settings`, `onboarding`, `multiview`, `stats`.
 
 **Native modules** (`lightair-modules/*`) are libobs plugins built in-tree and loaded from the app bundle like OBS's core plugins:
 
@@ -89,7 +89,7 @@ lightair-app ──────────────────────�
 |---|---|
 | `lightair-sources` | Text (rich), Counter/Timer/Countdown, Shapes, Chat overlay, Alerts overlay, Color/Gradient, Clone (layer reference), Image slideshow, Phone camera receiver |
 | `lightair-video-fx` | The full video effect catalog ([08 · Effects](08-video-effects.md)), Lightair transitions (Move/Morph, wipes, stinger with matte) |
-| `lightair-camera-fx` | The face-aware Camera Studio pipeline (beauty, reshape, makeup, AR, atmosphere, relight, background) ([09 · Camera Studio](09-camera-studio.md)) |
+| `lightair-effect-stack` | The face-aware Lightair Effect Stack pipeline (beauty, reshape, makeup, AR, atmosphere, relight, background) ([09 · Lightair Effect Stack](09-effect-stack.md)) |
 | `lightair-audio-fx` | Voice Clarity, noise suppression, gate, compressor, limiter, EQ, de-esser, ducking, reverb, delay, plugin host bridge ([10 · Audio](10-audio.md)) |
 | `lightair-capture-mac` / `-win` | Capture improvements where OBS's are insufficient: per-app audio via ScreenCaptureKit/WASAPI process loopback, Continuity Camera handling |
 | `lightair-outputs` | Multistream coordinator helpers, clip/replay writer, ISO recorder, NDI/SRT/WHIP glue where not upstream |
@@ -117,7 +117,7 @@ UI gesture ─► Command ─► Core: validate + apply ─► new Document snap
 - **Snapshots** are immutable, structurally shared (`Arc` + persistent collections). The UI holds the latest snapshot; diffing two snapshots is cheap pointer comparison.
 - **Patches** are the minimal change set produced by applying a command. The engine's **reconciler** maps patches onto libobs operations (create source, set settings, reorder scene item, …).
 - **Coalescing.** Continuous gestures (dragging a fader or a layer) send high-rate commands that the core coalesces into one undo entry when the gesture ends. During the gesture, the engine receives "live" patches so the audience sees motion in real time.
-- **Transactions.** Multi-step operations (paste 5 layers, apply a template, apply a Camera Studio look) are one command and one undo entry.
+- **Transactions.** Multi-step operations (paste 5 layers, apply a template, apply a Lightair Effect Stack look) are one command and one undo entry.
 
 ### libobs is not the source of truth
 

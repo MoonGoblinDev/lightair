@@ -42,8 +42,8 @@ jobs:
           OBS_DIR: C:\obs
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      # Camera Studio on ONNX Runtime + DirectML (its test is skipped when it isn't built)
-      - name: Camera Studio module
+      # Lightair Effect Stack on ONNX Runtime + DirectML (its test is skipped when it isn't built)
+      - name: Lightair Effect Stack module
         env:
           OBS_DIR: C:\obs
         run: cargo xtask modules

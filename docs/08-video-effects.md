@@ -6,7 +6,7 @@ Video effects are GPU shaders that run inside libobs as filters (the `lightair-v
 
 | Attach point | Applies to | Typical use |
 |---|---|---|
-| **Input** | Every layer that uses this input, in every scene | Colour-correct a camera, Camera Studio, chroma key a green screen |
+| **Input** | Every layer that uses this input, in every scene | Colour-correct a camera, Lightair Effect Stack, chroma key a green screen |
 | **Layer** | This layer in this scene and format | Drop shadow, corner glow, blur behind a panel |
 | **Group** | The composited group | Shadow behind a camera + frame group |
 | **Scene** | The whole scene (as a nested scene or program) | "Dream" grade for a segment |

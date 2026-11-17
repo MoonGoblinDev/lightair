@@ -33,7 +33,7 @@ This document defines the app's structure on screen and how people move through 
 | **Left column** | **Layers** (top) for the current scene; **Scenes / Templates** (bottom), split with a draggable divider | Visible |
 | **Centre** | **Canvas** with format tabs; **Audio Mixer** below, collapsible to a slim meter strip | Visible |
 | **Right column** | Context panel switched by the **activity rail**: Outputs, Inspector, Chat, Activity, Stats | Outputs + Inspector |
-| **Activity rail** | Icons switching the right column: Outputs ◇, Inspector ☰, Chat 💬, Activity ⚡ (events, alerts, issues), Camera Studio ✦, Settings ⚙, Account | Visible |
+| **Activity rail** | Icons switching the right column: Outputs ◇, Inspector ☰, Chat 💬, Activity ⚡ (events, alerts, issues), Lightair Effect Stack ✦, Settings ⚙, Account | Visible |
 | **Status bar** | Issues, timers, file size, bitrate, dropped frames, version, command palette hint | Visible |
 
 The whole layout is a **gpui-kit dock layout**: every panel can be resized, collapsed, rearranged, tabbed together, or popped out to its own window (Chat and Multiview are the common pop-outs). Layouts are saved per project and per display configuration, with named **Workspaces**: *Edit* (large inspector), *Live* (large chat and activity, compact mixer), *Minimal* (canvas + primary actions only). Switching workspace never changes the show, only the window.
@@ -52,7 +52,7 @@ The whole layout is a **gpui-kit dock layout**: every panel can be resized, coll
 
 ### Layers
 
-- Rows show type icon, name, inline status badges (missing device ⚠, live audio, Camera Studio ✦ on), and on hover: visibility 👁, lock 🔒, and a quick-effects button.
+- Rows show type icon, name, inline status badges (missing device ⚠, live audio, Lightair Effect Stack ✦ on), and on hover: visibility 👁, lock 🔒, and a quick-effects button.
 - Drag to reorder; drag onto another layer to group; drag from Finder/Explorer to add media.
 - Multi-select with ⇧/⌘; selection is shared with the canvas.
 - Double-click renames. Right-click gives the full layer menu (also available via the command palette).
@@ -91,9 +91,9 @@ Context-sensitive properties for the current selection: layer (transform, crop, 
 
 Unified multi-platform chat with moderation actions; Activity shows follows, subs, raids, donations, alerts, markers, clips and issues in one timeline. See [12 · Chat, Alerts & Integrations](12-chat-alerts-integrations.md).
 
-### Camera Studio
+### Lightair Effect Stack
 
-The beauty and camera look workspace. It opens as a right-column panel when a camera layer is selected (✦ on the rail), or full-height for deep editing. See [09 · Camera Studio](09-camera-studio.md).
+The beauty and camera look workspace. It opens as a right-column panel when a camera layer is selected (✦ on the rail), or full-height for deep editing. See [09 · Lightair Effect Stack](09-effect-stack.md).
 
 ### Plugin panels
 
@@ -119,7 +119,7 @@ Because the canvas is live by default (outside studio mode), editing has guard r
 
 1. **Welcome**: choose a starting point: *Streaming*, *Recording*, *Podcast*, *Import from OBS*.
 2. **Permissions**: one screen explaining camera, microphone, screen recording and (optional) accessibility/input monitoring for global hotkeys, with buttons that trigger each OS prompt and live status ticks.
-3. **Devices**: camera with live preview (and a Camera Studio look picker), microphone with a level meter and an automatic Voice Clarity calibration (record 5 s of speech, 5 s of silence), display selection.
+3. **Devices**: camera with live preview (and a Lightair Effect Stack look picker), microphone with a level meter and an automatic Voice Clarity calibration (record 5 s of speech, 5 s of silence), display selection.
 4. **Destinations**: sign in to platforms (optional), or skip.
 5. **Starter scenes**: generated from the choices above (Starting Soon, Main, BRB, Ending) using built-in templates.
 6. **Auto-config**: a bandwidth and encoder test proposes resolution, FPS, bitrate and encoder, with plain-language reasoning.
@@ -135,4 +135,4 @@ Import from OBS reads a scene collection and profile, maps sources and filters (
 
 ## Settings
 
-A single Settings window (or panel in the Minimal workspace) with search, organised as: **General**, **Appearance**, **Video & Formats**, **Audio**, **Outputs & Encoding**, **Recording & Clips**, **Accounts**, **Hotkeys & Controllers**, **Remote API**, **Camera Studio**, **Plugins**, **Advanced**, **About & Diagnostics**. Every setting has a one-line explanation and a reset. Settings that are risky while live are disabled with an explanation instead of failing.
+A single Settings window (or panel in the Minimal workspace) with search, organised as: **General**, **Appearance**, **Video & Formats**, **Audio**, **Outputs & Encoding**, **Recording & Clips**, **Accounts**, **Hotkeys & Controllers**, **Remote API**, **Lightair Effect Stack**, **Plugins**, **Advanced**, **About & Diagnostics**. Every setting has a one-line explanation and a reset. Settings that are risky while live are disabled with an explanation instead of failing.

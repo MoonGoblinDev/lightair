@@ -12,7 +12,7 @@ const EFFECTS: &str = include_str!("fx.wgsl");
 
 macro_rules! effect_files {
     ($($name:literal),* $(,)?) => {
-        &[$(($name, include_str!(concat!("../../../modules/lightair-camera-fx/data/fx/", $name, ".effect")))),*]
+        &[$(($name, include_str!(concat!("../../../modules/lightair-effect-stack/data/fx/", $name, ".effect")))),*]
     };
 }
 

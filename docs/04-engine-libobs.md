@@ -61,7 +61,7 @@ Shutdown reverses this: stop outputs gracefully (finishing files), release scene
 
 OBS attaches filters to sources, so a filter on a camera affects every scene that uses it. Users expect two different things, and Lightair offers both explicitly:
 
-- **Input effects** (shown in the Inspector under the input's name): colour correction, Camera Studio, noise suppression on a mic. These are "fix the device once."
+- **Input effects** (shown in the Inspector under the input's name): colour correction, Lightair Effect Stack, noise suppression on a mic. These are "fix the device once."
 - **Layer effects** (shown under the layer): drop shadow, mask, blur, chroma key in *this* scene only. Implemented by wrapping the input in a lightweight private source (`lightair-sources: layer_wrap`) owned by the layer, carrying the layer's filter chain. Inputs without layer effects aren't wrapped, so there's no overhead.
 
 ### Reconciler
@@ -95,13 +95,13 @@ Same architecture, different handle type: DXGI shared NT handles (Windows) and D
 Lightair features that run per frame or per audio buffer are libobs modules, so they work in every format, in recordings, in virtual camera output and through the remote API automatically:
 
 - **Sources** (`obs_source_info` with `OBS_SOURCE_TYPE_INPUT`): text, counters, timers, shapes, chat overlay, alerts, gradients, phone camera receiver, image slideshow.
-- **Filters** (`OBS_SOURCE_TYPE_FILTER`): every video effect, every audio effect, Camera Studio.
+- **Filters** (`OBS_SOURCE_TYPE_FILTER`): every video effect, every audio effect, Lightair Effect Stack.
 - **Transitions** (`OBS_SOURCE_TYPE_TRANSITION`): Move/Morph, wipes, matte stinger.
 - **Outputs**: replay/clip writer, ISO recorder helpers.
 
 Each module exposes its settings through `obs_properties` (so they are generically inspectable) **and** a Lightair-specific schema with richer UI hints (groups, units, ranges, curves, colour pickers, presets). The Inspector prefers the Lightair schema.
 
-Rust modules use a thin `lightair-obs-module` crate that implements the `obs_source_info` vtable safely. C/ObjC modules (Camera Studio) keep their C core and are wrapped the same way.
+Rust modules use a thin `lightair-obs-module` crate that implements the `obs_source_info` vtable safely. C/ObjC modules (Lightair Effect Stack) keep their C core and are wrapped the same way.
 
 ## Telemetry from the engine
 

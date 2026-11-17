@@ -26,7 +26,7 @@ struct OrtModel {
 	bool accelerated = false; /* running on a GPU / Neural Engine provider */
 	explicit operator bool() const { return (bool)session; }
 
-	/* Sessions are shared by every Camera Studio filter, and DirectML does not allow two threads in
+	/* Sessions are shared by every Lightair Effect Stack filter, and DirectML does not allow two threads in
 	 * Run() on one session at once (it crashes inside the GPU driver), so runs are
 	 * serialised per model. Single input; the first n_out outputs (all if 0). */
 	std::vector<Ort::Value> run(const Ort::Value &input, size_t n_out = 0) const
@@ -43,7 +43,7 @@ private:
 using OrtModelPtr = std::shared_ptr<const OrtModel>;
 
 /* Loads a model from disk; prefer_accel tries DirectML / Core ML first. Sessions are shared
- * between filter instances (OrtModel::run serialises calls), so a second Camera Studio filter costs no extra load
+ * between filter instances (OrtModel::run serialises calls), so a second Lightair Effect Stack filter costs no extra load
  * time or GPU memory. Returns null if the file is missing or the runtime can't be loaded. */
 OrtModelPtr ort_model(const std::string &path, bool prefer_accel);
 

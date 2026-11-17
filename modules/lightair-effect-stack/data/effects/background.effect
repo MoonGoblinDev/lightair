@@ -1,4 +1,4 @@
-// Background stage for Camera Studio: blur, remove or replace what isn't the person.
+// Background stage for Lightair Effect Stack: blur, remove or replace what isn't the person.
 // The person mask is the segmentation's alpha (snapped to the frame's edges by Refine).
 
 uniform float4x4 ViewProj;
@@ -252,7 +252,7 @@ float4 PSGreenKey(VertData v_in) : TARGET
 	return float4(keyed(unmix(k, a, n.x)), a * c.a);
 }
 
-// After Camera Studio's other effects (premultiplied in and out): a from the untouched frame.
+// After Lightair Effect Stack's other effects (premultiplied in and out): a from the untouched frame.
 float4 PSGreenKeyPremul(VertData v_in) : TARGET
 {
 	float4 c = image.Sample(linearClamp, v_in.uv);

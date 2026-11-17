@@ -34,7 +34,7 @@ Record ─► project bundle ─────────────────
 ```
 
 Lightair today is the other half of that world: a **live compositor** (libobs) with scenes,
-layers, multiple output formats (canvases) at once, Camera Studio, an audio engine, streaming and
+layers, multiple output formats (canvases) at once, Lightair Effect Stack, an audio engine, streaming and
 recording. It records what the program shows; it has no editor. So integrating Screen Studio
 means two things:
 
@@ -172,8 +172,8 @@ Phase: see section 5.
 | Position, size, roundness, mirror | Camera bubble | Has (layout, shape, flip) | Both | Camera styles as layer presets | 2 |
 | Smaller during zooms | Camera shrinks when the screen zooms | New | Both | Camera size follows the zoom engine's state | 3 |
 | Layouts: Fullscreen camera, Split screen, Camera overlay, Screen only, Camera cutout | Switch within one recording, transitions animate | Has (scenes, Move transition, background removal) | Both | Live: layout scenes with Move transitions. Edit: a layouts track with the same five layouts, animated | 2 (live) / 3 (edit) |
-| Camera cutout | Background removed on the computer | Has on macOS (Camera Studio background removal, Apple Vision); Windows through the module's ONNX backend with DirectML | Both | Cutout layout uses it | 2 |
-| Face tracking | Keeps the face centred | Part (face tracker in Camera Studio; auto-frame designed) | Both | Build Camera Studio's auto-frame | 3 |
+| Camera cutout | Background removed on the computer | Has on macOS (Lightair Effect Stack background removal, Apple Vision); Windows through the module's ONNX backend with DirectML | Both | Cutout layout uses it | 2 |
+| Face tracking | Keeps the face centred | Part (face tracker in Lightair Effect Stack; auto-frame designed) | Both | Build Lightair Effect Stack's auto-frame | 3 |
 | Hide during silence | Camera steps aside when you stop talking | New | Both | Voice activity from the audio engine drives the layout (with hold and fade) | 3 |
 | Camera looks, LUTs, sharpen | Colour grading and detail | Has (grades, LUT filter); sharpen New | Both | Add a sharpen effect (edge-aware) to the effect catalog | 3 |
 | Camera crop | Keep part of the camera picture | Has (crop) | Both | No work | — |
@@ -234,7 +234,7 @@ Phase: see section 5.
 ### Not carried over
 
 - **Reactions**: Apple's camera reactions are a macOS feature (Screen Studio's guide only explains
-  how to turn them off). Lightair's Camera Studio help can do the same.
+  how to turn them off). Lightair's Lightair Effect Stack help can do the same.
 - **Licensing, accounts, affiliates**: Lightair has no paid tiers (docs/02, "Lightair has no paid
   tiers").
 - **Everything online**: shareable links (comments, private links, view counts), cloud

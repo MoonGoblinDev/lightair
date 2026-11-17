@@ -1,4 +1,4 @@
-//! Camera Studio loads as an in-tree libobs module and renders without errors.
+//! Lightair Effect Stack loads as an in-tree libobs module and renders without errors.
 //! Run `cargo xtask modules` first; the test is skipped when the plugin isn't built.
 
 use std::path::PathBuf;
@@ -13,12 +13,12 @@ fn camera_studio_module_loads_and_renders() {
         return;
     }
     let _ = tracing_subscriber::fmt().with_env_filter("warn").with_test_writer().try_init();
-    let built = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-camera-fx");
+    let built = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-effect-stack");
     // macOS: the .plugin bundle; Windows: OBS's layout
     let (dir, module) = if cfg!(windows) {
-        (built.join("obs-plugins/64bit"), "lightair-camera-fx.dll")
+        (built.join("obs-plugins/64bit"), "lightair-effect-stack.dll")
     } else {
-        (built, "lightair-camera-fx.plugin")
+        (built, "lightair-effect-stack.plugin")
     };
     if !dir.join(module).exists() {
         eprintln!("{module} not built; run `cargo xtask modules`");
@@ -32,7 +32,7 @@ fn camera_studio_module_loads_and_renders() {
     })
     .unwrap();
     assert!(
-        engine.capabilities.modules.iter().any(|m| m.contains("lightair-camera-fx")),
+        engine.capabilities.modules.iter().any(|m| m.contains("lightair-effect-stack")),
         "{:?}",
         engine.capabilities.modules
     );
@@ -44,7 +44,7 @@ fn camera_studio_module_loads_and_renders() {
         let src = ObsSource::create("color_source_v3", "Skin-ish", Some(&colour)).unwrap();
         let mut look = Data::new();
         look.set_int("smooth", 60).set_int("foundation", 40);
-        let filter = ObsSource::create_private("lightair_camera_studio", "Camera Studio", Some(&look)).unwrap();
+        let filter = ObsSource::create_private("lightair_camera_studio", "Lightair Effect Stack", Some(&look)).unwrap();
         unsafe { lightair_engine::sys::obs_source_filter_add(src.as_ptr(), filter.as_ptr()) };
         let scene = ObsScene::create("Main").unwrap();
         scene.add(&src);
@@ -59,7 +59,7 @@ fn camera_studio_module_loads_and_renders() {
     let warm = engine.call(|s| s.stats());
     std::thread::sleep(Duration::from_millis(1000));
     let stats = engine.call(|s| s.stats());
-    eprintln!("with Camera Studio, steady state: {stats:?} (lagged during warm-up: {})", warm.lagged_frames);
+    eprintln!("with Lightair Effect Stack, steady state: {stats:?} (lagged during warm-up: {})", warm.lagged_frames);
     // The filter must not starve the renderer once warm. Timing means nothing while other
     // tests share the GPU (`cargo xtask test` says so); `cargo test` checks it.
     let shared = std::env::var_os("LIGHTAIR_TESTS_SHARE_GPU").is_some();

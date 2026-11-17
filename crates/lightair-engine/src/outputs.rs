@@ -99,7 +99,7 @@ pub enum OutputKey {
     /// The replay buffer behind the Clip button.
     Clips,
     /// The virtual camera: a canvas as a camera other apps can pick (macOS: through the OBS
-    /// Virtual Camera extension, lightair-camera-fx's `lightair_virtualcam` output).
+    /// Virtual Camera extension, lightair-effect-stack's `lightair_virtualcam` output).
     VirtualCamera,
 }
 
@@ -889,7 +889,7 @@ impl Outputs {
         };
         let key = OutputKey::VirtualCamera;
         unsafe {
-            // Lightair's camera (macOS: the camera extension, lightair-camera-fx's output;
+            // Lightair's camera (macOS: the camera extension, lightair-effect-stack's output;
             // Windows 11: lightair_camera.dll, crate::vcam's output), else OBS's DirectShow camera
             // ("OBS Virtual Camera"), registered only where it's installed
             let id = match crate::vcam::camera() {

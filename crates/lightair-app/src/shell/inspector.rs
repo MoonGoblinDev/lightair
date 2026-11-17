@@ -1,6 +1,6 @@
 //! The Inspector's building blocks (docs/05-interface-shell.md, "Inspector"): collapsible
 //! sections, compact numeric fields, sliders, and the object view (Transform, content, Effects,
-//! Camera Studio, Canvases).
+//! Lightair Effect Stack, Canvases).
 
 use std::rc::Rc;
 

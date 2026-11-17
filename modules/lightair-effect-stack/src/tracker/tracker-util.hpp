@@ -6,7 +6,7 @@
 
 namespace beauty {
 
-/* printf-style line in the OBS log ("[camera-studio] ..."), or stderr outside OBS. */
+/* printf-style line in the OBS log ("[effect-stack] ..."), or stderr outside OBS. */
 void tracker_log(const char *fmt, ...)
 #if defined(__GNUC__) || defined(__clang__)
 	__attribute__((format(printf, 1, 2)))

@@ -1,11 +1,11 @@
-# Camera Studio on Windows (docs/plans/windows.md, phase 3): the ONNX backends
+# Lightair Effect Stack on Windows (docs/plans/windows.md, phase 3): the ONNX backends
 # (tracker/backend-onnx.cpp, tracker/segmenter.cpp) on ONNX Runtime with the DirectML execution
 # provider, any DirectX 12 GPU, CPU as fallback. The runtime is loaded at module load from the
 # module's data folder (module-main.c), so it can't clash with another plugin's copy.
 #
 # Output, as OBS lays out modules (what Lightair's engine looks for, runtime.rs):
-#   <build>/obs-plugins/64bit/lightair-camera-fx.dll
-#   <build>/data/obs-plugins/lightair-camera-fx/  (shaders, presets, models, onnxruntime.dll, DirectML.dll)
+#   <build>/obs-plugins/64bit/lightair-effect-stack.dll
+#   <build>/data/obs-plugins/lightair-effect-stack/  (shaders, presets, models, onnxruntime.dll, DirectML.dll)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 17)
@@ -41,7 +41,7 @@ nuget(Microsoft.AI.DirectML ${DML_VERSION} "${DEPS}/dml")
 set(GEN "${CMAKE_BINARY_DIR}/generated")
 file(WRITE "${GEN}/obsconfig.h" "#pragma once\n#define OBS_RELEASE_CANDIDATE 0\n#define OBS_BETA 0\n")
 
-add_library(lightair-camera-fx MODULE
+add_library(lightair-effect-stack MODULE
   src/module-main.c
   src/beauty-filter.c
   src/face-geometry.c
@@ -60,10 +60,10 @@ add_library(lightair-camera-fx MODULE
   src/tracker/onnx-common.cpp
   src/tracker/segmenter.cpp
 )
-target_compile_definitions(lightair-camera-fx PRIVATE BEAUTY_HAVE_LIBOBS PLUGIN_VERSION="${PROJECT_VERSION}"
+target_compile_definitions(lightair-effect-stack PRIVATE BEAUTY_HAVE_LIBOBS PLUGIN_VERSION="${PROJECT_VERSION}"
   _USE_MATH_DEFINES NOMINMAX)
 # (libobs's threading.h includes <pthread.h>: OBS's own w32-pthreads on Windows)
-target_include_directories(lightair-camera-fx PRIVATE "${OBS_SRC}/libobs" "${GEN}" "${SIMDE_DIR}" src src/tracker
+target_include_directories(lightair-effect-stack PRIVATE "${OBS_SRC}/libobs" "${GEN}" "${SIMDE_DIR}" src src/tracker
   "${OBS_SRC}/deps/w32-pthreads" "${DEPS}/ort/build/native/include")
 # Import libraries for libobs and OBS's pthreads: from OBS_DIR when it's a build of OBS
 # (lib/<name>.lib); an installed OBS ships only the DLLs, so each library is made from its DLL's
@@ -96,15 +96,15 @@ function(obs_implib name out)
 endfunction()
 obs_implib(obs OBS_IMPLIB)
 obs_implib(w32-pthreads PTHREADS_IMPLIB)
-target_link_libraries(lightair-camera-fx PRIVATE "${OBS_IMPLIB}" "${PTHREADS_IMPLIB}" dxgi)
-set_target_properties(lightair-camera-fx PROPERTIES PREFIX ""
+target_link_libraries(lightair-effect-stack PRIVATE "${OBS_IMPLIB}" "${PTHREADS_IMPLIB}" dxgi)
+set_target_properties(lightair-effect-stack PROPERTIES PREFIX ""
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/obs-plugins/64bit"
   LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/obs-plugins/64bit"
   LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/obs-plugins/64bit")
 
 # The module's data: everything in data/ except the Core ML packages, plus the runtime.
-set(DATA_OUT "${CMAKE_BINARY_DIR}/data/obs-plugins/lightair-camera-fx")
-add_custom_command(TARGET lightair-camera-fx POST_BUILD
+set(DATA_OUT "${CMAKE_BINARY_DIR}/data/obs-plugins/lightair-effect-stack")
+add_custom_command(TARGET lightair-effect-stack POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/data" "${DATA_OUT}"
   COMMAND "${CMAKE_COMMAND}" -E rm -rf "${DATA_OUT}/models/coreml"
   COMMAND "${CMAKE_COMMAND}" -E copy "${DEPS}/ort/runtimes/win-x64/native/onnxruntime.dll" "${DATA_OUT}/"

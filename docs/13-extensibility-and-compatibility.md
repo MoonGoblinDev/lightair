@@ -132,8 +132,8 @@ When importing an OBS setup, Lightair maps these plugins to built-in features au
 | StreamFX (blur, 3D transform, shaders) | Video effects catalog ([08](08-video-effects.md)) |
 | Shaderfilter / user shaders | Custom Shader effect |
 | Advanced Scene Switcher | Scene automations ([07](07-scenes-layers-canvas.md#automations)) |
-| Background removal / NVIDIA Broadcast effects | Camera Studio background ([09](09-camera-studio.md)) |
-| Beauty / face filters | Camera Studio |
+| Background removal / NVIDIA Broadcast effects | Lightair Effect Stack background ([09](09-effect-stack.md)) |
+| Beauty / face filters | Lightair Effect Stack |
 | Noise suppression (RNNoise variants), compressor/gate stacks, VST hosts | Voice Clarity, audio effects, plugin host ([10](10-audio.md)) |
 | Replay buffer helpers / "Clip" tools | Clips ([11](11-outputs-streaming-recording.md#clips)) |
 | Source Record / ISO recording | ISO recording |
@@ -173,7 +173,7 @@ Packs are zip files with a manifest and assets, installable by drag-and-drop:
 | Pack type | Contents |
 |---|---|
 | Template pack | Scenes with placeholder layers bound to device roles ("main camera", "game capture") |
-| Look pack | Camera Studio looks, makeup looks, stickers, ambiences, lights, grades |
+| Look pack | Lightair Effect Stack looks, makeup looks, stickers, ambiences, lights, grades |
 | Transition pack | Stinger media with track mattes and audio, move transition presets |
 | Theme | Colour token mapping and optional font |
 | Sound pack | Alert and UI sounds |

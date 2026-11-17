@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 
 use crate::model::{Effect, Id};
 
-/// The Camera Studio filter all face and background effects run on.
+/// The Lightair Effect Stack filter all face and background effects run on.
 pub const STUDIO_FILTER: &str = "lightair_camera_studio";
 /// The data-driven shader filter `fx.*` effects run on.
 pub const FX_FILTER: &str = "lightair_fx";
@@ -142,7 +142,7 @@ pub struct Slider {
     pub step: f64,
     pub default: f64,
     pub unit: Unit,
-    /// Stored as an integer (Camera Studio's settings are whole numbers).
+    /// Stored as an integer (Lightair Effect Stack's settings are whole numbers).
     pub int: bool,
     /// Moves on a logarithmic scale (frequencies).
     pub log: bool,
@@ -346,12 +346,12 @@ fn eq_summary(def: &EffectDef, settings: &Value) -> String {
 }
 
 const fn s(key: &'static str, label: &'static str, default: f64) -> Control {
-    // Camera Studio: 0..100
+    // Lightair Effect Stack: 0..100
     Control::Slider(Slider { key, label, min: 0.0, max: 100.0, step: 1.0, default, unit: Unit::Percent, int: true, log: false })
 }
 
 const fn sb(key: &'static str, label: &'static str) -> Control {
-    // Camera Studio, bipolar: -100..100
+    // Lightair Effect Stack, bipolar: -100..100
     Control::Slider(Slider { key, label, min: -100.0, max: 100.0, step: 1.0, default: 0.0, unit: Unit::Percent, int: true, log: false })
 }
 
@@ -373,7 +373,7 @@ const SHIFT: Control = sb("bg_shift", "Edge shift");
 /// Which model finds the person, and how hard it looks (Apple Vision's levels).
 const SEGMENTATION: Control = Control::Heading("Segmentation");
 /// With macOS's own camera effect too: Portrait blurs, Backgrounds replaces, and for Background
-/// removal Backgrounds paints green (Lightair sets its picture) and Camera Studio keys it out.
+/// removal Backgrounds paints green (Lightair sets its picture) and Lightair Effect Stack keys it out.
 pub const BG_MODEL_SYSTEM: i64 = 2;
 const MODEL_OR_SYSTEM: Control = Control::Choice {
     key: "bg_model",
@@ -1475,15 +1475,15 @@ pub fn search(query: &str) -> impl Iterator<Item = &'static EffectDef> + '_ {
 
 // ------------------------------------------------------------------ lowering
 
-/// The id of the merged Camera Studio filter in a source's chain: one per source and stable,
+/// The id of the merged Lightair Effect Stack filter in a source's chain: one per source and stable,
 /// so face effects coming and going update it instead of rebuilding it (and its tracker).
 pub const STUDIO_ID: Id = Id(uuid::Uuid::from_u128(0x6c69_6768_7461_6972_2d73_7475_6469_6f00));
 
 /// The libobs filters for a source's effect stack:
-/// - `studio.*` effects merge into one Camera Studio filter at the first one's place (each
+/// - `studio.*` effects merge into one Lightair Effect Stack filter at the first one's place (each
 ///   effect turned off, or not in the stack, leaves its part of the picture alone);
 /// - `fx.<name>` become `lightair_fx` with `fx` set;
-/// - everything else (libobs filters, and a whole Camera Studio from older workspaces) passes
+/// - everything else (libobs filters, and a whole Lightair Effect Stack from older workspaces) passes
 ///   through.
 pub fn lower(effects: &[Effect]) -> Vec<Effect> {
     let mut out = Vec::with_capacity(effects.len());
@@ -1494,7 +1494,7 @@ pub fn lower(effects: &[Effect]) -> Vec<Effect> {
                 studio_at = Some(out.len());
                 out.push(Effect {
                     id: STUDIO_ID,
-                    name: "Camera Studio".into(),
+                    name: "Effects".into(),
                     kind: STUDIO_FILTER.into(),
                     enabled: false,
                     settings: Value::Null,
@@ -1520,7 +1520,7 @@ pub fn lower(effects: &[Effect]) -> Vec<Effect> {
     out
 }
 
-/// Camera Studio's settings for a stack's face effects.
+/// Lightair Effect Stack's settings for a stack's face effects.
 pub fn studio_settings(effects: &[Effect]) -> Map<String, Value> {
     let mut m = Map::new();
     for d in CATALOG.iter().filter(|d| d.is_studio()) {
@@ -1586,7 +1586,7 @@ pub fn makeup_values(preset: &Value) -> Map<String, Value> {
     m
 }
 
-/// Splits an older workspace's single Camera Studio effect into the face effects it was doing.
+/// Splits an older workspace's single Lightair Effect Stack effect into the face effects it was doing.
 /// Effects that would do nothing are left out; returns `None` when there is nothing to split.
 pub fn split_camera_studio(e: &Effect) -> Option<Vec<Effect>> {
     if e.kind != STUDIO_FILTER {
@@ -1805,7 +1805,7 @@ mod tests {
     #[test]
     fn an_old_camera_studio_splits_into_face_effects() {
         let old = Effect::new(
-            "Camera Studio",
+            "Effects",
             STUDIO_FILTER,
             json!({"smooth": 55, "eye_size": 20, "light_preset": "Soft Box", "light_amt": 35, "filter_preset": "", "bg_mode": 1}),
         );

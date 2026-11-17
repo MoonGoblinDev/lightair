@@ -75,7 +75,7 @@ Done:
 - Encoder sharing: destinations with identical encoder settings on the same canvas share one video and audio encoder (the Outputs panel shows "N destinations · M encoders" while live). A test streams to three local servers: two identical ones share, a different bitrate gets its own, and stopping one shared stream leaves the other running.
 - Recording pause/resume (the timer shows recorded time), markers as MP4/MOV chapters (⌘M), and split into a new file without a gap, from the title bar and the palette. A test checks with ffprobe that paused time is left out, the chapter is there, and the split produced a second file.
 - Replay: after a clip is saved, Replay (title bar or palette) plays it full-frame on top of the live scene; the replay layer removes itself when the clip ends.
-- A headless self-test inside the app bundle (`LIGHTAIR_SELFTEST=camera`) confirms camera frames with Camera Studio attached.
+- A headless self-test inside the app bundle (`LIGHTAIR_SELFTEST=camera`) confirms camera frames with Lightair Effect Stack attached.
 - UI: Record with live timer, Go live for every enabled destination, LIVE badge and live canvas border, two-click End stream, Outputs panel with recording status, destination rows (toggle, status, remove) and an add-destination form.
 
 Remaining:
@@ -94,7 +94,7 @@ Done:
 - Safe-area overlays: a chip cycles Title/Action safe and Twitch player controls on landscape stages, TikTok, Shorts and Reels UI zones on vertical ones (approximate zones, drawn as GPUI overlays).
 
 Remaining:
-- Per-destination safe areas (from the destination's platform), smarter reframe (face-aware with Camera Studio), Twitch Dual Format.
+- Per-destination safe areas (from the destination's platform), smarter reframe (face-aware with Lightair Effect Stack), Twitch Dual Format.
 
 ## M8 · Effects & transitions 🔨
 Done:
@@ -109,14 +109,14 @@ Remaining:
 - Morph, stinger track mattes, more wipe shapes; per-scene and per-pair overrides; per-format transitions; studio mode for additional formats (they show Program today).
 - More effects (blur, LUT and mask with file pickers, presets, drag to reorder the stack); masks; layer animations.
 
-## M9 · Camera Studio 🔨
+## M9 · Lightair Effect Stack 🔨
 Done:
-- `modules/lightair-camera-fx`: the Dewy pipeline (pigment-model skin, Vision tracking, Core ML segmentation, makeup, effects, atmosphere, colour, light) built in-tree as a libobs module without Qt or the frontend API, rebranded (`lightair_camera_studio` filter, "Camera Studio"); `cargo xtask modules` builds it. A test loads it, renders through it, and checks it adds no lag once warm.
+- `modules/lightair-effect-stack`: the Dewy pipeline (pigment-model skin, Vision tracking, Core ML segmentation, makeup, effects, atmosphere, colour, light) built in-tree as a libobs module without Qt or the frontend API, rebranded (`lightair_camera_studio` filter, "Lightair Effect Stack"); `cargo xtask modules` builds it. A test loads it, renders through it, and checks it adds no lag once warm.
 - Input effects in the document (applied wherever the input appears), with replace-not-merge settings so a look resets what it doesn't set.
-- Camera layers from the device list; new cameras get Camera Studio (off until a look is chosen). Inspector section: on/off, every look by category, and skin controls.
+- Camera layers from the device list; new cameras get Lightair Effect Stack (off until a look is chosen). Inspector section: on/off, every look by category, and skin controls.
 
 Remaining:
-- The full Camera Studio panel (Shape, Makeup, Effects, Atmosphere, Colour, Light tabs; thumbnails rendered from the user's face; before/after; saved looks; look packs).
+- The full Lightair Effect Stack panel (Shape, Makeup, Effects, Atmosphere, Colour, Light tabs; thumbnails rendered from the user's face; before/after; saved looks; look packs).
 - Background blur/remove/replace, auto-frame, multi-face (new features beyond Dewy).
 - Verify with a live camera (needs the macOS camera permission for Lightair).
 
@@ -144,7 +144,7 @@ Remaining:
 OBS plugin classifier, frontend API shim, custom browser docks, Qt runtime, OBS scene collection import ([13](docs/13-extensibility-and-compatibility.md), [14](docs/14-data-persistence-settings.md#importing-from-obs)).
 
 Done:
-- OBS scene collection import (`lightair_store::import_obs_collection`): sources become inputs of the same libobs type and settings, filters become input effects, items become layers (alignment point + scale/bounds → box, crop, visibility, lock), global and in-scene audio sources become mixer tracks (volume in dB, mute, monitoring → cue), transition and program scene carry over, scene names stay unique. Dewy becomes Camera Studio with its settings. One undo step, with a report: converted, replaced by built-in features, kept as plugins, needs attention. "Import OBS scenes…" button in the Scenes header. Dry run: `cargo run -p lightair-store --example obs_import_report -- <collection.json>`.
+- OBS scene collection import (`lightair_store::import_obs_collection`): sources become inputs of the same libobs type and settings, filters become input effects, items become layers (alignment point + scale/bounds → box, crop, visibility, lock), global and in-scene audio sources become mixer tracks (volume in dB, mute, monitoring → cue), transition and program scene carry over, scene names stay unique. Dewy becomes Lightair Effect Stack with its settings. One undo step, with a report: converted, replaced by built-in features, kept as plugins, needs attention. "Import OBS scenes…" button in the Scenes header. Dry run: `cargo run -p lightair-store --example obs_import_report -- <collection.json>`.
 - Layers whose source size OBS didn't save are corrected after import: the app holds those inputs showing off air until they report a size (or 8 s pass), then refits every such layer the user hasn't touched, as one undo step ("Size imported layers"). A test reads a real image's size off air and checks the refit box.
 
 Remaining:

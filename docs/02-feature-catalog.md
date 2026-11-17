@@ -9,7 +9,7 @@ The complete list of what Lightair does. Each feature has an ID used across the 
 | **M** | Modern-studio parity (dedicated streaming apps have it) |
 | **O** | OBS Studio parity (OBS has it natively) |
 | **P** | Built-in replacement for a popular OBS plugin |
-| **C** | Camera Studio (from the Dewy beauty pipeline) |
+| **C** | Lightair Effect Stack (from the Dewy beauty pipeline) |
 | **K** | Lightair original: not in dedicated streaming apps, nor in OBS without plugins |
 
 A feature can carry several tags. The catalog has no priorities or dates; it is the definition of the finished product.
@@ -180,7 +180,7 @@ A feature can carry several tags. The catalog has no priorities or dates; it is 
 | VF-13 | Custom shader | Load a shader with exposed parameters | P |
 | VF-14 | Effect parameter animation | Keyframe or audio-drive any numeric effect parameter | K |
 
-## 8. Camera Studio ([09](09-camera-studio.md))
+## 8. Lightair Effect Stack ([09](09-effect-stack.md))
 
 | ID | Feature | Description | Origin |
 |---|---|---|---|
@@ -345,7 +345,7 @@ Graphics Capture, VideoToolbox or NVENC/AMF/Quick Sync, Core ML or ONNX Runtime 
 |---|---|---|
 | Audio Units (AU-, plugin hosting) | macOS | An Apple format; VST3 runs on both |
 | ProRes recording (RC-) | macOS | libobs encodes ProRes through VideoToolbox only; Windows offers H.264 and HEVC |
-| macOS camera effects (Portrait, Backgrounds) as Camera Studio's background model | macOS | Apple's; Windows segments with MediaPipe (Windows Studio Effects to follow where the camera has them) |
+| macOS camera effects (Portrait, Backgrounds) as Lightair Effect Stack's background model | macOS | Apple's; Windows segments with MediaPipe (Windows Studio Effects to follow where the camera has them) |
 | Apple Vision person segmentation | macOS | Apple's; Windows uses MediaPipe on DirectML |
 | Game capture (screen mode) | Windows | libobs's game capture hooks Direct3D/Vulkan games; on macOS a game is a window |
 | iPhone/iPad as a camera over USB | macOS | Apple's continuity APIs; Android over USB on both |

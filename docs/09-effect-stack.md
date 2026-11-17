@@ -1,14 +1,16 @@
-# 09 · Camera Studio
+# 09 · Lightair Effect Stack
 
-**Camera Studio** is Lightair's built-in, face-aware camera pipeline: skin, reshape, makeup, face-tracked effects, atmosphere, colour, virtual lighting, and background, applied live to any camera and edited from one native panel. It is a first-class feature of Lightair, not a plugin: it uses Lightair's design system, undo, presets, remote API and project file like everything else.
+In the app it's simply **Effects** (the ✦ panel, the Inspector's section, the effect's name in an object's chain); "Lightair Effect Stack" is its name in these documents and the code.
 
-> **Origin.** Camera Studio is built from the Dewy beauty pipeline (GPL-2.0-or-later, same author), absorbed into Lightair with its Qt dock replaced by native Lightair UI and its branding removed. The technology described here (pigment-model skin, frame-synchronised tracking, learned segmentation) carries over unchanged.
+**Lightair Effect Stack** is Lightair's built-in, face-aware camera pipeline: skin, reshape, makeup, face-tracked effects, atmosphere, colour, virtual lighting, and background, applied live to any camera and edited from one native panel. It is a first-class feature of Lightair, not a plugin: it uses Lightair's design system, undo, presets, remote API and project file like everything else.
+
+> **Origin.** Lightair Effect Stack is built from the Dewy beauty pipeline (GPL-2.0-or-later, same author), absorbed into Lightair with its Qt dock replaced by native Lightair UI and its branding removed. The technology described here (pigment-model skin, frame-synchronised tracking, learned segmentation) carries over unchanged.
 
 ## Why it's different
 
 Most beauty filters paint over the skin: blur it, then blend a skin colour on top. That flattens faces because the paint also covers the light and shadow that give a face its shape.
 
-Camera Studio edits skin the way skin works. In optical density, each skin pixel is **melanin + hemoglobin + shading**. Lightair calibrates the melanin and hemoglobin directions on *this* person's skin and *this* camera every two seconds, and edits only pigment:
+Lightair Effect Stack edits skin the way skin works. In optical density, each skin pixel is **melanin + hemoglobin + shading**. Lightair calibrates the melanin and hemoglobin directions on *this* person's skin and *this* camera every two seconds, and edits only pigment:
 
 - **Skin tone** changes melanin.
 - **Foundation** evens out melanin and hemoglobin blotches.
@@ -20,9 +22,9 @@ The result: it still looks like you, in your light, just on a good day.
 
 ## Where it lives in the UI
 
-- **On the layer:** camera layers show a ✦ badge when Camera Studio is on. Clicking the badge toggles it; ⌥-click opens the panel.
-- **In the Inspector:** a camera *input* has a **Camera Studio** section at the top of its input effects, with the on/off switch, the current look, and an intensity slider.
-- **Camera Studio panel** (✦ on the activity rail): the full editor, shown in the right column or expanded to a large workspace with a before/after split on the canvas.
+- **On the layer:** camera layers show a ✦ badge when Lightair Effect Stack is on. Clicking the badge toggles it; ⌥-click opens the panel.
+- **In the Inspector:** a camera *input* has a **Lightair Effect Stack** section at the top of its input effects, with the on/off switch, the current look, and an intensity slider.
+- **Lightair Effect Stack panel** (✦ on the activity rail): the full editor, shown in the right column or expanded to a large workspace with a before/after split on the canvas.
 - **In onboarding:** the camera step offers a row of Looks rendered from the user's own face.
 
 Because it is an **input effect**, a look applies everywhere that camera appears: every scene, every format, recordings, clips, virtual camera, NDI.
@@ -30,7 +32,7 @@ Because it is an **input effect**, a look applies everywhere that camera appears
 ## Panel structure
 
 ```text
-✦ Camera Studio — [MacBook Pro Camera ▾]               [On ●]  [Before/After]
+✦ Lightair Effect Stack — [MacBook Pro Camera ▾]               [On ●]  [Before/After]
 ──────────────────────────────────────────────────────────────────────────
  Looks │ Skin │ Shape │ Makeup │ Effects │ Atmosphere │ Color │ Light │ Background
 ──────────────────────────────────────────────────────────────────────────
@@ -166,18 +168,18 @@ GPU passes inside libobs (single filter, ordered):
 
 - **Frame synchronisation.** Landmarks are tagged with the frame they were computed from; the filter delays output by 1–3 frames (configurable, "Lock effects to the face") so makeup and stickers never slide. Repeated-frame detection prevents double processing when the camera runs slower than the canvas.
 - **Single pass budget.** All tabs share one tracking and segmentation result and one filter instance; enabling more tabs adds shader work, not more inference.
-- **Placement in the engine.** Implemented as the `lightair-camera-fx` libobs module. The tracker core is portable C++ (`tracker-core`) with platform backends (Vision on macOS; ONNX Runtime with Core ML / DirectML / CPU execution providers elsewhere). ONNX Runtime ships privately named and loaded by full path so it can't clash with other plugins.
+- **Placement in the engine.** Implemented as the `lightair-effect-stack` libobs module. The tracker core is portable C++ (`tracker-core`) with platform backends (Vision on macOS; ONNX Runtime with Core ML / DirectML / CPU execution providers elsewhere). ONNX Runtime ships privately named and loaded by full path so it can't clash with other plugins.
 - **Shared face service.** The tracker is a Lightair-wide service: other features (auto-framing, "speaker is looking at camera" heuristics for auto-switch, face-anchored layer effects) subscribe to the same results instead of running their own models.
 
 ## Performance budget
 
 Measured baseline (M4 Pro, 1080p30 camera, 1080p60 canvas): **+0.6–0.8 ms render time per frame, about +15 % of one CPU core, +7–9 % GPU, zero skipped frames** with every tab active. Tracking runs on Apple Vision and segmentation mostly on the Neural Engine, so little competes with a game for the GPU.
 
-Lightair enforces this budget in CI with a recorded-camera benchmark. Camera Studio has a **Performance** setting (Quality / Balanced / Light) that changes segmentation rate and resolution, smoothing kernel size and particle counts, and the Stats panel shows its cost per camera.
+Lightair enforces this budget in CI with a recorded-camera benchmark. Lightair Effect Stack has a **Performance** setting (Quality / Balanced / Light) that changes segmentation rate and resolution, smoothing kernel size and particle counts, and the Stats panel shows its cost per camera.
 
 ## Multiple people & multiple cameras
 
-- Each camera input has its own Camera Studio instance and look.
+- Each camera input has its own Lightair Effect Stack instance and look.
 - **Multiple faces** in one frame: the tracker follows up to 4 faces; skin and makeup apply to all, reshape and stickers can be limited to the largest face or a selected face.
 
 ## Privacy
@@ -188,10 +190,10 @@ All processing is **on-device**. No frames, landmarks or masks leave the machine
 
 Looks, makeup looks, stickers, ambiences, lights and colour grades are **data** (versioned JSON + assets), not code:
 
-- Built-in content ships in `assets/camera-studio/`.
+- Built-in content ships in `assets/effect-stack/`.
 - User content lives in the user library and syncs across projects.
 - Packs can be shared as a single `.lightairlook` file (zip of JSON + assets) and imported by drag-and-drop.
 
 ## Remote control
 
-Every Camera Studio control is addressable through the remote API and the command system: apply look, set any slider, toggle a tab, cycle looks, set intensity. The Stream Deck plugin ships with Camera Studio actions (look buttons with face thumbnails, toggle background blur).
+Every Lightair Effect Stack control is addressable through the remote API and the command system: apply look, set any slider, toggle a tab, cycle looks, set intensity. The Stream Deck plugin ships with Lightair Effect Stack actions (look buttons with face thumbnails, toggle background blur).

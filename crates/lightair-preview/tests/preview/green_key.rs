@@ -1,5 +1,5 @@
 //! Background removal with macOS's own effect: macOS paints pure green behind the person (with
-//! their edge blended into it), and Camera Studio's green key takes it out. A skin-coloured disc
+//! their edge blended into it), and Lightair Effect Stack's green key takes it out. A skin-coloured disc
 //! on pure green, its rim blended into the green as macOS blends it, over a magenta backdrop:
 //! the green goes (magenta shows), the disc stays, and its rim shows no green.
 
@@ -56,8 +56,8 @@ fn the_green_macos_paints_is_keyed_out() {
         return;
     }
     let _ = tracing_subscriber::fmt().with_env_filter("warn").with_test_writer().try_init();
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-camera-fx");
-    if !dir.join("lightair-camera-fx.plugin").exists() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-effect-stack");
+    if !dir.join("lightair-effect-stack.plugin").exists() {
         eprintln!("module not built; skipping");
         return;
     }

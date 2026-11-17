@@ -29,7 +29,7 @@ use std::sync::Arc;
 #[derive(Default)]
 pub struct Reconciler {
     sources: HashMap<Id, ObsSource>,
-    /// Source effect chains (Camera Studio, colour correction, …).
+    /// Source effect chains (Lightair Effect Stack, colour correction, …).
     source_effects: HashMap<Id, Chain>,
     /// Screen captures zoomed and given a drawn pointer by their scene's `ScreenZoomPointer` (the
     /// pointer filter, last on the source, and the settings it was given).
@@ -730,13 +730,13 @@ impl Reconciler {
         }
     }
 
-    /// Whether the source's Camera Studio sees a person (for the background effects' hint);
-    /// `None` when it has no Camera Studio running.
+    /// Whether the source's Lightair Effect Stack sees a person (for the background effects' hint);
+    /// `None` when it has no Lightair Effect Stack running.
     pub fn person_present(&self, source: Id) -> Option<bool> {
         self.studio_query(source, c"person_present")
     }
 
-    /// Calls a `void name(out bool present)` proc on the source's enabled Camera Studio filter.
+    /// Calls a `void name(out bool present)` proc on the source's enabled Lightair Effect Stack filter.
     fn studio_query(&self, source: Id, name: &std::ffi::CStr) -> Option<bool> {
         let chain = self.source_effects.get(&source)?;
         chain.iter().find_map(|(_, filter)| unsafe {

@@ -1,5 +1,5 @@
 /*
-Lightair Camera Studio: face-aware camera pipeline (docs/09-camera-studio.md).
+Lightair Effect Stack: face-aware camera pipeline (docs/09-effect-stack.md).
 Built from the Dewy beauty pipeline. Copyright (C) 2026 Bregas S. Wicaksono.
 
 This program is free software; you can redistribute it and/or modify it under the terms of the
@@ -14,13 +14,13 @@ the License, or (at your option) any later version.
 #include "face-tracker.h"
 
 OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("lightair-camera-fx", "en-US")
+OBS_MODULE_USE_DEFAULT_LOCALE("lightair-effect-stack", "en-US")
 
 extern struct obs_source_info beauty_filter_info;
 
 const char *obs_module_name(void)
 {
-	return "Lightair Camera Studio";
+	return "Lightair Effect Stack";
 }
 
 const char *obs_module_description(void)
@@ -52,7 +52,7 @@ bool obs_module_load(void)
 #ifdef __APPLE__
 	obs_register_output(&lightair_virtualcam_info);
 #endif
-	blog(LOG_INFO, "[camera-studio] loaded");
+	blog(LOG_INFO, "[effect-stack] loaded");
 	return true;
 }
 

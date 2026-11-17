@@ -4,9 +4,9 @@
 
 | Platform | Status in the design | Notes |
 |---|---|---|
-| **macOS 14+ on Apple Silicon** | Primary | First-class everything: zero-copy preview, Vision + Neural Engine for Camera Studio, ScreenCaptureKit per-app capture, Camera Extension virtual camera, VideoToolbox encoders |
-| **macOS 14+ on Intel** | Supported | Same build (universal binary); Camera Studio defaults to the Balanced profile |
-| **Windows 10 22H2+ / 11, x64** | Supported | D3D11 libobs backend, Windows `surface()` backend for GPUI, NVENC/QSV/AMF, WASAPI process loopback for per-app audio, ONNX Runtime + DirectML for Camera Studio |
+| **macOS 14+ on Apple Silicon** | Primary | First-class everything: zero-copy preview, Vision + Neural Engine for Lightair Effect Stack, ScreenCaptureKit per-app capture, Camera Extension virtual camera, VideoToolbox encoders |
+| **macOS 14+ on Intel** | Supported | Same build (universal binary); Lightair Effect Stack defaults to the Balanced profile |
+| **Windows 10 22H2+ / 11, x64** | Supported | D3D11 libobs backend, Windows `surface()` backend for GPUI, NVENC/QSV/AMF, WASAPI process loopback for per-app audio, ONNX Runtime + DirectML for Lightair Effect Stack |
 | **Windows on ARM** | Later | Depends on libobs and encoder support |
 | **Linux (x64, Wayland + X11)** | Supported after Windows | PipeWire capture, VA-API/NVENC, DMA-BUF preview import, Flatpak distribution |
 
@@ -27,7 +27,7 @@ Lightair.app/Contents/
 │  └─ Lightair Helper (Renderer|GPU|Plugin).app    CEF helpers
 ├─ PlugIns/
 │  ├─ mac-capture.plugin, mac-avcapture.plugin, obs-ffmpeg.plugin, …   OBS core modules
-│  └─ lightair-sources.plugin, lightair-video-fx.plugin, lightair-camera-fx.plugin, lightair-audio-fx.plugin, …
+│  └─ lightair-sources.plugin, lightair-video-fx.plugin, lightair-effect-stack.plugin, lightair-audio-fx.plugin, …
 ├─ Library/SystemExtensions/
 │  └─ Lightair Camera.systemextension     virtual camera (CoreMediaIO Camera Extension)
 └─ Resources/
@@ -80,7 +80,7 @@ CI builds every platform on every change, runs unit tests, headless GPUI UI test
 |---|---|---|
 | libobs, OBS core plugins | GPL-2.0-or-later | Linking makes Lightair a GPL derivative |
 | GPUI, gpui-kit (gpui-base, gpui-component, gpui-shell) | Apache-2.0 | Compatible with GPL-3.0 (not GPL-2.0-only) |
-| Camera Studio (from Dewy) | GPL-2.0-or-later | Same author; relicensed into Lightair as GPL-3.0-or-later |
+| Lightair Effect Stack (from Dewy) | GPL-2.0-or-later | Same author; relicensed into Lightair as GPL-3.0-or-later |
 | CEF / Chromium | BSD-style | Notices |
 | Qt (runtime for plugin UI) | LGPL-3.0 | Dynamically linked, unmodified; notices and Qt source offer |
 | FFmpeg (LGPL/GPL build as in OBS) | LGPL/GPL | Notices + source offer |
@@ -111,5 +111,5 @@ Obligations built into the release process:
 - **Telemetry is opt-in**, anonymous, documented field by field, viewable before sending, and never includes frames, audio, chat contents, titles, keys or file paths.
 - **Crash reports** are opt-in per crash (or "always"), with the report contents viewable.
 - Platform sign-in uses OAuth with PKCE in the system browser; tokens live in the OS credential store.
-- Camera Studio, noise suppression, captions/transcription and background effects run **on-device**.
+- Lightair Effect Stack, noise suppression, captions/transcription and background effects run **on-device**.
 - The only feature that can send data to a model provider is the **Overlay builder**, and only after the user connects a provider of their choice (cloud or local). The panel names the provider and what is sent.

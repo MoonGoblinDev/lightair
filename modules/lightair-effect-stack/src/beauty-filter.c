@@ -1,5 +1,5 @@
 /*
- * Camera Studio: the face-aware camera filter (filter id lightair_camera_studio), from the Dewy pipeline.
+ * Lightair Effect Stack: the face-aware camera filter (filter id lightair_camera_studio), from the Dewy pipeline.
  *
  * Per frame (once, even if OBS renders the source several times):
  *   1. render the filtered source into a texture
@@ -271,7 +271,7 @@ static void beauty_update(void *data, obs_data_t *settings)
 			gs_image_file_ex_init_texture(&f->bg_image);
 			obs_leave_graphics();
 			if (!f->bg_image.texture)
-				blog(LOG_WARNING, "[camera-studio] couldn't load background image %s", f->bg_path);
+				blog(LOG_WARNING, "[effect-stack] couldn't load background image %s", f->bg_path);
 		}
 		snprintf(f->bg_loaded, sizeof(f->bg_loaded), "%s", f->bg_path);
 	}
@@ -293,7 +293,7 @@ static gs_effect_t *load_effect(const char *name)
 	}
 	bfree(src);
 	if (!e)
-		blog(LOG_ERROR, "[camera-studio] failed to load %s: %s", path ? path : name, err ? err : "(unknown)");
+		blog(LOG_ERROR, "[effect-stack] failed to load %s: %s", path ? path : name, err ? err : "(unknown)");
 	bfree(err);
 	bfree(path);
 	return e;
@@ -1031,7 +1031,7 @@ static gs_texture_t *load_map(const char *name)
 		bfree(path);
 	}
 	if (!tex)
-		blog(LOG_WARNING, "[camera-studio] %s missing: contour, highlight, eyeliner and brow are off", name);
+		blog(LOG_WARNING, "[effect-stack] %s missing: contour, highlight, eyeliner and brow are off", name);
 	return tex;
 }
 
@@ -1376,7 +1376,7 @@ static void process_frame(struct beauty_filter *f, gs_texture_t *src, uint32_t w
 			if (!f->vp_tex || f->vp_w != vw || f->vp_h != vh) {
 				gs_texture_destroy(f->vp_tex);
 				f->vp_tex = gs_texture_create(vw, vh, GS_RGBA, 1, NULL, GS_DYNAMIC);
-				blog(LOG_INFO, "[camera-studio] person mask from Apple Vision, %ux%u", vw, vh);
+				blog(LOG_INFO, "[effect-stack] person mask from Apple Vision, %ux%u", vw, vh);
 			}
 			gs_texture_set_image(f->vp_tex, rgba, vw * 4, false);
 			bfree(rgba);
@@ -1685,7 +1685,7 @@ static void beauty_render(void *data, gs_effect_t *unused)
 			float ms, det;
 			face_tracker_stats(f->tracker, &ms, &det);
 			blog(LOG_INFO,
-			     "[camera-studio] %s: %.2f ms/frame, %.0f%% full detections, face %s, %.0f%% new frames, sync delay %d",
+			     "[effect-stack] %s: %.2f ms/frame, %.0f%% full detections, face %s, %.0f%% new frames, sync delay %d",
 			     face_tracker_backend_name(f->tracker), ms, det * 100.0f, f->face.present ? "present" : "absent",
 			     (double)(f->content_last - f->log_content) * 100.0 / 1800.0,
 			     f->sync_tracking ? f->sync_delay : 0);

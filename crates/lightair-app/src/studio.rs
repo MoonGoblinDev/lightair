@@ -1458,7 +1458,7 @@ fn free_gb(path: &std::path::Path) -> Option<f64> {
 }
 
 /// The virtual cameras Lightair sends to, by their device ids, and what apps call them: its own
-/// (modules/lightair-virtual-camera), else OBS's (as lightair-camera-fx's virtualcam.m picks).
+/// (modules/lightair-virtual-camera), else OBS's (as lightair-effect-stack's virtualcam.m picks).
 const VIRTUAL_CAMERAS: [&str; 1] = ["2DF109AC-DE07-42DF-A0D7-098033FFE986"];
 pub const VIRTUAL_CAMERA_NAMES: [&str; 2] = ["Lightair Virtual Camera", "OBS Virtual Camera"];
 

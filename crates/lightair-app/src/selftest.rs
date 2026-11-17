@@ -1,5 +1,5 @@
 //! Headless self-tests run inside the app bundle (so they use Lightair's own macOS privacy
-//! permissions). `LIGHTAIR_SELFTEST=camera` opens the first camera with Camera Studio, waits for
+//! permissions). `LIGHTAIR_SELFTEST=camera` opens the first camera with Lightair Effect Stack, waits for
 //! frames, prints a report to stdout and exits without opening a window.
 //! `LIGHTAIR_SELFTEST=green-key` checks Background removal on macOS's own effect end to end:
 //! Lightair's Backgrounds picture set to green, the camera keyed over magenta, and how much of
@@ -53,7 +53,7 @@ fn camera(engine: &Engine) {
         };
         let mut look = Data::new();
         look.set_int("smooth", 60);
-        if let Some(fx) = ObsSource::create_private(crate::camera_studio::KIND, "Self-test Camera Studio", Some(&look)) {
+        if let Some(fx) = ObsSource::create_private(crate::camera_studio::KIND, "Self-test Lightair Effect Stack", Some(&look)) {
             unsafe { lightair_engine::sys::obs_source_filter_add(cam.as_ptr(), fx.as_ptr()) };
             s.sources.insert("fx".into(), fx);
         }

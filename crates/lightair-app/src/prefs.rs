@@ -69,7 +69,7 @@ impl Default for RemoteApi {
 pub struct CameraDefaults {
     /// Short side in pixels (720, 1080, 2160); `None`: the camera's own best.
     pub height: Option<u32>,
-    /// New cameras start with Camera Studio on (its first look).
+    /// New cameras start with Lightair Effect Stack on (its first look).
     pub studio_on: bool,
 }
 

@@ -615,7 +615,7 @@ impl StudioWindow {
                     .child(row(
                         "Beauty on",
                         Some("Start with the Beauty effect (adjust it in the Inspector)."),
-                        switch("camera-studio", studio_on).on_click(
+                        switch("effect-stack", studio_on).on_click(
                             cx.listener(move |this, _, _, cx| this.set_pref(|p| p.camera.studio_on = !studio_on, cx)),
                         ),
                     )),

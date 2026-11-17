@@ -329,7 +329,7 @@ fn dev(release: bool) -> anyhow::Result<()> {
 }
 
 /// The OBS modules the Windows app ships (lightair-engine's DEFAULT_MODULES for Windows, but
-/// Lightair's own Camera Studio, built here): keep the two lists alike.
+/// Lightair's own Lightair Effect Stack, built here): keep the two lists alike.
 #[cfg(windows)]
 const WINDOWS_MODULES: &[&str] = &[
     "aja", "decklink", "image-source", "obs-ffmpeg", "obs-filters", "obs-nvenc", "obs-outputs", "obs-qsv11",
@@ -345,7 +345,7 @@ const WINDOWS_MODULES: &[&str] = &[
 ///                        OBS's helper programs, the MSVC runtime
 /// Lightair\core\<m>\     OBS's modules Lightair uses, each with its data
 /// Lightair\data\libobs\  libobs's effects
-/// Lightair\obs-plugins\64bit\, Lightair\data\obs-plugins\   Camera Studio
+/// Lightair\obs-plugins\64bit\, Lightair\data\obs-plugins\   Lightair Effect Stack
 /// ```
 ///
 /// libobs and its modules come from the OBS install it's built against (OBS_DIR). Not signed:
@@ -422,14 +422,14 @@ fn dist_windows() -> anyhow::Result<()> {
         }
     }
     copy_tree(&obs.join(r"data\libobs"), &out.join(r"data\libobs"))?;
-    // Camera Studio (cargo xtask modules)
-    let fx = root.join(r"target\modules\lightair-camera-fx");
-    if fx.join(r"obs-plugins\64bit\lightair-camera-fx.dll").exists() {
+    // Lightair Effect Stack (cargo xtask modules)
+    let fx = root.join(r"target\modules\lightair-effect-stack");
+    if fx.join(r"obs-plugins\64bit\lightair-effect-stack.dll").exists() {
         std::fs::create_dir_all(out.join(r"obs-plugins\64bit"))?;
-        std::fs::copy(fx.join(r"obs-plugins\64bit\lightair-camera-fx.dll"), out.join(r"obs-plugins\64bit\lightair-camera-fx.dll"))?;
-        copy_tree(&fx.join(r"data\obs-plugins\lightair-camera-fx"), &out.join(r"data\obs-plugins\lightair-camera-fx"))?;
+        std::fs::copy(fx.join(r"obs-plugins\64bit\lightair-effect-stack.dll"), out.join(r"obs-plugins\64bit\lightair-effect-stack.dll"))?;
+        copy_tree(&fx.join(r"data\obs-plugins\lightair-effect-stack"), &out.join(r"data\obs-plugins\lightair-effect-stack"))?;
     } else {
-        eprintln!("Camera Studio isn't built (cargo xtask modules): left out");
+        eprintln!("Lightair Effect Stack isn't built (cargo xtask modules): left out");
     }
     let version = env!("CARGO_PKG_VERSION");
     let zip = root.join(format!(r"target\dist\Lightair-{version}-windows-x64.zip"));

@@ -12,7 +12,7 @@ static obs_data_t *load(const char *file)
 	char *path = obs_module_file(file);
 	obs_data_t *d = path ? obs_data_create_from_json_file(path) : NULL;
 	if (!d)
-		blog(LOG_WARNING, "[camera-studio] could not load %s", file);
+		blog(LOG_WARNING, "[effect-stack] could not load %s", file);
 	bfree(path);
 	return d;
 }

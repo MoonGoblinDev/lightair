@@ -17,7 +17,7 @@ Studio module makes its import libraries from the DLLs.
 ```
 git submodule update --init --depth 1
 cargo build -p lightair-app -p lightair-web-helper
-cargo xtask modules          # Camera Studio (shape masks, 3D transforms, effects)
+cargo xtask modules          # Lightair Effect Stack (shape masks, 3D transforms, effects)
 cargo xtask dev              # Chromium's runtime and OBS's helper programs beside the exe
 cargo xtask test
 ```
@@ -45,7 +45,7 @@ app carries libobs beside it, in OBS's own layout).
 | **Preview** | IOSurface → `CVPixelBuffer` → GPUI `surface()` (`lightair-preview/mac.rs`) | DXGI shared NT handles from libobs (D3D11) into GPUI's Windows renderer; GPUI's `surface()` is macOS-only, so Lightair adds a Windows backend (docs/03, docs/04) | New backend |
 | **Project source kinds** | Projects store libobs ids: `screen_capture`, `sck_audio_capture`, `av_capture_input_v2`, `coreaudio_input_capture`, … | **Portable kinds** in the project (display, window, app audio, desktop audio, camera, mic, interface), mapped to libobs ids per platform when played: `monitor_capture`/`window_capture`/`game_capture`, `wasapi_output_capture`, `wasapi_process_output_capture`, `dshow_input`, `wasapi_input_capture`. Settings translated (display UUID ↔ monitor id, app bundle id ↔ executable). Existing projects migrated once | Model + engine |
 | **Encoders** | VideoToolbox (H.264, HEVC, ProRes) | NVENC, AMF, QSV, x264 (libobs `obs-nvenc`, `obs-qsv11`, `win-mf`); ProRes via FFmpeg (software) | Engine settings |
-| **Camera Studio** (`modules/lightair-camera-fx`) | Apple Vision / Core ML segmentation and tracking (`backend-vision.mm`, `segmenter-coreml.mm`) | The module already has ONNX backends (`backend-onnx.cpp`, `mediapipe.cpp`): ONNX Runtime with DirectML on Windows. The module's quality picker shows what each platform has | Build + test |
+| **Lightair Effect Stack** (`modules/lightair-effect-stack`) | Apple Vision / Core ML segmentation and tracking (`backend-vision.mm`, `segmenter-coreml.mm`) | The module already has ONNX backends (`backend-onnx.cpp`, `mediapipe.cpp`): ONNX Runtime with DirectML on Windows. The module's quality picker shows what each platform has | Build + test |
 | **macOS camera effects panel** (`system_effects.rs`) | Portrait, Backgrounds, Studio Light | Windows Studio Effects where the camera and PC support them (blur, eye contact, framing); hidden otherwise | Platform |
 | **Audio engine** | cpal on CoreAudio; real-time thread via Mach time-constraint policy (`audio_host.rs`, not guarded) | cpal on WASAPI; real-time thread via MMCSS ("Pro Audio"); guard the Mach code | Platform |
 | **App and desktop audio** | ScreenCaptureKit audio (`sck_audio_capture`) | WASAPI process loopback (per app) and desktop loopback | Kinds (above) |
@@ -132,7 +132,7 @@ The app and engine call these instead of OS APIs. A test per module runs on both
    correct, one frame later, with a copy per frame. Running on Windows, recording, streaming
    and Windows screenshots also wait for a Windows machine or the CI runner.
 3. **Parity:**
-   - Camera Studio on ONNX/DirectML;
+   - Lightair Effect Stack on ONNX/DirectML;
    - VST3 hosting with editors;
    - eyedropper;
    - Windows Studio Effects;
@@ -143,7 +143,7 @@ The app and engine call these instead of OS APIs. A test per module runs on both
    *Done when:* every feature in docs/02's catalog is marked for both platforms or has a stated
    one-platform reason.
 
-   Done: Camera Studio's Windows build (`cmake/windows.cmake`: the ONNX backends, ONNX Runtime
+   Done: Lightair Effect Stack's Windows build (`cmake/windows.cmake`: the ONNX backends, ONNX Runtime
    and DirectML from Microsoft's NuGet packages, OBS's module layout; MediaPipe segmentation
    on Windows); VST3 editors in Win32 windows (phase 1); Lightair's own eyedropper
    (`lightair_platform::pick_color`: a snapshot of every display with a loupe); running apps
@@ -182,7 +182,7 @@ real bug a Windows user would have hit:
 - MSVC makes every C enum an `int` where macOS clang makes a non-negative one `unsigned`: the
   bindings are made unsigned as on macOS, so code comparing them with `uint32_t` fields is the same.
 - libobs is imported from `obs.dll` by name (`raw-dylib`): an installed OBS ships no `obs.lib`.
-  Camera Studio's CMake makes `obs.lib` and `w32-pthreads.lib` from the DLLs' exports.
+  Lightair Effect Stack's CMake makes `obs.lib` and `w32-pthreads.lib` from the DLLs' exports.
 - `vsnprintf` is inline in the UCRT's headers: linked from `legacy_stdio_definitions`.
 
 **Starting**
@@ -217,7 +217,7 @@ real bug a Windows user would have hit:
   so OBS's disabled "[Select a display to capture]" placeholder was offered as a display.
 - A camera asked for a height it has no format for showed nothing ("video format match failed"):
   its formats are read from DirectShow's properties and the nearest one it has is used.
-- Camera Studio's face maps (makeup, liner, light) never loaded: libobs's `GS_BUILD_MIPMAPS` asks
+- Lightair Effect Stack's face maps (makeup, liner, light) never loaded: libobs's `GS_BUILD_MIPMAPS` asks
   Direct3D 11 for a whole mip chain with one level's data, which D3D11 refuses; and the module
   crashed about one run in three. The mip levels are made on the CPU now (every backend).
 

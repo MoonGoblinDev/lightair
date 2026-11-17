@@ -33,7 +33,7 @@ Grouped as they appear in the **Add Layer** popover.
 
 | Layer | Key settings |
 |---|---|
-| **Camera** | Device, resolution, FPS, pixel format, colour space/range, alternate backend, device controls (exposure, focus, white balance, zoom where supported), Continuity Camera options (Center Stage, Portrait, Studio Light), **Camera Studio** |
+| **Camera** | Device, resolution, FPS, pixel format, colour space/range, alternate backend, device controls (exposure, focus, white balance, zoom where supported), Continuity Camera options (Center Stage, Portrait, Studio Light), **Lightair Effect Stack** |
 | **Phone camera** | Pair a phone via QR code (companion app); Wi-Fi or USB; lens selection, resolution, FPS, phone mic as track; low-latency SRT transport |
 | **Capture card** | Same as Camera, plus audio channel mapping and input format detection |
 | **NDI** | Source picker on the LAN, bandwidth (full/low), audio |
@@ -114,7 +114,7 @@ The canvas behaves like a design tool, rendered over the live preview ([03](03-a
 
 ### Floating toolbar
 
-Appears above the selection: crop, quick shapes, fill mode, flip, effects (opens the effect picker), Camera Studio (for cameras), visibility per format, more (…). It never covers the selection; it flips below when near the top edge.
+Appears above the selection: crop, quick shapes, fill mode, flip, effects (opens the effect picker), Lightair Effect Stack (for cameras), visibility per format, more (…). It never covers the selection; it flips below when near the top edge.
 
 ### Masks
 
@@ -144,7 +144,7 @@ When an output is active and studio mode is off, the canvas has a live border, a
 
 - **Scenes panel**: add, duplicate (inserted below the original), rename, reorder by drag, **folders**, colour labels, hover thumbnails.
 - **Scene settings** (Inspector when a scene is selected): transition override, hotkey, entry actions, automations, per-format enablement, notes (visible to the streamer only).
-- **Entry actions**: when the scene becomes active: play media, apply a Camera Studio look, set track volumes/mutes, start a timer, show a layer after a delay, send a chat message, trigger a webhook.
+- **Entry actions**: when the scene becomes active: play media, apply a Lightair Effect Stack look, set track volumes/mutes, start a timer, show a layer after a delay, send a chat message, trigger a webhook.
 - **Per-scene audio** with unlinked tracks (see [10](10-audio.md#scene-aware-tracks)).
 
 ### Studio mode

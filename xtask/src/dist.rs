@@ -2,7 +2,7 @@
 //!
 //! Everything Lightair runs is copied into the app: libobs and the OBS modules it loads (with the
 //! frameworks and libraries they link, from the OBS 33 it builds against), Lightair's own modules
-//! (Camera Studio), Chromium for web sources, and the command-line tools some features run
+//! (Lightair Effect Stack), Chromium for web sources, and the command-line tools some features run
 //! (FFmpeg, whisper.cpp) with their libraries. Nothing in it points outside it.
 //!
 //! Then every piece is signed with a Developer ID (hardened runtime, secure timestamp), inside
@@ -110,8 +110,8 @@ fn build() -> anyhow::Result<()> {
         }
     }
     ditto(
-        &root.join("target/modules/lightair-camera-fx/lightair-camera-fx.plugin"),
-        &c.join("PlugIns/lightair-camera-fx.plugin"),
+        &root.join("target/modules/lightair-effect-stack/lightair-effect-stack.plugin"),
+        &c.join("PlugIns/lightair-effect-stack.plugin"),
     )?;
 
     // Chromium

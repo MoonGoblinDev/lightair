@@ -1,11 +1,11 @@
 # Effects revamp: everything is an effect
 
-Status: built (2026-11-12). Face effects follow Dewy's tabs: Beauty (Enhance), Face stickers, Relight, Colour grade, Ambience and Camera motion (Atmosphere), plus the new background effects. Supersedes the Camera Studio panel in
-[09](../09-camera-studio.md) and extends the catalog in [08](../08-video-effects.md).
+Status: built (2026-11-12). Face effects follow Dewy's tabs: Beauty (Enhance), Face stickers, Relight, Colour grade, Ambience and Camera motion (Atmosphere), plus the new background effects. Supersedes the Lightair Effect Stack panel in
+[09](../09-effect-stack.md) and extends the catalog in [08](../08-video-effects.md).
 
 ## Why
 
-Lightair had two systems: a short list of libobs filters ("Effects") and Camera Studio, one
+Lightair had two systems: a short list of libobs filters ("Effects") and Lightair Effect Stack, one
 large face filter with its own panel and tabs. People don't think in pipelines; they think
 "smooth my skin", "blur my background", "make it look like film". So every feature becomes an
 **effect**: picked from one catalog, stacked on the source, each with its own on/off, controls,
@@ -31,10 +31,10 @@ reset and presets.
 
 | Layer | Change |
 |---|---|
-| `lightair-camera-fx` (C) | Port Dewy's latest pipeline: MediaPipe 478-point mesh on Core ML, mesh-drawn contour, highlight, eyeliner styles and brow, lash-line eyelids, Finish pass for light, faster and edge-snapped segmentation. Add a **background** stage (blur, remove, replace) driven by the person mask. Add **`lightair_fx`**, a data-driven GPU effect filter: one filter type, one `.effect` file per look (`data/fx/*.effect`), parameters from settings. |
+| `lightair-effect-stack` (C) | Port Dewy's latest pipeline: MediaPipe 478-point mesh on Core ML, mesh-drawn contour, highlight, eyeliner styles and brow, lash-line eyelids, Finish pass for light, faster and edge-snapped segmentation. Add a **background** stage (blur, remove, replace) driven by the person mask. Add **`lightair_fx`**, a data-driven GPU effect filter: one filter type, one `.effect` file per look (`data/fx/*.effect`), parameters from settings. |
 | `lightair-core` | Effects keep `kind` + `settings`. Face effects use kinds `studio.*`; generic shader effects `fx.*`; libobs filters keep their ids. |
 | `lightair-engine` | Input effect chains: consecutive `studio.*` effects become one `lightair_camera_studio` filter with merged settings (each effect's switch and intensity applied); `fx.*` become `lightair_fx` with `fx` set; the rest pass through. |
-| `lightair-app` | A typed catalog (`effects/catalog.rs`): kind, name, category, description, icon, controls (slider, bipolar slider, choice, colour, preset grid, file, switch), groups, defaults. The **Effect catalog sheet** (search, categories, tiles, descriptions) and the **effect stack** in the Inspector with per-effect controls. Old projects' single Camera Studio effect is split into the new face effects on load. |
+| `lightair-app` | A typed catalog (`effects/catalog.rs`): kind, name, category, description, icon, controls (slider, bipolar slider, choice, colour, preset grid, file, switch), groups, defaults. The **Effect catalog sheet** (search, categories, tiles, descriptions) and the **effect stack** in the Inspector with per-effect controls. Old projects' single Lightair Effect Stack effect is split into the new face effects on load. |
 
 ## The effect list
 
@@ -127,11 +127,11 @@ reset and presets.
 
 ## Plan
 
-1. **Engine port** (C): Dewy's latest tracker and pipeline into `lightair-camera-fx`, renamed;
+1. **Engine port** (C): Dewy's latest tracker and pipeline into `lightair-effect-stack`, renamed;
    Core ML models built with the module; render tests still pass.
-2. **Background stage** (C + shader) in the Camera Studio filter.
+2. **Background stage** (C + shader) in the Lightair Effect Stack filter.
 3. **`lightair_fx`** filter (C) with the shader effects above; a render test per family.
 4. **Catalog and model** (Rust): typed catalog, `studio.*` merging in the reconciler, `fx.*`
-   mapping, migration of the old single Camera Studio effect; unit tests.
+   mapping, migration of the old single Lightair Effect Stack effect; unit tests.
 5. **UI**: effect stack and controls in the Inspector; the Effect catalog sheet. (Whole-stack looks were built, then removed: not wanted.)
 6. Screenshots, the full suite, commit after each step.

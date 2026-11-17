@@ -121,7 +121,7 @@ pub(super) struct EffectSheet {
     _events: Subscription,
 }
 
-/// What a source's face effects can see (from Camera Studio), polled while it's selected.
+/// What a source's face effects can see (from Lightair Effect Stack), polled while it's selected.
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(super) struct Presence {
     pub face: Option<bool>,
@@ -724,7 +724,7 @@ impl StudioWindow {
         let mut col = div().flex().flex_col().gap_1();
         let groups = camera_studio::presets(which);
         if groups.is_empty() {
-            return col.child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child("Camera Studio isn't installed"));
+            return col.child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child("Effects aren't installed"));
         }
         let mut n = 0;
         // Makeup can be none at all.
@@ -1019,7 +1019,7 @@ impl StudioWindow {
         }
     }
 
-    /// Asks Camera Studio whether the selected source shows a face and a person (for the
+    /// Asks Lightair Effect Stack whether the selected source shows a face and a person (for the
     /// cards' hints). Cheap; called on a timer while the Inspector shows face effects.
     pub(super) fn refresh_presence(&mut self, cx: &mut Context<Self>) {
         let studio = self.studio.read(cx);

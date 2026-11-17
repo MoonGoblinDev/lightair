@@ -1,16 +1,16 @@
-# Lightair Camera Studio (docs/09-camera-studio.md): a libobs module built in-tree.
-# macOS: lightair-camera-fx.plugin, tracking and segmentation on Core ML, linked against an
+# Lightair Effect Stack (docs/09-effect-stack.md): a libobs module built in-tree.
+# macOS: lightair-effect-stack.plugin, tracking and segmentation on Core ML, linked against an
 # installed OBS 33's libobs.framework (OBS_APP), like the rest of Lightair (IMPLEMENTATION.md).
-# Windows: lightair-camera-fx.dll, the same on ONNX Runtime with DirectML, linked against
+# Windows: lightair-effect-stack.dll, the same on ONNX Runtime with DirectML, linked against
 # OBS_DIR's obs.lib, laid out as OBS lays out its modules (windows.cmake).
 cmake_minimum_required(VERSION 3.24)
 # (WIN32 is only known after project(); the host is: Lightair builds natively on Windows)
 if(CMAKE_HOST_WIN32)
-  project(lightair-camera-fx VERSION 0.1.0 LANGUAGES C CXX)
+  project(lightair-effect-stack VERSION 0.1.0 LANGUAGES C CXX)
   include(cmake/windows.cmake)
   return()
 endif()
-project(lightair-camera-fx VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
+project(lightair-effect-stack VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 17)
@@ -30,7 +30,7 @@ set(DEPS "${CMAKE_SOURCE_DIR}/.deps")
 set(GEN "${CMAKE_BINARY_DIR}/generated")
 file(WRITE "${GEN}/obsconfig.h" "#pragma once\n#define OBS_RELEASE_CANDIDATE 0\n#define OBS_BETA 0\n")
 
-add_library(lightair-camera-fx MODULE
+add_library(lightair-effect-stack MODULE
   src/module-main.c
   src/beauty-filter.c
   src/face-geometry.c
@@ -54,11 +54,11 @@ add_library(lightair-camera-fx MODULE
 set_source_files_properties(src/tracker/backend-coreml.mm src/tracker/coreml-common.mm src/tracker/segmenter-coreml.mm
   src/tracker/person-vision.mm src/virtualcam.m
   PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-target_compile_definitions(lightair-camera-fx PRIVATE BEAUTY_TRACKER_COREML BEAUTY_HAVE_LIBOBS PLUGIN_VERSION="${PROJECT_VERSION}")
-target_include_directories(lightair-camera-fx PRIVATE "${OBS_SRC}/libobs" "${GEN}" "${SIMDE_DIR}" src src/tracker)
-target_compile_options(lightair-camera-fx PRIVATE -Wall -Wno-unused-parameter -Wno-missing-field-initializers)
-target_link_options(lightair-camera-fx PRIVATE "-F${OBS_APP}/Contents/Frameworks" "-Wl,-rpath,@executable_path/../Frameworks")
-target_link_libraries(lightair-camera-fx PRIVATE "-framework libobs" "-framework Foundation" "-framework CoreVideo"
+target_compile_definitions(lightair-effect-stack PRIVATE BEAUTY_TRACKER_COREML BEAUTY_HAVE_LIBOBS PLUGIN_VERSION="${PROJECT_VERSION}")
+target_include_directories(lightair-effect-stack PRIVATE "${OBS_SRC}/libobs" "${GEN}" "${SIMDE_DIR}" src src/tracker)
+target_compile_options(lightair-effect-stack PRIVATE -Wall -Wno-unused-parameter -Wno-missing-field-initializers)
+target_link_options(lightair-effect-stack PRIVATE "-F${OBS_APP}/Contents/Frameworks" "-Wl,-rpath,@executable_path/../Frameworks")
+target_link_libraries(lightair-effect-stack PRIVATE "-framework libobs" "-framework Foundation" "-framework CoreVideo"
   "-framework CoreGraphics" "-framework Vision" "-framework CoreML" "-framework Accelerate"
   "-framework CoreMedia" "-framework CoreMediaIO")
 
@@ -66,7 +66,7 @@ file(GLOB_RECURSE MODULE_DATA RELATIVE "${CMAKE_SOURCE_DIR}/data" CONFIGURE_DEPE
 list(FILTER MODULE_DATA EXCLUDE REGEX "^models/")
 foreach(f IN LISTS MODULE_DATA)
   get_filename_component(dir "${f}" DIRECTORY)
-  target_sources(lightair-camera-fx PRIVATE "data/${f}")
+  target_sources(lightair-effect-stack PRIVATE "data/${f}")
   set_source_files_properties("data/${f}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${dir}")
 endforeach()
 # Core ML models, compiled to .mlmodelc and copied into Resources/models.
@@ -83,16 +83,16 @@ foreach(m selfie_multiclass_256 face_detection_yunet face_landmarks_478)
     COMMAND xcrun coremlcompiler compile "${pkg}" "${COREML_OUT}" > /dev/null
     DEPENDS ${pkg_files} VERBATIM)
   list(APPEND COREML_COMPILED "${COREML_OUT}/${m}.mlmodelc/coremldata.bin")
-  add_custom_command(TARGET lightair-camera-fx POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E rm -rf "$<TARGET_BUNDLE_CONTENT_DIR:lightair-camera-fx>/Resources/models/${m}.mlmodelc"
+  add_custom_command(TARGET lightair-effect-stack POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "$<TARGET_BUNDLE_CONTENT_DIR:lightair-effect-stack>/Resources/models/${m}.mlmodelc"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${COREML_OUT}/${m}.mlmodelc"
-            "$<TARGET_BUNDLE_CONTENT_DIR:lightair-camera-fx>/Resources/models/${m}.mlmodelc")
+            "$<TARGET_BUNDLE_CONTENT_DIR:lightair-effect-stack>/Resources/models/${m}.mlmodelc")
 endforeach()
 add_custom_target(coreml-models DEPENDS ${COREML_COMPILED})
-add_dependencies(lightair-camera-fx coreml-models)
-set_target_properties(lightair-camera-fx PROPERTIES
+add_dependencies(lightair-effect-stack coreml-models)
+set_target_properties(lightair-effect-stack PROPERTIES
   BUNDLE TRUE BUNDLE_EXTENSION plugin PREFIX ""
   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/Info.plist.in"
-  MACOSX_BUNDLE_GUI_IDENTIFIER "app.lightair.camera-fx"
+  MACOSX_BUNDLE_GUI_IDENTIFIER "app.lightair.effect-stack"
   MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
   MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")

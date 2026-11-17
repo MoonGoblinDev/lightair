@@ -146,7 +146,8 @@ Built, tested (317 tests) and benchmarked on Windows 11 on 17 November 2026
 - **`media_native::a_rotated_video_shows_upright`** (lightair-preview) fails now and then when
   the whole suite runs in parallel; passes alone. So does
   `stream_sharing::identical_destinations_share_an_encoder` and `audio::track_levels_follow_the_fader`
-  (lightair-engine; timing under load).
+  (lightair-engine), and `media_native::a_local_video_plays_through_lightairs_own_source`
+  (lightair-preview): timing under load.
 - Media source render time +1 ms (deferred earlier).
 - ~~Notarization~~ (done: release.env's `LIGHTAIR_NOTARY_PROFILE`; the release workflow
   notarizes on GitHub). ~~Updates~~ (built: Settings › About, signed manifests on GitHub

@@ -53,7 +53,7 @@ fn effects_audio_and_transition() {
     let cam = p.sources.values().find(|i| i.name == "Camera").unwrap();
     let kinds: Vec<_> = cam.effects.iter().map(|e| e.kind.as_str()).collect();
     assert_eq!(kinds, ["lightair_camera_studio", "chroma_key_filter_v2", "shaderfilter"]);
-    assert_eq!(cam.effects[0].name, "Camera Studio");
+    assert_eq!(cam.effects[0].name, "Effects");
     assert_eq!(cam.effects[0].settings["smooth"], 0.4, "Dewy settings carry over");
     assert!(!cam.effects[1].enabled);
 
@@ -69,7 +69,7 @@ fn effects_audio_and_transition() {
     assert_eq!(p.transition.duration_ms, 450);
 
     eprintln!("{report:#?}");
-    assert_eq!(report.replaced.len(), 1, "Dewy → Camera Studio");
+    assert_eq!(report.replaced.len(), 1, "Dewy → Effects");
     assert!(report.kept_plugin.iter().any(|s| s.contains("spectralizer")));
     assert!(report.kept_plugin.iter().any(|s| s.contains("shaderfilter")));
     assert!(report.attention.iter().any(|s| s.contains("Background removal")));

@@ -1,4 +1,4 @@
-// The clip effects: a port of modules/lightair-camera-fx/data/fx/*.effect. fx_prelude.wgsl is
+// The clip effects: a port of modules/lightair-effect-stack/data/fx/*.effect. fx_prelude.wgsl is
 // prepended (uniforms, textures, samplers, `img`/`img_point`/`src`, and common.inc's helpers).
 //
 // Each effect `name` is `fs_name_0` ("Draw") or `fs_name_0`..`fs_name_N` ("Pass0".."PassN").

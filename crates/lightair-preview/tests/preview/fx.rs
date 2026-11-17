@@ -37,8 +37,8 @@ fn every_shader_effect_renders() {
         return;
     }
     let _ = tracing_subscriber::fmt().with_env_filter("warn").with_test_writer().try_init();
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-camera-fx");
-    if !dir.join("lightair-camera-fx.plugin").exists() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/modules/lightair-effect-stack");
+    if !dir.join("lightair-effect-stack.plugin").exists() {
         eprintln!("module not built; skipping");
         return;
     }

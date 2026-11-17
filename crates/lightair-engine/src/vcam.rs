@@ -83,7 +83,7 @@ pub fn install() -> Result<(), String> {
     Err("The virtual camera installs with Lightair on this system.".into())
 }
 
-/// Registers the `lightair_virtualcam` output (Windows; on macOS it's lightair-camera-fx's).
+/// Registers the `lightair_virtualcam` output (Windows; on macOS it's lightair-effect-stack's).
 pub(crate) fn register() {
     #[cfg(windows)]
     win::register();

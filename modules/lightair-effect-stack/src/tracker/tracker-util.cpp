@@ -17,9 +17,9 @@ void tracker_log(const char *fmt, ...)
 	vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
 #ifdef BEAUTY_HAVE_LIBOBS
-	blog(LOG_INFO, "[camera-studio] %s", msg);
+	blog(LOG_INFO, "[effect-stack] %s", msg);
 #else
-	fprintf(stderr, "[camera-studio] %s\n", msg);
+	fprintf(stderr, "[effect-stack] %s\n", msg);
 #endif
 }
 

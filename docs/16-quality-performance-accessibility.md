@@ -35,7 +35,7 @@ Lightair is measured against OBS Studio of the same engine version with an equiv
 
 | Feature | Budget (M1, 1080p60 canvas) |
 |---|---|
-| Camera Studio, all tabs on | ≤ 1.0 ms render time, ≤ 20 % of one core, 0 skipped frames |
+| Lightair Effect Stack, all tabs on | ≤ 1.0 ms render time, ≤ 20 % of one core, 0 skipped frames |
 | Voice Clarity on one track | ≤ 3 % of one core, ≤ 10 ms added latency |
 | Each preview (thumbnail size) | ≤ 0.15 ms GPU |
 | Chat panel at 50 messages/s | No UI frame over budget |
@@ -63,13 +63,13 @@ precommit` what a commit needs (docs/build-speed.md).
 | **Unit** | `lightair-core` commands, validation, undo coalescing, migrations, reconciler diffing | `cargo test`, property tests (`proptest`) for command sequences and undo/redo round trips |
 | **Engine integration** | Reconciler against real libobs: create, mutate and tear down every entity type; idempotence (full apply == incremental) | Headless libobs with null graphics + test sources |
 | **UI** | Components and panels in headless GPUI windows: pointer/keyboard input, focus order, layout assertions, accessibility tree | gpui-kit UI testing harness |
-| **Golden render** | Each video effect, transition, Camera Studio tab, text style and template rendered to images and compared to approved goldens (perceptual diff with tolerance) | Offscreen libobs render, per-GPU-vendor goldens where needed |
+| **Golden render** | Each video effect, transition, Lightair Effect Stack tab, text style and template rendered to images and compared to approved goldens (perceptual diff with tolerance) | Offscreen libobs render, per-GPU-vendor goldens where needed |
 | **Audio** | Each audio effect against reference signals: frequency response, gain, latency, null tests; Voice Clarity against a speech/noise corpus | Offline processing harness |
 | **A/V sync** | Clapper test: synthetic flash + beep through capture, effects, encoders and outputs; measure offset in recordings and on a local RTMP server | Automated, every engine change |
 | **Outputs** | Stream to local RTMP/SRT/WHIP servers, verify continuity, reconnect behaviour under induced packet loss and outages | Local test servers + network shaping |
 | **Soak** | 4–12 hour sessions: streaming + recording + replay buffer + scripted UI interaction; watch memory growth, frame stats, file integrity | Nightly on dedicated machines |
 | **Compatibility** | Popular third-party OBS plugins load and work, including frontend-API plugins on the shim and Qt plugins in the Qt runtime (docks embedded, dialogs, events, save/load round trips); classifier accuracy; crash quarantine; OBS import fixtures from real user collections (anonymised) | Plugin matrix feeding the compatibility database |
-| **Camera Studio** | Tracking jitter and lag harness on recorded footage; pigment model validation across a broad, consented skin-tone dataset | Offline harness |
+| **Lightair Effect Stack** | Tracking jitter and lag harness on recorded footage; pigment model validation across a broad, consented skin-tone dataset | Offline harness |
 
 **Fuzzing** covers the project loader, OBS importer, remote API message parser and pack importer.
 

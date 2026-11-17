@@ -130,7 +130,7 @@ jobs:
       - name: ffmpeg
         run: choco install ffmpeg -y --no-progress
 
-      - name: Camera Studio module
+      - name: Lightair Effect Stack module
         env:
           OBS_DIR: C:\obs
         run: cargo xtask modules
