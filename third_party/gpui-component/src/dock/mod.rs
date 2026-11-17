@@ -130,6 +130,11 @@ pub(crate) fn init(cx: &mut App) {
 /// affordances are offered at all — live here. It is shared by reference with
 /// the per-container renderers, which are built once each and outlive any one
 /// frame.
+/// Lightair patch: builds a tab's right-click menu for its panel ([`DockSkin::set_tab_menu`]).
+pub type TabMenu = std::rc::Rc<
+    dyn Fn(crate::menu::PopupMenu, std::sync::Arc<dyn gpui_base::dock::PanelView>, &mut gpui::Window, &mut App) -> crate::menu::PopupMenu,
+>;
+
 pub(crate) struct SkinShared {
     area: WeakEntity<DockArea>,
     panel_style: Cell<PanelStyle>,
@@ -137,6 +142,8 @@ pub(crate) struct SkinShared {
     close_button_visible: Cell<bool>,
     /// Lightair patch: whether tab bars draw the "…" panel menu.
     menu_button_visible: Cell<bool>,
+    /// Lightair patch: what a tab's right-click menu offers (none without it).
+    tab_menu: std::cell::RefCell<Option<TabMenu>>,
     /// The dock whose resize handle is being dragged, if any. Only one can be.
     resizing_dock: Cell<Option<DockPlacement>>,
     /// Whether that dock was open when the drag began, so the release can
@@ -221,6 +228,7 @@ impl DockSkin {
                 toggle_button_visible: Cell::new(true),
                 close_button_visible: Cell::new(false),
                 menu_button_visible: Cell::new(true),
+                tab_menu: std::cell::RefCell::new(None),
                 resizing_dock: Cell::new(None),
                 resize_started_open: Cell::new(false),
             }),
@@ -257,6 +265,12 @@ impl DockSkin {
     /// Lightair patch: hide or show the "…" panel menu in every tab bar.
     pub fn set_menu_button_visible(&self, visible: bool, cx: &mut App) {
         self.shared.menu_button_visible.set(visible);
+        self.shared.notify(cx);
+    }
+
+    /// Lightair patch: a right-click menu on every tab, built for the tab's panel.
+    pub fn set_tab_menu(&self, menu: TabMenu, cx: &mut App) {
+        *self.shared.tab_menu.borrow_mut() = Some(menu);
         self.shared.notify(cx);
     }
 

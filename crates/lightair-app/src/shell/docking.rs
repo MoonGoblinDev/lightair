@@ -212,6 +212,8 @@ impl StudioWindow {
         skin.set_panel_style(gpui_kit::component::dock::PanelStyle::TabBar, cx);
         // No "…" menu in panel headers: each panel's actions are its own buttons.
         skin.set_menu_button_visible(false, cx);
+        // a tab's right-click: its panel in a window of its own (shell/panel_window)
+        skin.set_tab_menu(Self::tab_menu(cx.entity().downgrade()), cx);
         dock.update(cx, |area, cx| {
             area.set_center(DockLayout::tabs().panel_view(panel_handle(canvas), cx), window, cx);
             // the mixer and assets: a dock of their own, so they hide like the side panels
@@ -268,6 +270,64 @@ impl StudioWindow {
         // Development: open a dialog on launch for screenshots (no clicking needed).
         match std::env::var("LIGHTAIR_OPEN").as_deref() {
             Ok("add-object") => self.open_add_object(window, cx),
+            // a tab dragged inside this window ("dock-drag:1338,60>1432,600", in points), held
+            // over its drop a while, then dropped; the right dock's layout logged
+            Ok(hook) if hook.starts_with("dock-drag:") => {
+                let nums: Vec<f32> = hook[10..].split([',', '>']).filter_map(|n| n.parse().ok()).collect();
+                if let [x0, y0, x1, y1] = nums[..] {
+                    cx.spawn_in(window, async move |this, cx| {
+                        let executor = cx.background_executor().clone();
+                        let wait = |ms| executor.timer(std::time::Duration::from_millis(ms));
+                        wait(6000).await;
+                        let at = |x: f32, y: f32| point(px(x), px(y));
+                        let send = |cx: &mut AsyncWindowContext, e: PlatformInput| {
+                            let _ = cx.update(|window, cx| window.dispatch_event(e, cx));
+                        };
+                        let left = Some(MouseButton::Left);
+                        send(cx, PlatformInput::MouseMove(MouseMoveEvent { position: at(x0, y0), pressed_button: None, modifiers: Modifiers::default() }));
+                        send(cx, PlatformInput::MouseDown(MouseDownEvent { button: MouseButton::Left, position: at(x0, y0), modifiers: Modifiers::default(), click_count: 1, first_mouse: false }));
+                        for i in 1..=20 {
+                            let t = i as f32 / 20.;
+                            send(cx, PlatformInput::MouseMove(MouseMoveEvent { position: at(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t), pressed_button: left, modifiers: Modifiers::default() }));
+                            wait(30).await;
+                        }
+                        tracing::info!("CHECK dock-drag holding");
+                        wait(8000).await;
+                        send(cx, PlatformInput::MouseUp(MouseUpEvent { button: MouseButton::Left, position: at(x1, y1), modifiers: Modifiers::default(), click_count: 1 }));
+                        // (a hidden window draws on input: a few moves for a fresh frame)
+                        for i in 0..10 {
+                            send(cx, PlatformInput::MouseMove(MouseMoveEvent { position: at(x1 - 200. - i as f32, y1), pressed_button: None, modifiers: Modifiers::default() }));
+                            wait(100).await;
+                        }
+                        let _ = this.update(cx, |this, cx| {
+                            if let Some(dock) = &this.dock {
+                                let area = dock.read(cx);
+                                for p in [DockPlacement::Left, DockPlacement::Right, DockPlacement::Bottom] {
+                                    if let Some(tree) = area.layout(p) {
+                                        tracing::info!(region = ?p, layout = ?tree.root(), "CHECK dock-drag");
+                                    }
+                                }
+                            }
+                        });
+                    })
+                    .detach();
+                }
+            }
+            // a panel in a window of its own ("popout-chat")
+            Ok(hook) if hook.starts_with("popout-") => {
+                // ("…-back": then back in the dock after a few seconds)
+                let name = hook[7..].trim_end_matches("-back");
+                if let Some(panel) = self.docked_panel(name, cx) {
+                    self.pop_out(panel, window, cx);
+                }
+                if hook.ends_with("-back") {
+                    cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
+                        StudioWindow::all_back(this, cx);
+                    })
+                    .detach();
+                }
+            }
             // a text object being typed into on the canvas
             Ok("canvas-text") => {
                 self.add_text(cx);

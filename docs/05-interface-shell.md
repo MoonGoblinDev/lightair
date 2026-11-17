@@ -128,7 +128,8 @@ Import from OBS reads a scene collection and profile, maps sources and filters (
 
 ## Windows & multi-display
 
-- **Pop-out panels**: any dock panel can become its own window and dock back.
+- **Pop-out panels**: any dock panel but the canvas can become its own window (right-click its tab › **Open in New Window**) and dock back (its window's ↙ button, or closing the window: it returns to the region it came from).
+- **Docking beside a whole column**: dropping a tab in the thin band along a panel's outer edge puts it beside the whole column (or row) that edge belongs to, full height: two sidebars side by side, the dock widening by a column.
 - **Projectors**: fullscreen or windowed output of any canvas, scene, multiview, or a single layer, on any display. Used for confidence monitors and capture by other tools.
 - **Multiview**: grid of scenes with program/preview markers, click to stage, double-click to take; configurable layouts (2×2, 3×3, 1+4, 1+7).
 - **Menu bar / tray extra**: live state, timers, start/stop, mute, scene switch, for use while Lightair is hidden.

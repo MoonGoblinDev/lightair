@@ -52,6 +52,8 @@ debug = false
 # gpui-component with a switch to hide the dock's "…" panel menu (third_party/gpui-component/LIGHTAIR-PATCH.md).
 [patch.crates-io]
 gpui-component = { path = "third_party/gpui-component" }
+# gpui-base with docking beside a whole column (third_party/gpui-base/LIGHTAIR-PATCH.md).
+gpui-base = { path = "third_party/gpui-base" }
 # gpui-pre-windows with a composition visual under each window's UI, for the canvas preview
 # (third_party/gpui-pre-windows/LIGHTAIR-PATCH.md).
 gpui-pre-windows = { path = "third_party/gpui-pre-windows" }

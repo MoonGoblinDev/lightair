@@ -206,7 +206,15 @@ fn main() {
             async {}
         })
         .detach();
-        cx.on_window_closed(|cx, _| cx.quit()).detach();
+        // closing the main window quits (a panel's own window docks it again: shell/panel_window)
+        let main_window: std::rc::Rc<std::cell::Cell<Option<WindowId>>> = Default::default();
+        let main_id = main_window.clone();
+        cx.on_window_closed(move |cx, closed| {
+            if main_id.get().is_none_or(|main| main == closed) {
+                cx.quit();
+            }
+        })
+        .detach();
 
         // A copy started by a test or screenshot hook stays in the background: it must never take
         // the keyboard from the app someone is typing in.
@@ -229,8 +237,9 @@ fn main() {
             ..Default::default()
         };
         let preview = preview.clone();
-        gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| StudioWindow::new(studio, preview, window, cx)))
+        let (main, _) = gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| StudioWindow::new(studio, preview, window, cx)))
             .expect("open window");
+        main_window.set(Some(main.window_id()));
         if !background {
             cx.activate(true);
         }

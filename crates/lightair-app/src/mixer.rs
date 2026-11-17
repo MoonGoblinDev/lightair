@@ -1801,6 +1801,22 @@ impl MixerDock {
         Self { body, overlay }
     }
 
+    /// In a window of its own (shell/panel_window), or back in the dock: the natively drawn
+    /// meters are the main window's, so in another window GPUI draws them.
+    pub fn set_own_window(&mut self, own: bool, cx: &mut Context<Self>) {
+        let native = crate::native_preview::on();
+        if let Some(n) = self.body.read(cx).native.borrow_mut().as_mut() {
+            n.show_meters(!own);
+        }
+        if own && self.overlay.is_none() {
+            let spots = self.body.read(cx).spots.clone();
+            self.overlay = Some(cx.new(|cx| MeterOverlay::new(spots, cx)));
+        } else if !own && native {
+            self.overlay = None;
+        }
+        cx.notify();
+    }
+
     /// The canvas drew a frame: the meters move with it if they're due.
     pub fn tick_meters(this: &Entity<Self>, cx: &mut App) {
         if let Some(overlay) = this.read(cx).overlay.clone() {

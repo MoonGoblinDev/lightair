@@ -33,6 +33,7 @@ mod canvas_text;
 mod colour_field;
 mod connections;
 mod console_panel;
+mod panel_window;
 mod live_api;
 mod widget_props;
 mod menus;
@@ -376,6 +377,8 @@ pub struct StudioWindow {
     /// The devices connected now (looked at every few seconds) and whether the console is open.
     connected: Option<crate::console::Connected>,
     console_open: bool,
+    /// Panels in windows of their own (shell/panel_window), and their windows.
+    panel_windows: Vec<(gpui_kit::component::dock::PanelId, AnyWindowHandle, Entity<panel_window::PanelWindow>)>,
     /// macOS's camera effects as last set (`effects::sync_macos_effects`); `None` before the
     /// first look.
     macos_fx: Option<effects::MacosEffects>,
@@ -729,6 +732,7 @@ impl StudioWindow {
             perf_open: false,
             connected: None,
             console_open: false,
+            panel_windows: Vec::new(),
             panning: None,
             space_down: false,
             sizes: RefCell::default(),

@@ -15,7 +15,7 @@ use std::{
 use gpui::{
     Anchor, AnyElement, AnyView, App, AppContext as _, Context, Div, Empty,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled as _, Window, div,
+    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled as _, Window, deferred, div,
     prelude::FluentBuilder as _, px,
 };
 use gpui_base::{
@@ -35,7 +35,7 @@ use crate::{
         toggle_dock_by_user,
     },
     h_flex,
-    menu::DropdownMenu as _,
+    menu::{ContextMenuExt as _, DropdownMenu as _},
     tab::{Tab, TabBar},
 };
 
@@ -566,6 +566,17 @@ impl TabGroupSkin {
                             // the stored index: a hidden displayed tab falls
                             // back to the first visible one.
                             .selected(!collapsed && Some(ix) == displayed_ix)
+                            // Lightair patch: the tab's right-click menu (DockSkin::set_tab_menu)
+                            .when_some(self.shared.tab_menu.borrow().clone(), |this, menu| {
+                                let panel = panel.clone();
+                                this.child(
+                                    div()
+                                        .id(("tab-menu", ix))
+                                        .absolute()
+                                        .inset_0()
+                                        .context_menu(move |popup, window, cx| menu(popup, panel.clone(), window, cx)),
+                                )
+                            })
                             .on_click({
                                 let group = group.clone();
                                 let area = self.shared.area().clone();
@@ -846,16 +857,19 @@ impl TabGroupRenderer for TabGroupSkin {
             cx,
         );
 
-        Some(
-            div()
-                .absolute()
-                .bg(cx.theme().tokens.drop_target)
-                .left(left)
-                .top(top)
-                .w(width)
-                .h(height)
-                .into_any_element(),
-        )
+        let placeholder = div()
+            .absolute()
+            .bg(cx.theme().tokens.drop_target)
+            .left(left)
+            .top(top)
+            .w(width)
+            .h(height);
+        // Lightair patch: beside a whole column or row, the placeholder reaches past this
+        // group, so it's drawn over the dock rather than clipped to the group
+        Some(match indicator.outer() {
+            Some(_) => deferred(placeholder).with_priority(1).into_any_element(),
+            None => placeholder.into_any_element(),
+        })
     }
 }
 
