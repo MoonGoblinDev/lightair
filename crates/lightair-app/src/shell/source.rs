@@ -317,6 +317,7 @@ impl StudioWindow {
         let card = |i: usize, c: &Choice, cx: &mut Context<Self>| {
             let selected = c.value == current;
             let settings = merged(&source.settings, key, c.value.clone());
+            let (kind, value, title) = (source.kind.clone(), c.value.clone(), c.title.clone());
             div()
                 .id(("source-choice", i))
                 .flex()
@@ -353,7 +354,16 @@ impl StudioWindow {
                 )
                 .when(selected, |d| d.child(ui::icon("check").size(px(14.)).text_color(tok::accent_primary())))
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.exec(Command::SetSourceSettings { source: id, settings: settings.clone() }, cx);
+                    // a microphone takes the device's name (System Default for the system's)
+                    let cmd = if crate::console::is_mic(&kind) {
+                        let w = this.studio.read(cx).workspace().clone();
+                        crate::console::repoint(&w, id, settings.clone(), &crate::console::mic_name(&value_text(&value), &title))
+                    } else {
+                        Some(Command::SetSourceSettings { source: id, settings: settings.clone() })
+                    };
+                    if let Some(cmd) = cmd {
+                        this.exec(cmd, cx);
+                    }
                     this.close_source_picker(window, cx);
                 }))
         };

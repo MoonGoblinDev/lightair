@@ -6,7 +6,6 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::Command;
 
 use super::StudioWindow;
 use crate::console::{self, Fix};
@@ -106,9 +105,12 @@ impl StudioWindow {
                                         let (Some(me), Some(src)) = (me.upgrade(), current.clone()) else { return };
                                         let mut settings = src.settings.clone();
                                         settings["device"] = serde_json::json!(id);
+                                        let name = if camera { name.clone() } else { console::mic_name(&id, &name) };
                                         me.update(cx, |this, cx| {
-                                            this.exec(Command::SetSourceSettings { source: src.id, settings }, cx);
-                                            this.exec(Command::RenameSource { source: src.id, name: name.clone() }, cx);
+                                            let w = this.studio.read(cx).workspace().clone();
+                                            if let Some(cmd) = console::repoint(&w, src.id, settings, &name) {
+                                                this.exec(cmd, cx);
+                                            }
                                         });
                                     }));
                                 }

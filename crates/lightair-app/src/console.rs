@@ -3,7 +3,7 @@
 //! stream or recording that stopped on an error. Shown as a count at the footer's left; the
 //! console lists them (shell/console_panel).
 
-use lightair_core::{Id, Workspace, kinds};
+use lightair_core::{Command, Id, Track, Workspace, kinds};
 use lightair_engine::outputs::{OutputKey, OutputState, runtime};
 
 /// The devices connected now: (id, name).
@@ -40,6 +40,32 @@ pub struct Attention {
     pub fix: Fix,
 }
 
+/// Whether `kind` is a microphone's (through the OS, or the audio engine's own capture).
+pub fn is_mic(kind: &str) -> bool {
+    kind == kinds::MIC || kind == kinds::AUDIO_DEVICE
+}
+
+/// What a microphone source is called for `device`: System Default for the system's (which
+/// follows whatever the OS uses, so it's never missing), else the device's `name`.
+pub fn mic_name(device: &str, name: &str) -> String {
+    if lightair_engine::devices::is_system_default(device) { crate::mixer::SYSTEM_DEFAULT.to_string() } else { name.to_string() }
+}
+
+/// Points `source` at another device (`settings`). A microphone takes the device's `name`, and
+/// so does each track listening to it that the user hasn't named: a track called System Default
+/// is always the system's.
+pub fn repoint(w: &Workspace, source: Id, settings: serde_json::Value, name: &str) -> Option<Command> {
+    let s = w.sources.get(&source)?;
+    let mut commands = vec![Command::SetSourceSettings { source, settings }];
+    if s.name != name {
+        commands.push(Command::RenameSource { source, name: name.to_string() });
+    }
+    for t in w.tracks.iter().filter(|t| t.source == source && !t.named && t.name != name) {
+        commands.push(Command::UpdateTrack { track: Track { name: name.to_string(), ..(**t).clone() } });
+    }
+    Some(if commands.len() == 1 { commands.remove(0) } else { Command::Batch { label: "Change device".into(), commands } })
+}
+
 /// Whether a source is used: by a track (audio) or an object in some scene.
 fn used(w: &Workspace, source: Id) -> bool {
     w.tracks.iter().any(|t| t.source == source) || w.scenes.iter().any(|s| s.objects.iter().any(|o| o.source == Some(source)))
@@ -55,7 +81,7 @@ pub fn look(w: &Workspace, connected: Option<&Connected>) -> Vec<Attention> {
                 continue;
             }
             let (missing, camera) = match s.kind.as_str() {
-                kinds::AUDIO_DEVICE | kinds::MIC => (!lightair_engine::devices::is_system_default(device) && !c.mics.iter().any(|(id, _)| id == device), false),
+                k if is_mic(k) => (!lightair_engine::devices::is_system_default(device) && !c.mics.iter().any(|(id, _)| id == device), false),
                 kinds::CAMERA => (!c.cameras.iter().any(|(id, _)| id == device), true),
                 _ => continue,
             };
@@ -102,6 +128,10 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].fix, Fix::Device { source: mic.id, camera: false });
         assert!(found[0].title.contains("RGBMIC-USB audio"));
+        // replacing it renames the source and the track, unless the user named the track
+        let Some(Command::Batch { commands, .. }) = repoint(&w, mic.id, serde_json::json!({"device": ""}), &mic_name("", "x")) else { panic!() };
+        assert!(commands.contains(&Command::RenameSource { source: mic.id, name: crate::mixer::SYSTEM_DEFAULT.into() }));
+        assert!(commands.iter().any(|c| matches!(c, Command::UpdateTrack { track } if track.name == crate::mixer::SYSTEM_DEFAULT)));
         let back = Connected { mics: vec![("usb:2".into(), "RGBMIC".into())], cameras: vec![] };
         assert!(look(&w, Some(&back)).is_empty());
     }
