@@ -16,7 +16,7 @@ with what's known about each. Keep it current: strike items as they land.
 3. ~~**Sign-in that finishes on its own.**~~ Done. The sign-in window (`lightair_live::accounts::sign_in`,
    Outputs › a destination › Sending) should close itself as soon as the platform's sign-in
    cookie appears (poll `accounts::signed_in` while it's open), and the row update.
-4. ~~**A Stream manager panel.**~~ Done in part (stream_panel.rs: live, title, category, viewers, uptime for Twitch, YouTube, Kick; Open dashboard signed in). Title and category edits: Twitch through the dashboard's own GraphQL mutation (Helix doesn't take the site's session), Kick through its site's request; both untested on a real channel (Edit in the Stream panel). YouTube Studio's edit asks for Google's anti-bot attestation, so YouTube stays its dashboard. Left: stream health per destination, more platforms' details. One place per destination for what's live: title, category or
+4. ~~**A Stream manager panel.**~~ Done in part (stream_panel.rs: live, title, category, viewers, uptime for Twitch, YouTube, Kick; Open dashboard signed in). Title and category edits: Twitch through the dashboard's own GraphQL mutation (Helix doesn't take the site's session), Kick through its site's request; both untested on a real channel (Edit in the Stream panel). YouTube Studio's edit asks for Google's anti-bot attestation, so YouTube stays its dashboard. ~~Stream health per destination~~ (done: bitrate, frames dropped, reconnecting, in each row while streaming). Left: more platforms' details. One place per destination for what's live: title, category or
    game, tags, viewers, uptime, stream health; change title and category per platform (through
    the signed-in pages, no app approval: docs/plans/live-integrations.md, 2.2 and 2.10).
 
@@ -74,8 +74,8 @@ with what's known about each. Keep it current: strike items as they land.
   signed in officially; on Twitch ads, polls, predictions, raids, shoutouts, clips, markers;
   untested until an app is registered). Rewards management left.
 - ~~A block editor beyond the current list~~ (done: If's conditions, Then and Otherwise, and
-  Random's choices edited in place, nested to any depth; moving a step between lists is still
-  delete and add).
+  Random's choices edited in place, nested to any depth; a step moves between lists with its
+  move button).
 - ~~Streamer.bot import~~ (done: Automations › New › Import from Streamer.bot, from a copied
   export; all 141 public exports found import, C# kept as comments to port, older If/Else and
   some OBS steps listed as not brought over). ~~Twitch channel-point redemptions~~ (built:

@@ -36,6 +36,8 @@ pub struct StreamPanel {
     editing: Option<Editing>,
     /// What the last change said, per channel.
     notes: HashMap<Key, String>,
+    /// Bytes sent per stream output when last looked at (for its bitrate): (bytes, when, kbps).
+    sent: std::cell::RefCell<HashMap<lightair_core::Id, (u64, Instant, f64)>>,
 }
 
 fn since(ms: i64) -> String {
@@ -95,7 +97,7 @@ impl StreamPanel {
             }
         })
         .detach();
-        StreamPanel { studio, focus: cx.focus_handle(), info: HashMap::new(), drawn, windows: Vec::new(), editing: None, notes: HashMap::new() }
+        StreamPanel { studio, focus: cx.focus_handle(), info: HashMap::new(), drawn, windows: Vec::new(), editing: None, notes: HashMap::new(), sent: Default::default() }
     }
 
     fn open_dashboard(&mut self, url: String, name: String) {
@@ -143,6 +145,44 @@ impl StreamPanel {
         })
         .detach();
         cx.notify();
+    }
+
+    /// How each of this channel's streams is going right now (Lightair's own outputs): bitrate,
+    /// frames dropped, reconnecting. With a colour: fine, struggling, failing.
+    fn health(&self, platform: &str, channel: &str, cx: &App) -> Vec<(String, Hsla)> {
+        use lightair_engine::outputs::{OutputKey, OutputState, runtime};
+        let workspace = self.studio.read(cx).workspace();
+        let mut out = Vec::new();
+        let mut sent = self.sent.borrow_mut();
+        for d in workspace.outputs.destinations.iter().filter(|d| d.platform.as_deref() == Some(platform)) {
+            let chat = d.chat.as_deref().map(str::trim).unwrap_or("");
+            if !chat.is_empty() && chat != channel {
+                continue;
+            }
+            let st = runtime().get(OutputKey::Stream(d.id));
+            let now = Instant::now();
+            let kbps = match sent.get(&d.id) {
+                Some((b, t, k)) if now.duration_since(*t) < Duration::from_millis(900) => *k,
+                Some((b, t, _)) if st.bytes >= *b => (st.bytes - b) as f64 * 8.0 / 1000.0 / now.duration_since(*t).as_secs_f64().max(0.001),
+                _ => 0.0,
+            };
+            if sent.get(&d.id).is_none_or(|(_, t, _)| now.duration_since(*t) >= Duration::from_millis(900)) {
+                sent.insert(d.id, (st.bytes, now, kbps));
+            }
+            let dropped = if st.total_frames > 0 { st.dropped_frames as f64 * 100.0 / st.total_frames as f64 } else { 0.0 };
+            let line = |what: String| if workspace.outputs.destinations.iter().filter(|x| x.platform.as_deref() == Some(platform)).count() > 1 { format!("{}: {what}", d.name) } else { what };
+            match &st.state {
+                OutputState::Active { .. } => {
+                    let colour = if dropped >= 5.0 || kbps < 300.0 { tok::error() } else if dropped >= 1.0 { tok::warn() } else { tok::ok() };
+                    out.push((line(format!("Sending {:.0} kbps · {dropped:.1}% frames dropped", kbps)), colour));
+                }
+                OutputState::Reconnecting { .. } => out.push((line("Reconnecting…".into()), tok::warn())),
+                OutputState::Starting => out.push((line("Starting…".into()), tok::text_tertiary())),
+                OutputState::Failed(why) => out.push((line(format!("Stopped: {why}")), tok::error())),
+                _ => {}
+            }
+        }
+        out
     }
 
     fn row(&self, platform: &str, channel: &str, i: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -195,6 +235,9 @@ impl StreamPanel {
                         }),
                 )
                 .child(div().text_size(px(13.)).text_color(tok::text()).truncate().child(title))
+                .children(self.health(platform, channel, cx).into_iter().map(|(text, colour)| {
+                    div().flex().items_center().gap_1().child(div().size(px(6.)).rounded_full().bg(colour)).child(div().text_size(px(11.)).text_color(colour).child(text))
+                }))
                 .when(!category.is_empty() || !facts.is_empty(), |d| {
                     let line = std::iter::once(category).filter(|c| !c.is_empty()).chain(facts).collect::<Vec<_>>().join(" · ");
                     d.child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child(line))

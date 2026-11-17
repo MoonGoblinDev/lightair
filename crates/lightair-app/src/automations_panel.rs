@@ -119,6 +119,67 @@ fn edit_list(a: &Automation, path: &str, f: impl FnOnce(&mut Vec<Value>)) -> Opt
     serde_json::from_value(v).ok()
 }
 
+/// Every list of steps in `steps` (at `path`), with a name to show: "Steps", "2 › Then", ….
+fn step_lists(steps: &[Step], path: &str, name: &str, out: &mut Vec<(String, String)>) {
+    out.push((path.to_string(), name.to_string()));
+    for (i, s) in steps.iter().enumerate() {
+        let here = format!("{path}.{i}");
+        let at = if name == "Steps" { format!("{}", i + 1) } else { format!("{name} › {}", i + 1) };
+        match s {
+            Step::If { then, otherwise, .. } => {
+                step_lists(then, &format!("{here}.then"), &format!("{at} › Then"), out);
+                step_lists(otherwise, &format!("{here}.else"), &format!("{at} › Otherwise"), out);
+            }
+            Step::Random { choices } => {
+                for (k, c) in choices.iter().enumerate() {
+                    step_lists(c, &format!("{here}.choices.{k}"), &format!("{at} › Choice {}", k + 1), out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn list_mut<'a>(v: &'a mut Value, path: &str) -> Option<&'a mut Vec<Value>> {
+    let mut cur = v;
+    for part in path.split('.') {
+        cur = match part.parse::<usize>() {
+            Ok(n) => cur.get_mut(n)?,
+            Err(_) => cur.get_mut(part)?,
+        };
+    }
+    cur.as_array_mut()
+}
+
+/// Moves step `i` of the list at `from` to the end of the list at `to` (not into itself).
+fn move_step(a: &Automation, from: &str, i: usize, to: &str) -> Option<Automation> {
+    let here = format!("{from}.{i}");
+    if to == from || to == here || to.starts_with(&format!("{here}.")) {
+        return None;
+    }
+    let mut v = serde_json::to_value(a).ok()?;
+    // taking the step out shifts later siblings: a target under one of them moves up by one
+    let to = match to.strip_prefix(&format!("{from}.")) {
+        Some(rest) => {
+            let (n, tail) = rest.split_once('.').unwrap_or((rest, ""));
+            match n.parse::<usize>() {
+                Ok(n) if n > i => format!("{from}.{}{}{tail}", n - 1, if tail.is_empty() { "" } else { "." }),
+                _ => to.to_string(),
+            }
+        }
+        None => to.to_string(),
+    };
+    let step = {
+        let src = list_mut(&mut v, from)?;
+        if i >= src.len() {
+            return None;
+        }
+        src.remove(i)
+    };
+    list_mut(&mut v, &to)?.push(step);
+    serde_json::from_value(v).ok()
+}
+
 fn get(a: &Automation, key: &str) -> String {
     let v = serde_json::to_value(a).unwrap_or(Value::Null);
     let mut cur = &v;
@@ -564,6 +625,33 @@ impl AutomationsPanel {
                     .child(ui::icon_button(id("down"), "chevron-down", tok::text_tertiary()).when(i + 1 < n, |d| {
                         d.on_click(cx.listener(move |this, _, _, cx| this.change_list(&down, &p_down, |l| l.swap(i, i + 1), cx)))
                     }))
+                    .child({
+                        // move it into another list (an If's Then or Otherwise, a choice) or out
+                        let mut lists = Vec::new();
+                        step_lists(&a.steps, "steps", "Steps", &mut lists);
+                        let here = format!("{path}.{i}");
+                        let targets: Vec<(String, String)> = lists.into_iter().filter(|(p, _)| p != path && p != &here && !p.starts_with(&format!("{here}."))).collect();
+                        let (me, base, from) = (cx.entity().downgrade(), a.clone(), path.to_string());
+                        Button::new(id("move"))
+                            .icon(ui::icon("corner-down-right"))
+                            .xsmall()
+                            .ghost()
+                            .tooltip("Move into another list")
+                            .dropdown_menu(move |mut menu, _, _| {
+                                for (to, name) in &targets {
+                                    let (me, base, from, to) = (me.clone(), base.clone(), from.clone(), to.clone());
+                                    menu = menu.item(PopupMenuItem::new(if to == "steps" { "Out, to the automation's steps".to_string() } else { format!("Into {name}") }).on_click(move |_, _, cx| {
+                                        if let (Some(me), Some(next)) = (me.upgrade(), move_step(&base, &from, i, &to)) {
+                                            me.update(cx, |this, cx| {
+                                                this.built_for = None;
+                                                this.save(next, cx);
+                                            });
+                                        }
+                                    }));
+                                }
+                                menu
+                            })
+                    })
                     .child(ui::icon_button(id("del"), "trash", tok::text_tertiary()).on_click(cx.listener(move |this, _, _, cx| {
                         this.change_list(&del, &p_del, |l| {
                             l.remove(i);
@@ -910,6 +998,15 @@ mod checks {
         assert_eq!(otherwise, &vec![Step::Wait { seconds: 2.0 }]);
         let Step::Random { choices } = &a.steps[1] else { panic!() };
         assert_eq!(choices.len(), 1);
+        // the If moved into the Random's choice, then a step moved back out
+        let moved = super::move_step(&a, "steps", 0, "steps.1.choices.0").unwrap();
+        assert_eq!(moved.steps.len(), 1);
+        let Step::Random { choices } = &moved.steps[0] else { panic!() };
+        assert!(matches!(choices[0].last(), Some(Step::If { .. })));
+        let out = super::move_step(&moved, "steps.0.choices.0", 0, "steps").unwrap();
+        assert_eq!(out.steps.len(), 2);
+        // never into itself
+        assert!(super::move_step(&a, "steps", 0, "steps.0.then").is_none());
         assert!(matches!(a.trigger, Trigger::Manual));
     }
 }
