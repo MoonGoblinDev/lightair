@@ -178,7 +178,10 @@ jobs:
         env:
           LIGHTAIR_UPDATE_KEY: ${{ secrets.LIGHTAIR_UPDATE_KEY }}
         run: |
+          # checkout fetches a pushed tag without its message: the tag itself, for its summary
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           notes=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")
+          echo "$notes" > "$RUNNER_TEMP/notes"
           cargo run --quiet --package xtask -- update-manifest "${{ needs.version.outputs.version }}" dist "$notes"
 
       - name: Publish the release
@@ -187,5 +190,6 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "Lightair ${{ needs.version.outputs.version }}" \
+            --notes-file "$RUNNER_TEMP/notes" \
             --generate-notes \
             --verify-tag
