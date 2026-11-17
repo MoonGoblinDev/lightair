@@ -594,13 +594,10 @@ impl StudioWindow {
                         menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new(label).checked(on).on_click(
                             move |_, _, cx| {
                                 // another device has other channels: start from all of them
-                                // and the device's name (System Default for the system's), the track's too
-                                // unless the user named it (crate::console::repoint)
+                                // the source takes the device's name (System Default for the system's); the
+                                // track keeps its own (crate::console::repoint)
                                 let name = crate::console::mic_name(&value, &lightair_engine::devices::device_name(&value).unwrap_or_default());
-                                let mut t = lightair_core::Track { channels: TrackChannels::All, ..track.clone() };
-                                if !t.named {
-                                    t.name = name.clone();
-                                }
+                                let t = lightair_core::Track { channels: TrackChannels::All, ..track.clone() };
                                 let cmd = Command::Batch {
                                     label: "Change input device".into(),
                                     commands: vec![

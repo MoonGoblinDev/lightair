@@ -524,8 +524,7 @@ pub struct Track {
     /// The strip's colour in the mixer (0xRRGGBB).
     #[serde(default)]
     pub color: Option<u32>,
-    /// The user named it (renamed it): it keeps its name when its source changes; otherwise it
-    /// takes the new source's name.
+    /// The user renamed it. (A track's name is its own either way: it never follows its source.)
     #[serde(default)]
     pub named: bool,
 }

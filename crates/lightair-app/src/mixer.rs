@@ -2286,8 +2286,8 @@ fn running_apps() -> Vec<(String, String)> {
 }
 
 /// The commands that make `track` listen to `to`: the same kind of source changes its settings;
-/// another kind replaces the source (the old one goes if nothing else uses it). A track still
-/// named after its old source takes the new one's name.
+/// another kind replaces the source (the old one goes if nothing else uses it). The source is
+/// named after what it hears; the track keeps its own name, whatever it listens to.
 fn source_cmd(p: &Workspace, track: Id, to: &TrackSource, app_name: &str) -> Option<Command> {
     let t = p.track(track)?;
     let old = p.sources.get(&t.source)?;
@@ -2295,11 +2295,8 @@ fn source_cmd(p: &Workspace, track: Id, to: &TrackSource, app_name: &str) -> Opt
     if kind.is_empty() {
         return None;
     }
-    // (a name the user gave it stays)
-    let renamed = |t: &Track| if t.named { t.name.clone() } else { name.clone() };
     let mut commands = Vec::new();
     let mut new_track = Track { channels: lightair_core::TrackChannels::All, ..(**t).clone() };
-    new_track.name = renamed(t);
     if old.kind == kind {
         let mut s = old.settings.clone();
         if let (Some(s), Some(n)) = (s.as_object_mut(), settings.as_object()) {
