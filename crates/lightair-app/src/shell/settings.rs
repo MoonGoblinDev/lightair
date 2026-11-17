@@ -1528,6 +1528,78 @@ impl StudioWindow {
                 value(&libobs),
             )))
             .child(where_)
+            .child(self.updates_group(cx))
+    }
+
+    /// Settings › About › Updates: the newest release, checked and installed from here.
+    fn updates_group(&self, cx: &mut Context<Self>) -> Div {
+        use crate::updater::{self, State};
+        if !updater::enabled() {
+            return group("Updates").child(row("This build doesn't update itself", Some("Development builds don't; releases from GitHub do."), div()));
+        }
+        let auto = self.prefs.check_updates;
+        let state = updater::state();
+        let (text, action): (String, Option<(&'static str, bool)>) = match &state {
+            State::Idle => ("Not checked yet".into(), Some(("Check now", false))),
+            State::Checking => ("Looking…".into(), None),
+            State::UpToDate => (format!("Lightair {} is the newest", env!("CARGO_PKG_VERSION")), Some(("Check now", false))),
+            State::Available(r) => (format!("Lightair {} is out{}", r.version, if r.notes.is_empty() { String::new() } else { format!(": {}", r.notes.lines().next().unwrap_or("")) }), Some(("Install and restart", true))),
+            State::Downloading(v) => (format!("Downloading Lightair {v}…"), None),
+            State::Installing => ("Restarting into the new version…".into(), None),
+            State::Failed(e) => (format!("Couldn't update: {e}"), Some(("Check now", false))),
+        };
+        // while it works, look again shortly
+        if matches!(state, State::Checking | State::Downloading(_)) {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                let _ = this.update(cx, |_, cx| cx.notify());
+            })
+            .detach();
+        }
+        let page = match &state {
+            State::Available(r) if !r.page.is_empty() => Some(r.page.clone()),
+            _ => None,
+        };
+        group("Updates")
+            .child(row(
+                "Lightair",
+                Some(&text),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .when_some(page, |d, url| {
+                        d.child(Button::new("update-notes").label("What's new").xsmall().ghost().on_click(move |_, _, cx| cx.open_url(&url)))
+                    })
+                    .when_some(action, |d, (label, install)| {
+                        d.child(Button::new("update-action").label(label).xsmall().outline().on_click(cx.listener(move |this, _, _, cx| {
+                            if !install {
+                                updater::check();
+                                cx.notify();
+                                return;
+                            }
+                            // download and check in the background; quit once it's staged
+                            cx.spawn(async move |this, cx| {
+                                let r = cx.background_executor().spawn(async { updater::install() }).await;
+                                let _ = this.update(cx, |_, cx| {
+                                    if r.is_ok() {
+                                        cx.quit();
+                                    } else {
+                                        cx.notify();
+                                    }
+                                });
+                            })
+                            .detach();
+                            let _ = this;
+                            cx.notify();
+                        })))
+                    }),
+            ))
+            .child(row(
+                "Check for updates automatically",
+                Some("At launch and every few hours, from Lightair's releases on GitHub."),
+                switch("update-auto", auto).on_click(cx.listener(move |this, _, _, cx| this.set_pref(|p| p.check_updates = !auto, cx))),
+            ))
     }
 }
 

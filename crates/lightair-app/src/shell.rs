@@ -478,6 +478,8 @@ impl StudioWindow {
         // Shortcuts that work in any app: registered now, handled as they come.
         let saved = crate::prefs::load_from(&crate::prefs::path());
         crate::shortcuts::register_all(&saved.global_shortcuts.iter().map(|h| (h.action, h.keys.clone())).collect::<Vec<_>>());
+        // a newer Lightair: looked for at launch and every few hours (Settings › About)
+        crate::updater::start(|| crate::prefs::load_from(&crate::prefs::path()).check_updates);
         // Face effects' "no face in view" hints.
         cx.spawn(async move |this, cx| {
             loop {

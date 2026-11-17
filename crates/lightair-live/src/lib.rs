@@ -40,6 +40,7 @@ pub mod youtube;
 pub use event::{Channel, ChatEvent, Fragment, Kind, Paid, Role, Status, User};
 pub use hub::{Hub, Sink};
 pub use images::Images;
+pub use net::download;
 
 /// The platforms whose chat Lightair reads (the Outputs list's ids).
 pub const READABLE: &[&str] = &["twitch", "youtube", "chzzk", "douyu", "soop", "kick", "tiktok", "twitcasting", "showroom", "bilibili", "niconico", "huya"];

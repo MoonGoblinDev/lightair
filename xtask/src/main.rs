@@ -29,6 +29,7 @@ use std::process::Command;
 #[cfg(target_os = "macos")]
 mod dist;
 mod rules;
+mod update;
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
@@ -351,6 +352,7 @@ const WINDOWS_MODULES: &[&str] = &[
 /// Authenticode needs a certificate (docs/15).
 #[cfg(windows)]
 fn dist_windows() -> anyhow::Result<()> {
+    release_env();
     let root = root();
     run(cargo().current_dir(&root).args(["build", "--release", "-p", "lightair-app", "-p", "lightair-web-helper", "-p", "lightair-camera-win"]))?;
     modules()?;
@@ -526,6 +528,13 @@ fn main() -> anyhow::Result<()> {
         #[cfg(not(any(target_os = "macos", windows)))]
         Some("dist") => anyhow::bail!("the shipped app is built on macOS and Windows"),
         Some("rules-key") => rules::key(),
+        Some("update-key") => update::key(),
+        Some("update-manifest") => {
+            let a: Vec<String> = std::env::args().skip(2).collect();
+            anyhow::ensure!(a.len() >= 2, "usage: cargo xtask update-manifest <version> <folder> [notes]");
+            update::manifest(&a[0], &a[1], a.get(2).map(String::as_str))
+        }
+        Some("ci-secrets") => update::ci_secrets(),
         Some("rules-sign") => rules::sign(&std::env::args().nth(2).ok_or_else(|| anyhow::anyhow!("usage: cargo xtask rules-sign <rules.json>"))?),
         Some("prune") => {
             be_polite();
@@ -535,7 +544,7 @@ fn main() -> anyhow::Result<()> {
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask (modules | bundle | dist | dev | virtual-camera [--uninstall] | test [--machine] [filter] | check [--changed] | precommit | prune | rules-key | rules-sign <file>)"
+                "usage: cargo xtask (modules | bundle | dist | dev | virtual-camera [--uninstall] | test [--machine] [filter] | check [--changed] | precommit | prune | rules-key | rules-sign <file> | update-key | update-manifest <version> <folder> [notes] | ci-secrets)"
             );
             Ok(())
         }

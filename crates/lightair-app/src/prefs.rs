@@ -42,6 +42,8 @@ pub struct Preferences {
     pub macos_background_before: Option<String>,
     /// The remote API: obs-websocket, JSON-RPC and MCP (Settings › Remote API).
     pub remote: RemoteApi,
+    /// Look for a new Lightair at launch and every few hours (Settings › About).
+    pub check_updates: bool,
 }
 
 /// The remote API's server (its password is in the Keychain: `secrets`).
@@ -124,6 +126,7 @@ impl Default for Preferences {
             record_mode: RecordMode::Program,
             macos_background_before: None,
             remote: RemoteApi::default(),
+            check_updates: true,
         }
     }
 }

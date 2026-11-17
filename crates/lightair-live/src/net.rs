@@ -103,3 +103,18 @@ pub fn yt_text(v: &serde_json::Value) -> String {
     }
     v["runs"].as_array().map_or_else(String::new, |runs| runs.iter().filter_map(|r| r["text"].as_str()).collect())
 }
+
+/// The bytes at `url` (redirects followed; GitHub's release downloads), up to `limit` bytes.
+pub fn download(url: &str, limit: u64) -> Result<Vec<u8>, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .tls_config(ureq::tls::TlsConfig::builder().provider(ureq::tls::TlsProvider::NativeTls).root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
+        .timeout_global(Some(Duration::from_secs(600)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut res = agent.get(url).header("User-Agent", USER_AGENT).call().map_err(|e| format!("{url}: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("{url}: HTTP {}", res.status().as_u16()));
+    }
+    res.body_mut().with_config().limit(limit).read_to_vec().map_err(|e| format!("{url}: {e}"))
+}

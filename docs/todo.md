@@ -115,7 +115,8 @@ Built, tested (317 tests) and benchmarked on Windows 11 on 17 November 2026
 [benchmarks/lightair-vs-obs-windows.md](benchmarks/lightair-vs-obs-windows.md)). Left:
 
 - **An installer and signing**: `cargo xtask dist` makes the portable app and its zip; an MSIX or
-  Inno Setup installer, Authenticode signing (a certificate), the updater.
+  Inno Setup installer, Authenticode signing (a certificate). ~~The updater~~ (built: updater.rs,
+  for the portable zip too; untested on Windows).
 - ~~The virtual camera~~ (Lightair's own on Windows 11, OBS's elsewhere), ~~"Now playing"~~,
   ~~"Use my browser's" sign-in~~ and ~~the Editor player without read back~~: done
   (plans/windows.md §6). Left there: Google's app-bound cookies (sign in in Lightair's window
@@ -147,4 +148,6 @@ Built, tested (317 tests) and benchmarked on Windows 11 on 17 November 2026
   `stream_sharing::identical_destinations_share_an_encoder` and `audio::track_levels_follow_the_fader`
   (lightair-engine; timing under load).
 - Media source render time +1 ms (deferred earlier).
-- Notarization needs `xcrun notarytool store-credentials` once (then `LIGHTAIR_NOTARY_PROFILE`).
+- ~~Notarization~~ (done: release.env's `LIGHTAIR_NOTARY_PROFILE`; the release workflow
+  notarizes on GitHub). ~~Updates~~ (built: Settings › About, signed manifests on GitHub
+  Releases; docs/releasing.md).
