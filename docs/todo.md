@@ -92,8 +92,8 @@ with what's known about each. Keep it current: strike items as they land.
 - **Official sign-in** (built: docs/official-apis.md; oauth.rs, official.rs): YouTube (title,
   description, category, chat, bans; finds Private and Unlisted streams), Twitch (title,
   category, chat, delete, bans), Kick (title, category, chat, bans), each used first where
-  signed in; X (goes live with your title when you stream and ends it after; sends chat;
-  reading X chat needs its webhook, so the relay). Needs Lightair's apps registered (client ids
+  signed in; X (goes live with your title when you stream and ends it after; sends chat; X chat
+  is to be read from X's own page, signed in). Needs Lightair's apps registered (client ids
   in the build); untested until then.
 - ~~Philips Hue~~ (done: Settings › Connections › Philips Hue, automation step "Philips Hue
   light"; tested against a stand-in bridge only). ~~A Lightair Stream Deck plugin~~ (done:
@@ -102,8 +102,9 @@ with what's known about each. Keep it current: strike items as they land.
   (done: Settings › Connections › Official sign-in › Use your own app). ~~Spotify's own API~~
   (done: official sign-in; Now playing then shows any of your devices, untested until an app is
   registered).
-- **The relay** (`relay/`, Ko-fi) isn't deployed: needs a Cloudflare account
-  (`npx wrangler deploy`), then Settings › Connections › Ko-fi.
+- ~~**The relay**~~ (dropped: Lightair runs no server). Ko-fi is read from its own stream alerts
+  page (Settings › Connections › Ko-fi › Paste stream alerts link; untested with a real Ko-fi
+  account).
 - Pulsoid and Elgato Key Lights are untested without a token / a light; VTube Studio was tested
   against a stand-in server only.
 

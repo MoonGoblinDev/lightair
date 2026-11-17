@@ -68,52 +68,25 @@ impl StudioWindow {
     }
 }
 
-/// Ko-fi through the relay: what's kept (Keychain, "kofi"): {"relay", "key", "verify"}.
-pub(super) fn kofi_settings() -> serde_json::Value {
-    lightair_live::donations::kofi_settings()
-}
-
 impl StudioWindow {
-    fn save_kofi(&mut self, v: serde_json::Value, cx: &mut Context<Self>) {
-        let text = v.to_string();
-        lightair_live::donations::set_token("kofi", &text);
-        let ready = v["relay"].as_str().is_some_and(|r| !r.is_empty()) && v["verify"].as_str().is_some_and(|r| !r.is_empty());
-        self.studio.update(cx, |s, _| {
-            s.set_service("kofi", false);
-            s.set_service("kofi", ready);
-        });
-        cx.background_executor().spawn(async move { crate::secrets::set_connection_token("kofi", &text) }).detach();
-        cx.notify();
-    }
-
-    /// From the clipboard: the relay's address (an https address) or Ko-fi's verification token.
-    pub(super) fn paste_kofi(&mut self, what: &str, cx: &mut Context<Self>) {
-        let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty() && !t.contains(char::is_whitespace)) else {
+    /// Ko-fi: its stream alerts link from the clipboard (Ko-fi › Stream Alerts › Copy the link),
+    /// kept in the Keychain; Lightair reads tips off that page, on this computer.
+    pub(super) fn paste_kofi_link(&mut self, cx: &mut Context<Self>) {
+        let text = cx.read_from_clipboard().and_then(|c| c.text()).unwrap_or_default();
+        let Some(link) = lightair_live::donations::kofi_link(&text) else {
             self.studio.update(cx, |s, cx| {
-                s.issue = Some("Copy it first (the clipboard is empty).".into());
+                s.issue = Some("Copy Ko-fi's stream alerts link first (ko-fi.com › Stream Alerts › Copy the link: it starts https://ko-fi.com/streamalerts/overlay/).".into());
                 cx.notify();
             });
             return;
         };
-        let mut v = kofi_settings();
-        if v["key"].as_str().is_none_or(str::is_empty) {
-            let mut b = [0u8; 16];
-            let _ = getrandom::fill(&mut b);
-            v["key"] = serde_json::json!(b.iter().map(|x| format!("{x:02x}")).collect::<String>());
-        }
-        if what == "relay" {
-            if !text.starts_with("https://") {
-                self.studio.update(cx, |s, cx| {
-                    s.issue = Some("The relay's address starts with https:// (what `npx wrangler deploy` printed).".into());
-                    cx.notify();
-                });
-                return;
-            }
-            v["relay"] = serde_json::json!(text.trim_end_matches('/'));
-        } else {
-            v["verify"] = serde_json::json!(text);
-        }
-        self.save_kofi(v, cx);
+        lightair_live::donations::set_token("kofi", &link);
+        self.studio.update(cx, |s, _| {
+            s.set_service("kofi", false);
+            s.set_service("kofi", true);
+        });
+        cx.background_executor().spawn(async move { crate::secrets::set_connection_token("kofi", &link) }).detach();
+        cx.notify();
     }
 }
 

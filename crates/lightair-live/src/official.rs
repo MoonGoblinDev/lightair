@@ -9,7 +9,8 @@
 //! - X's Livestream API (`api.x.com/2`: `sources`, `broadcasts`, `broadcasts/:id/chat`; needs
 //!   X's approval for the app). X takes a title only when a broadcast starts: Lightair goes live
 //!   on X itself once X sees the video, with the title set for it, and ends it when the stream
-//!   stops. X sends chat to a public webhook, so reading it waits for the relay.
+//!   stops. X's API sends chat only to a public webhook; Lightair needs no server, so it reads X
+//!   chat from X's own broadcast page instead (the signed-in pages).
 
 use serde_json::{Value, json};
 

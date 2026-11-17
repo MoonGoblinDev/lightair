@@ -1238,20 +1238,15 @@ impl StudioWindow {
                 });
             tips = tips.child(row(name, Some(&format!("{text}. {hint}")), control).text_color(colour));
         }
-        // Ko-fi, through the relay
-        let k = super::connections::kofi_settings();
-        let relay = k["relay"].as_str().unwrap_or("").to_string();
-        let key = k["key"].as_str().unwrap_or("").to_string();
-        let verified = k["verify"].as_str().is_some_and(|v| !v.is_empty());
+        // Ko-fi: its own stream alerts page, read on this computer
+        let kofi_set = lightair_live::donations::has_token("kofi");
         let kofi_channel = lightair_live::Channel { platform: "kofi".into(), channel: "tips".into() };
         let kofi_status = match status.get(&kofi_channel) {
-            Some(lightair_live::Status::Connected) => "Connected: Ko-fi tips show in Activity and alerts".to_string(),
+            Some(lightair_live::Status::Connected) => "Connected: Ko-fi tips, memberships and shop orders show in Activity and alerts".to_string(),
             Some(lightair_live::Status::Error { message }) => message.clone(),
-            _ if relay.is_empty() => "1. Deploy Lightair's relay (relay/ in Lightair's source, a free Cloudflare account), then paste its address".into(),
-            _ if !verified => "2. Copy the webhook address into Ko-fi (Settings › API › Webhooks), then paste Ko-fi's verification token".into(),
+            _ if !kofi_set => "Not connected. Its link: ko-fi.com › Stream Alerts › Copy the link (the one for OBS); no server or webhook needed.".into(),
             _ => "Connecting…".into(),
         };
-        let webhook = (!relay.is_empty() && !key.is_empty()).then(|| format!("{relay}/kofi/{key}"));
         tips = tips.child(row(
             "Ko-fi",
             Some(&kofi_status),
@@ -1259,13 +1254,8 @@ impl StudioWindow {
                 .flex()
                 .items_center()
                 .gap_1()
-                .child(Button::new("kofi-relay").label(if relay.is_empty() { "Paste relay address" } else { "Relay ✓" }).xsmall().outline().on_click(cx.listener(|this, _, _, cx| this.paste_kofi("relay", cx))))
-                .when_some(webhook, |d, w| {
-                    d.child(Button::new("kofi-copy").label("Copy webhook").xsmall().outline().on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(w.clone()))))
-                })
-                .when(!relay.is_empty(), |d| {
-                    d.child(Button::new("kofi-verify").label(if verified { "New token" } else { "Paste token" }).xsmall().outline().on_click(cx.listener(|this, _, _, cx| this.paste_kofi("verify", cx))))
-                }),
+                .child(Button::new("kofi-link").label(if kofi_set { "Paste new link" } else { "Paste stream alerts link" }).xsmall().outline().on_click(cx.listener(|this, _, _, cx| this.paste_kofi_link(cx))))
+                .when(kofi_set, |d| d.child(Button::new("kofi-forget").label("Disconnect").xsmall().ghost().on_click(cx.listener(|this, _, _, cx| this.disconnect("kofi", cx))))),
         ));
         let heart = self.heart_rate.is_some();
         let bpm = self.studio.read(cx).widgets.as_ref().map(|w| w.data("heart_rate")).filter(|v| !v.is_null());

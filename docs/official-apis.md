@@ -72,7 +72,8 @@ title only when a broadcast starts, so the Stream panel's title for X is kept fo
 when Lightair starts streaming, it waits for X's source to see the video and goes live on X with
 it (`POST /2/broadcasts`), and ends that broadcast when the stream stops. Chat: sending works
 (`POST /2/broadcasts/:id/chat`, 140 characters); X delivers chat to a public webhook (its
-Activity API), which needs the relay, so reading X chat isn't built yet.
+Activity API), and Lightair runs no server: X chat is read from X's own broadcast page,
+signed in, like TikTok's (not built yet: it needs a signed-in X session to build against).
 
 ## Spotify
 

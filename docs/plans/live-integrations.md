@@ -4,7 +4,8 @@ Status (16 November 2026), built:
 - **Chat in**: Twitch (and its follows), YouTube, Kick (and Kicks gifts), TikTok (comments,
   gifts with combos, follows, shares, from the room's own connection), CHZZK (and
   subscriptions), SOOP, DouYu, TwitCasting, SHOWROOM, Bilibili; tips from Streamlabs,
-  StreamElements and Ko-fi (through `relay/`); history kept across restarts.
+  StreamElements and Ko-fi (its own stream alerts page, opened hidden: no server); history kept
+  across restarts.
 - **Chat out**: sign in on each platform's own page in a Lightair window (Outputs ›
   Sending); Twitch, YouTube, Kick and TikTok send as you; the Chat panel's send box.
 - **Widgets** (crates/lightair-widgets): alert box, chat box, event list, goal, label,
@@ -20,7 +21,7 @@ Status (16 November 2026), built:
 Left: Facebook, Instagram, X and LinkedIn (signed-in pages: need a signed-in session to
 build against), Huya and Niconico readers, SOOP subscriptions and YouTube raids, reading
 rules updated without a release, Philips Hue, a Stream Deck plugin of Lightair's own,
-Streamer.bot import, bring-your-own official API credentials; deploying the relay. It turns
+Streamer.bot import, bring-your-own official API credentials. It turns
 [docs/12](../12-chat-alerts-integrations.md) into a design and goes further: everything a
 streamer runs next to OBS today (a chat app, StreamElements or Streamlabs widgets, Streamer.bot,
 Speaker.bot, Restream chat) is part of Lightair, so nobody needs a second app. Lightair doesn't
@@ -88,8 +89,7 @@ What follows from it:
  Instagram ─┐    │                               ├─▶ Automation (triggers → actions)  │
             │    │   Lightair's own events ──────┘      queues, variables, scripts   │
             ▼    │   (stats, audio, outputs, scenes)    every app command as a step  │
-   Lightair relay ─WS─▶                                                              │
-   (token exchange, webhooks)  └──────────────────────────────────────────────────────┘
+   (no server: everything runs on this computer) └──────────────────────────────────────┘
 ```
 
 ### 2.1 Accounts
@@ -259,8 +259,8 @@ recorded like any sound).
 
 ### 2.8 Integrations, in order
 
-1. **Donations**: StreamElements and Streamlabs tips (their sockets), Ko-fi, Fourthwall, Throne
-   (webhooks through the relay).
+1. **Donations**: StreamElements and Streamlabs tips (their sockets), Ko-fi (its stream alerts
+   page); Fourthwall and Throne only send webhooks, so they'd be read from their own pages too.
 2. **Spotify** now playing and `!sr` (adding to the queue needs Premium); Apple Music now playing.
 3. **Stream Deck plugin** and **MIDI** (docs/12), both on the remote API.
 4. **Discord**: go-live announcement, webhooks.
@@ -270,16 +270,13 @@ recorded like any sound).
 8. Crowd Control and the rest when asked for. Voicemeeter, Wave Link and the like aren't needed:
    Lightair's mixer is the mixer.
 
-### 2.9 The relay
+### 2.9 No server
 
-A small service of Lightair's own, the only server any of this needs:
-
-- Donation webhooks (Ko-fi, Throne, Fourthwall…), and Kick's official API for those who choose
-  it (it holds the client secret). Chat on every platform works without it (2.10).
-- Events go to the user's running Lightair over one WebSocket (the account's own channel), and are
-  dropped after delivery (or after a short buffer while the app is offline); nothing else is kept.
-- Stateless and small enough for a Cloudflare Worker with Durable Objects (one per account).
-- Lightair works fully without it; only webhook-only services need it.
+Lightair runs no server of its own (a relay for webhook-only services was built, then dropped
+on 17 November 2026): everything happens on the streamer's computer. Services that can only
+send webhooks are reached another way: their own pages, opened in Lightair (Ko-fi's stream
+alerts page; X's broadcast page for X chat). What arrives while Lightair is closed isn't
+replayed.
 
 ### 2.10 Approval-free routes
 
@@ -372,8 +369,8 @@ Chat, without approval:
    `!so` with a clip, death counter, redemption → scene, timed messages, TTS on donations, points
    and a giveaway, ad-break warning, raid welcome, first-chatter greeting) are built without
    code.
-5. **The relay and donations.** Donation webhooks; Kick's official API as an option. *Done when*
-   a Ko-fi tip arrives as an alert.
+5. **Donations.** Streamlabs, StreamElements and Ko-fi, all on this computer. *Done when* a
+   Ko-fi tip arrives as an alert.
 6. **Integrations.** Spotify, Stream Deck, VTube Studio, lights, heart rate; SHOWROOM; the
    official APIs for people who bring their own credentials; Streamer.bot import.
 
@@ -382,8 +379,6 @@ counterparts in `lightair-platform`; the widget runtime and scripting are platfo
 
 ## 4. Decisions to make
 
-- **The relay**: host it (Cloudflare Workers is the cheapest and simplest); it's needed from
-  phase 5, for donation webhooks only.
 - **Updating reading rules**: where they're published from (a signed file Lightair fetches), so
   a site's change is fixed in days.
 - **Twitch merged chat**: per-output chat overlays default to that output's platform (the

@@ -110,7 +110,7 @@ Create a LUT from a colour adjustment stack, convert between formats (`.cube`, `
 
 ### Screen draw sessions
 
-Share a link so guests can draw on a Screen Draw layer (moderated: approve guests, clear, lock). Uses a Lightair relay or a direct WebRTC connection; no account needed for guests.
+Share a link so guests can draw on a Screen Draw layer (moderated: approve guests, clear, lock). Uses a direct WebRTC connection (no Lightair server); no account needed for guests.
 
 ## Control
 
