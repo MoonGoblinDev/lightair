@@ -17,7 +17,7 @@ use sha2::Digest;
 
 /// The update key's public half (hex), written by `cargo xtask update-key`. Empty: this build
 /// doesn't update itself.
-pub const PUBLIC_KEY: &str = "";
+pub const PUBLIC_KEY: &str = "8cf309e5f6db29b3a0446f45d2512157486cf586a82e828d4fe0f8e3b6021ef7";
 
 const MANIFEST: &str = "https://github.com/MoonGoblinDev/lightair/releases/latest/download/latest.json";
 
