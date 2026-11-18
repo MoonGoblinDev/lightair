@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="site/assets/live.webp" alt="Lightair's Live view: a Starting Soon scene with a countdown, a goal bar, an event list and a tip alert on the canvas, the audio mixer below, outputs and the inspector on the right" width="100%">
+  <img src="site/assets/app.webp" alt="Lightair while recording: grouped layers in the Hierarchy, the main scene with a camera and a sub alert on the canvas, the mixer with Voice Clarity, EQ, compressor and ducker, both formats recording" width="100%">
 </p>
 
 Lightair keeps **libobs**, the engine inside OBS Studio (capture, compositing, encoding, outputs and its plugins), and replaces everything you touch with an interface written in **Rust** on **GPUI**. Scenes, audio, chat, alerts, widgets, automations and multistreaming are designed together, share one undo history, and are controllable from anywhere.
@@ -67,7 +67,7 @@ Lightair updates itself (Settings › About), and never installs an update while
 - A Library of every recording and an Editor to cut them.
 
 <p align="center">
-  <img src="site/assets/sidebars.webp" alt="Two sidebars on the right: Outputs and Inspector in one column, the Activity feed with tips, subs, cheers and a raid in another" width="100%">
+  <img src="site/assets/formats.webp" alt="Landscape and vertical formats of one show side by side: the vertical one puts the camera on top and the chat below" width="100%">
 </p>
 
 ## Build from source

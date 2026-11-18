@@ -317,6 +317,16 @@ impl StudioWindow {
             }
             // LIGHTAIR_TEST_EVENTS sent to the widgets already in the show (screenshots)
             Ok("test-events") => self.send_test_events(window, cx),
+            // every format side by side, with LIGHTAIR_TEST_EVENTS sent (screenshots)
+            Ok("side-by-side") => {
+                self.side_by_side = true;
+                self.send_test_events(window, cx);
+            }
+            // a vertical format added beside the landscape one, side by side (screenshots)
+            Ok("add-vertical") => {
+                self.add_vertical(cx);
+                self.send_test_events(window, cx);
+            }
             // a panel in a window of its own ("popout-chat")
             Ok(hook) if hook.starts_with("popout-") => {
                 // ("…-back": then back in the dock after a few seconds)

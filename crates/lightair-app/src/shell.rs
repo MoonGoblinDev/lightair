@@ -1124,7 +1124,7 @@ impl StudioWindow {
     }
 
     /// Adds a vertical canvas with every object auto-reframed (one undo step).
-    fn add_vertical(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn add_vertical(&mut self, cx: &mut Context<Self>) {
         self.add_canvas(Canvas::vertical(), cx)
     }
 
