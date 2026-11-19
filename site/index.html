@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lightair: live studio</title>
-<meta name="description" content="Lightair is a free, open-source live-production studio for streamers: the engine inside OBS, a native interface, and everything you used to install a plugin for already built in.">
+<title>Lightair: record, edit, go live</title>
+<meta name="description" content="Lightair records app demos with zooms that follow your clicks, keeps every screen, camera and mic in its own file, edits on a real timeline, and goes live. Free and open source.">
 <meta name="theme-color" content="#0A0A0B">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/icon-256.png">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Lightair: live studio">
-<meta property="og:description" content="Scenes, sound, chat, alerts, effects and two formats at once, in one native app. Free and open source.">
+<meta property="og:title" content="Lightair: record, edit, go live">
+<meta property="og:description" content="App demos with zooms that follow your clicks, every part in its own file, a real editor, and live streaming. Free and open source.">
 <meta property="og:image" content="https://moongoblindev.github.io/lightair/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -145,7 +145,24 @@
   footer nav { margin-left: auto; display: flex; gap: 22px; }
   footer a { text-decoration: none; } footer a:hover { color: var(--text); }
 
+  /* product shots */
+  .frame { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg-2); }
+  .hero .frame { margin-top: 56px; box-shadow: 0 40px 120px -40px rgba(0,0,0,.9); }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr); gap: 56px; align-items: center; }
+  .split.flip { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
+  .split.flip .copy { order: 2; }
+  .copy h2 { font: 700 clamp(30px, 3.6vw, 48px)/1.04 var(--display); letter-spacing: -.035em; margin: 12px 0 16px; }
+  .copy p { margin: 0; color: var(--muted); font-size: 17.5px; }
+  .copy ul { list-style: none; padding: 0; margin: 24px 0 0; border-top: 1px solid var(--line); }
+  .copy li { padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+  .copy li b { color: var(--text); font-weight: 600; }
+  .stack { display: grid; grid-template-columns: minmax(0, 1fr) 0.42fr; gap: 16px; align-items: start; }
+  .stack.pod { grid-template-columns: minmax(0, 1fr) 0.34fr; }
+
   @media (max-width: 1000px) {
+    .split, .split.flip, .stack, .stack.pod { grid-template-columns: 1fr; gap: 28px; }
+    .stack.pod .frame { max-width: 320px; }
+    .split.flip .copy { order: 0; }
     .head { grid-template-columns: 1fr; gap: 12px; }
     .pair, .control { grid-template-columns: 1fr; }
     .legend, .spec { grid-template-columns: 1fr 1fr; }
@@ -182,9 +199,10 @@
   <div class="wrap">
     <a href="#" aria-label="Lightair"><img src="assets/lockup-white.svg" alt="Lightair"></a>
     <nav>
-      <a href="#formats">Formats</a>
-      <a href="#effects">Effects</a>
-      <a href="#studio">The studio</a>
+      <a href="#demos">App demos</a>
+      <a href="#editor">Editor</a>
+      <a href="#podcasts">Podcasts</a>
+      <a href="#live">Live</a>
       <a href="https://github.com/MoonGoblinDev/lightair">GitHub</a>
       <a href="#download">Download</a>
     </nav>
@@ -196,8 +214,8 @@
   <div class="wrap">
     <div class="row">
       <div>
-        <h1>The whole show<span>,</span> in one app<span>.</span></h1>
-        <p class="lede">Lightair is a live studio for streamers. Scenes, sound, chat, alerts, effects on your face and a vertical stream beside the landscape one, on the engine inside OBS, with an interface that's quick to use.</p>
+        <h1>Record it, zoom it, edit it<span>.</span></h1>
+        <p class="lede">Lightair records app demos with zooms that follow your clicks, keeps every screen, camera and mic in a file of its own, and edits it all on a real timeline. When you're ready, it goes live too.</p>
       </div>
       <div class="get">
         <a class="btn solid" id="get" href="#download">
@@ -208,81 +226,106 @@
         <span class="mono" id="get-note">Free · GPL-3.0 · macOS 14+ and Windows 10/11</span>
       </div>
     </div>
-
-    <div class="monitor">
-      <div class="bar">
-        <span class="tally"><i></i>PROGRAM</span>
-        <span class="tc" id="tc">00:00:00:00</span>
-        <span class="mono">1920×1080 · 60 fps</span>
-        <span class="mono">Recorded in Lightair</span>
-      </div>
-      <video id="program" src="assets/show.mp4" poster="assets/poster-show.webp" autoplay muted loop playsinline preload="auto" aria-label="Lightair's program output: a Starting Soon scene with a countdown and a follow alert, a Move transition into the main scene where the logo and goal glide into place, a camera, chat, a sub alert and a tip"></video>
+    <div class="frame">
+      <img src="assets/editor-zoom.webp" width="2400" height="1405" alt="Lightair's Editor: a Studio take of an app on a gradient backdrop with rounded corners, a 2× zoom selected on the zoom track, the zoom's settings (how far, and whether it follows the pointer or looks at a spot), the screen, backdrop, mic and music on their own tracks">
     </div>
     <div class="caption">
-      <p>Real output, untouched: <b>Starting Soon</b> moves into <b>Main</b> with the Move transition, so the logo and the goal glide to their new places. Chat, a sub and a tip arrive while it records.</p>
-      <span class="mono">Scenes · Move transition · Widgets</span>
+      <p>A <b>Studio take</b> in the Editor: the screen on its backdrop, a zoom on the zoom track, and the mic and music each on a track of their own.</p>
+      <span class="mono">Editor · Studio take · Zoom</span>
     </div>
   </div>
 </div>
 
-<section id="formats">
+<section id="demos">
+  <div class="wrap split">
+    <div class="copy">
+      <span class="mono">01 · App demos</span>
+      <h2>Zooms that follow your clicks.</h2>
+      <p>Record a Studio take of an app or a window and Lightair keeps the pointer, clicks and keys as data, not pixels. It zooms in where you click, follows you while you type, and redraws the pointer smooth. Live in the scene, or afterwards in the Editor.</p>
+      <ul>
+        <li><b>Zoom</b> on clicks, always, or on a key; how far, how long, how smooth.</li>
+        <li><b>Pointer</b> as captured, redrawn bigger and smoother, or hidden.</li>
+        <li><b>Each zoom</b> is a block on the timeline: move it, stretch it, aim it at a spot.</li>
+      </ul>
+    </div>
+    <div class="frame" style="max-width:440px;justify-self:center"><img src="assets/zoom-settings.webp" width="640" height="987" loading="lazy" alt="Screen zoom and pointer settings: zoom off, on clicks, always or toggle; how far; stays in; typing; motion focused, balanced or smooth; a badge; a key; the pointer as captured, drawn or hidden"></div>
+  </div>
+</section>
+
+<section id="parts">
+  <div class="wrap split flip">
+    <div class="copy">
+      <span class="mono">02 · Every part, its own file</span>
+      <h2>Record once. Keep every part.</h2>
+      <p>A take records each screen and camera at its own full size, and each mixer track as its own sound file, beside the finished picture. Open a take in the Library to see what's inside: trim or save any part, or take them all into the Editor and rearrange the shot.</p>
+      <ul>
+        <li><b>Screens and cameras</b> at their own resolution, not squeezed into the layout.</li>
+        <li><b>Every mic and music track</b> as its own WAV.</li>
+        <li><b>Both formats</b>: landscape and vertical recorded at once.</li>
+      </ul>
+    </div>
+    <div class="frame"><img src="assets/library.webp" width="2400" height="1301" loading="lazy" alt="The Library: a Studio take opened to show its four parts (Backdrop, the Lightair screen, Mic and Music, each with trim and save), and recordings from yesterday as cards"></div>
+  </div>
+</section>
+
+<section id="editor">
   <div class="wrap">
     <div class="head">
-      <span class="mono">01 · Formats</span>
+      <span class="mono">03 · The Editor</span>
       <div>
-        <h2>Landscape and vertical, from one show.</h2>
-        <p>Every scene has a layout for each format, sharing the same camera, widgets and sound. Edit them side by side, then stream or record each one where it belongs. These two clips are one recording.</p>
+        <h2>A real timeline, in the same app.</h2>
+        <p>Tracks for pictures and sound, titles that move, shapes, stickers, filters and transitions, captions from what's said, sound that ducks under voices. Everything you recorded is already in the media panel.</p>
       </div>
     </div>
-    <div class="formats">
-      <figure>
-        <video class="sync" src="assets/show.mp4" poster="assets/poster-show.webp" muted loop playsinline preload="metadata" aria-label="The landscape format of the show"></video>
-        <figcaption><span class="mono">Landscape · 16:9 · Twitch, YouTube</span></figcaption>
-      </figure>
-      <figure>
-        <video class="sync" src="assets/show-vertical.mp4" poster="assets/poster-vertical.webp" muted loop playsinline preload="metadata" aria-label="The vertical format of the same show: the camera on top, the goal and chat below"></video>
-        <figcaption><span class="mono">Vertical · 9:16</span></figcaption>
-      </figure>
+    <div class="frame">
+      <img src="assets/editor-titles.webp" width="2400" height="1405" loading="lazy" alt="The Editor with the Text panel open: title, subtitle, lower third, label, neon and quote styles; a moving Lightair title selected with its text, transform and animation settings; a shape, the take, the backdrop and the mic on the timeline">
+    </div>
+    <div class="spec" style="margin-top:28px">
+      <div><h4>Titles and captions</h4><p>Title, lower third, label and more, animated in and out; captions written from the sound.</p></div>
+      <div><h4>Cut, trim, speed</h4><p>Split, trim, link sound to picture, markers, speed and freeze frames, on as many tracks as you want.</p></div>
+      <div><h4>Sound</h4><p>Fades, volume keys, voice cleaning, music that ducks under speech, every track its own clip.</p></div>
     </div>
   </div>
 </section>
 
-<section id="effects">
+<section id="podcasts">
   <div class="wrap">
     <div class="head">
-      <span class="mono">02 · Effects</span>
+      <span class="mono">04 · Podcasts</span>
       <div>
-        <h2>Look like you, on a good day.</h2>
-        <p>Face-aware effects run on the camera itself: skin, makeup, relighting, background and colour, tracked to your face in real time on Core ML or DirectML. Drag across to compare.</p>
+        <h2>Sound like a studio, look like yourself.</h2>
+        <p>Every mic is a channel strip with Voice Clarity in one switch, and every one is recorded to its own file for the edit. On camera, face-aware effects run in real time. Drag across to compare.</p>
       </div>
     </div>
-    <div class="compare" id="compare" style="--split: 50%">
-      <video class="before" src="assets/effects-off.mp4" muted loop playsinline preload="metadata" aria-label="The camera without effects"></video>
-      <video class="after" src="assets/effects-on.mp4" poster="assets/poster-effects.webp" muted loop playsinline preload="metadata" aria-label="The same camera with Beauty, Soft Glow makeup and Rim Glow relighting"></video>
-      <span class="tag l">CAMERA</span>
-      <span class="tag r">WITH EFFECTS</span>
-      <div class="handle"></div>
+    <div class="stack pod">
+      <div class="compare" id="compare" style="--split: 50%">
+        <video class="before" src="assets/effects-off.mp4" muted loop playsinline preload="metadata" aria-label="The camera without effects"></video>
+        <video class="after" src="assets/effects-on.mp4" poster="assets/poster-effects.webp" muted loop playsinline preload="metadata" aria-label="The same camera with Beauty, Soft Glow makeup and Rim Glow relighting"></video>
+        <span class="tag l">CAMERA</span>
+        <span class="tag r">WITH EFFECTS</span>
+        <div class="handle"></div>
+      </div>
+      <div class="frame"><img src="assets/mixer.webp" width="718" height="769" loading="lazy" alt="Two mixer strips: Mic with Voice Clarity, Music with EQ, Compressor and Ducker, with live meters"></div>
     </div>
     <div class="chain">
-      <span><b>Beauty</b> smoothing 65</span>
-      <span><b>Makeup</b> Soft Glow</span>
-      <span><b>Relight</b> Rim Glow</span>
-      <span>Also: 15 makeup looks, 9 lights, background blur, removal and replace, atmosphere, colour grades</span>
+      <span><b>Voice Clarity</b> noise, gate, de-ess, EQ, compressor, limiter</span>
+      <span><b>Ducker</b> music under voices</span>
+      <span><b>Effects</b> skin, makeup, light, background</span>
     </div>
   </div>
 </section>
 
-<section id="studio">
+<section id="live">
   <div class="wrap">
     <div class="head">
-      <span class="mono">03 · The studio</span>
+      <span class="mono">05 · Live too</span>
       <div>
-        <h2>Everything on one screen, nothing in dialogs.</h2>
-        <p>Edit on the canvas, adjust in the Inspector beside it, hear it in a real mixer. Every panel docks, stacks or opens in a window of its own.</p>
+        <h2>And when it's time, go live.</h2>
+        <p>Scenes with layers in groups, landscape and vertical at once, a mixer, chat and alerts from every platform, on the engine inside OBS. Every panel docks, stacks or opens in its own window.</p>
       </div>
     </div>
     <div class="studio">
-      <img src="assets/app.webp" width="2400" height="1405" loading="lazy" alt="Lightair while recording: the Hierarchy with grouped layers, the canvas showing the main scene with a sub alert, the audio mixer with Voice Clarity on the mic and EQ, compressor and ducker on the music, both formats recording in Outputs, and the transition picker">
+      <img src="assets/app.webp" width="2400" height="1405" loading="lazy" alt="Lightair while recording: the Hierarchy with grouped layers, the canvas with a camera and a sub alert, the mixer, both formats recording in Outputs, and the transition picker">
       <span class="pin" style="left:11%;top:6.7%">1</span>
       <span class="pin" style="left:44%;top:10.5%">2</span>
       <span class="pin" style="left:23%;top:32%">3</span>
@@ -291,85 +334,20 @@
       <span class="pin" style="left:90%;top:63.7%">6</span>
     </div>
     <ol class="legend">
-      <li><span class="n">1</span><span><b>Hierarchy</b>Layers in groups, groups in groups, like a design tool.</span></li>
-      <li><span class="n">2</span><span><b>Formats</b>Landscape and vertical tabs, or both side by side.</span></li>
-      <li><span class="n">3</span><span><b>Canvas</b>Move, resize, rotate and crop right on the picture.</span></li>
-      <li><span class="n">4</span><span><b>Outputs</b>Here both formats record at once; stream to many places too.</span></li>
-      <li><span class="n">5</span><span><b>Mixer</b>Strips with effects, meters, sends and loudness.</span></li>
-      <li><span class="n">6</span><span><b>Transitions</b>Cut, Fade, Move, Slide, Wipe, Dip and your own stinger.</span></li>
+      <li><span class="n">1</span><span><b>Hierarchy</b>Layers in groups, groups in groups.</span></li>
+      <li><span class="n">2</span><span><b>Formats</b>Landscape and vertical, side by side.</span></li>
+      <li><span class="n">3</span><span><b>Canvas</b>Move, resize, rotate and crop on the picture.</span></li>
+      <li><span class="n">4</span><span><b>Outputs</b>Record both formats; stream to many places.</span></li>
+      <li><span class="n">5</span><span><b>Mixer</b>Strips with effects, meters and loudness.</span></li>
+      <li><span class="n">6</span><span><b>Transitions</b>Cut, Fade, Move, Slide, Wipe, Dip, stinger.</span></li>
     </ol>
-  </div>
-</section>
-
-<section>
-  <div class="wrap pair">
-    <div class="panel hier">
-      <img src="assets/hierarchy.webp" width="520" height="1084" loading="lazy" alt="The Hierarchy: an Overlay group holding an Alerts group, the chat box, goal, show name and logo; a Content group with the camera and screen; an Audio beds group; and the backdrop">
-      <div>
-        <span class="mono">Organise</span>
-        <h3>Groups inside groups.</h3>
-        <p>Put an overlay in one group and alerts inside it; hide, lock or move a whole group at once. Duplicate a layer as a prefab and every copy follows the original.</p>
-      </div>
-    </div>
-    <div class="panel mix">
-      <img src="assets/mixer.webp" width="718" height="769" loading="lazy" alt="Two mixer strips: Mic with Voice Clarity, Music with EQ, Compressor and Ducker, both with live meters, pan and trim">
-      <div>
-        <span class="mono">Sound</span>
-        <h3>A mixer, not a list of volume sliders.</h3>
-        <p>Voice Clarity cleans a mic in one switch. EQ, compressor, ducking and VST3 plugins per strip, sends for headphones and a VOD track, and EBU R128 loudness on what the audience hears.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="head">
-      <span class="mono">04 · Built in</span>
-      <div>
-        <h2>The plugins you'd install, already there.</h2>
-      </div>
-    </div>
-    <div class="spec">
-      <div><h4>One chat, every platform</h4><p>Twitch, YouTube, Kick, TikTok, Bilibili, Douyu, Huya, Chzzk, SOOP, Niconico, TwitCasting and Showroom, with moderation.</p></div>
-      <div><h4>Alerts and widgets</h4><p>Alert box, chat box, goal, event list, poll, prediction, wheel, credits, emote wall and more, served by Lightair. StreamElements widgets import.</p></div>
-      <div><h4>Tips, nothing to host</h4><p>Streamlabs, StreamElements and Ko-fi, straight into alerts and the Activity feed.</p></div>
-      <div><h4>Official sign-in</h4><p>YouTube, Twitch, Kick and X: set your title and category from Lightair.</p></div>
-      <div><h4>Multistream</h4><p>RTMP(S), SRT, RIST and WHIP to many places at once, sharing encoders, after a check of keys, upload and mic levels.</p></div>
-      <div><h4>Record, clip, replay</h4><p>MP4, MKV or MOV with pause, chapters and split. Clip the last minute and replay it on air.</p></div>
-      <div><h4>Automations</h4><p>Commands, timers and events that chat, switch scenes, play sounds, speak and set your lights. Streamer.bot actions import.</p></div>
-      <div><h4>Bring your OBS setup</h4><p>Scene collections import, and OBS's source, filter and output plugins load as they are.</p></div>
-      <div><h4>Updates itself</h4><p>Signed updates, never while you're live. Notarized on macOS.</p></div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="head">
-      <span class="mono">05 · Control</span>
-      <div>
-        <h2>Drive it from anything.</h2>
-        <p>A remote API for scripts, decks and agents, that also speaks obs-websocket, so the tools you use with OBS keep working.</p>
-      </div>
-    </div>
-    <div class="control">
-<pre><span class="c">// switch to Main with the show's transition</span>
-ws.<span class="k">send</span>(JSON.stringify({
-  jsonrpc: <span class="s">"2.0"</span>, id: <span class="k">1</span>,
-  method: <span class="s">"scene.switch"</span>,
-  params: { scene: <span class="s">"Main"</span> },
-}))
-
-<span class="c">// and hear about everything that happens</span>
-{ method: <span class="s">"events.subscribe"</span>,
-  params: { events: [<span class="s">"scene.program"</span>, <span class="s">"record.state"</span>] } }</pre>
-      <ul>
-        <li><b>JSON-RPC</b><span>Over WebSocket and HTTP: scenes, layers, sound, outputs, every command.</span></li>
-        <li><b>obs-websocket v5</b><span>Stream decks and OBS tools connect as if Lightair were OBS.</span></li>
-        <li><b>MCP</b><span>AI agents can see the program and run the show.</span></li>
-        <li><b>Stream Deck</b><span>A plugin, global shortcuts, and ⌘K for every command.</span></li>
-      </ul>
+    <div class="spec" style="margin-top:56px">
+      <div><h4>One chat, every platform</h4><p>Twitch, YouTube, Kick, TikTok and eight more, with moderation, alerts and 18 widgets served by Lightair.</p></div>
+      <div><h4>Multistream</h4><p>RTMP(S), SRT, RIST and WHIP to many places at once, sharing encoders.</p></div>
+      <div><h4>Automations</h4><p>Commands, timers and events that chat, switch scenes and set your lights. Streamer.bot imports.</p></div>
+      <div><h4>Official sign-in</h4><p>YouTube, Twitch, Kick and X: title and category from Lightair.</p></div>
+      <div><h4>Bring your OBS setup</h4><p>Scene collections import; OBS source, filter and output plugins load.</p></div>
+      <div><h4>Drive it from anything</h4><p>A remote API that also speaks obs-websocket, an MCP server for agents, and a Stream Deck plugin.</p></div>
     </div>
   </div>
 </section>
@@ -380,7 +358,7 @@ ws.<span class="k">send</span>(JSON.stringify({
       <span class="mono">06 · Download</span>
       <div>
         <h2>Free, and yours.</h2>
-        <p>Open source under GPL-3.0. You don't need OBS installed.</p>
+        <p>Open source under GPL-3.0. You don't need OBS installed. Lightair updates itself, never while you're live.</p>
       </div>
     </div>
     <div class="dl">
@@ -417,37 +395,15 @@ ws.<span class="k">send</span>(JSON.stringify({
 </footer>
 
 <script>
-  // The monitor's timecode follows the clip (30 fps).
-  const program = document.getElementById("program");
-  const tc = document.getElementById("tc");
-  const pad = (n) => String(n).padStart(2, "0");
-  const tick = () => {
-    const t = program.currentTime || 0;
-    tc.textContent = `00:00:${pad(Math.floor(t))}:${pad(Math.floor((t % 1) * 30))}`;
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
+  // The before/after videos play while on screen, in step.
+  const pair = [...document.querySelectorAll("#compare video")];
+  new IntersectionObserver((entries) => {
+    const on = entries.some((e) => e.isIntersecting);
+    pair.forEach((v) => (on ? v.play().catch(() => {}) : v.pause()));
+  }, { threshold: 0.25 }).observe(document.getElementById("compare"));
+  setInterval(() => { if (Math.abs(pair[1].currentTime - pair[0].currentTime) > 0.08) pair[1].currentTime = pair[0].currentTime; }, 500);
 
-  // Videos play while on screen; paired ones stay in step.
-  const groups = [document.querySelectorAll("video.sync"), document.querySelectorAll("#compare video")];
-  const lead = (g) => g[0];
-  const io = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      const g = groups.find((g) => [...g].includes(e.target));
-      const vids = g ? [...g] : [e.target];
-      if (e.isIntersecting) vids.forEach((v) => v.play().catch(() => {}));
-      else vids.forEach((v) => v.pause());
-    }
-  }, { threshold: 0.25 });
-  groups.forEach((g) => g.forEach((v) => io.observe(v)));
-  setInterval(() => {
-    for (const g of groups) {
-      const l = lead(g);
-      for (const v of [...g].slice(1)) if (Math.abs(v.currentTime - l.currentTime) > 0.08) v.currentTime = l.currentTime;
-    }
-  }, 500);
-
-  // Before and after: drag (or arrow keys) to move the split.
+  // Drag (or arrow keys) to move the split.
   const cmp = document.getElementById("compare");
   const setSplit = (x) => cmp.style.setProperty("--split", Math.min(100, Math.max(0, x)) + "%");
   const fromEvent = (e) => { const r = cmp.getBoundingClientRect(); setSplit(((e.clientX - r.left) / r.width) * 100); };

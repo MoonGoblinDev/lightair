@@ -317,6 +317,57 @@ impl StudioWindow {
             }
             // LIGHTAIR_TEST_EVENTS sent to the widgets already in the show (screenshots)
             Ok("test-events") => self.send_test_events(window, cx),
+            // a Studio take of the program while this window shows the Library, then the Editor
+            // (its screen pointed at Lightair itself: an app demo with nobody else's screen)
+            Ok("studio-take-self") => {
+                // the program's screen pointed at this window (only it, not the desktop around it),
+                // once the system lists it; then a take while the Library, then the Editor, show
+                cx.spawn(async move |this, cx| {
+                    use lightair_core::kinds::{SCREEN, WINDOW};
+                    let mut own = None;
+                    for _ in 0..40 {
+                        cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
+                        own = lightair_engine::displays::screen_options(WINDOW, "window").into_iter().map(|(_, v)| v).find(|v| {
+                            lightair_platform::apps::is_own_window(&v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()))
+                        });
+                        if own.is_some() {
+                            break;
+                        }
+                    }
+                    let Some(own) = own else {
+                        tracing::warn!("CHECK studio-take-self: this window isn't listed");
+                        return;
+                    };
+                    let started = this.update(cx, |this, cx| {
+                        let p = this.studio.read(cx).workspace().clone();
+                        let screen = p.program.and_then(|s| p.scene(s)).and_then(|scene| {
+                            scene.flatten().objects.iter().filter_map(|o| o.source).find_map(|s| p.sources.get(&s).filter(|s| s.kind == SCREEN).map(|s| s.id))
+                        });
+                        let Some(screen) = screen else { return false };
+                        let mut settings = super::screen_pick::settings(WINDOW, &own);
+                        settings["cursor"] = true.into();
+                        settings["hide_obs"] = false.into();
+                        this.exec(lightair_core::Command::SetSourceSettings { source: screen, settings }, cx);
+                        this.show_place(super::Place::Library, cx);
+                        true
+                    });
+                    if !started.unwrap_or(false) {
+                        tracing::warn!("CHECK studio-take-self: no screen in the program");
+                        return;
+                    }
+                    cx.background_executor().timer(std::time::Duration::from_millis(2500)).await;
+                    let _ = this.update(cx, |this, cx| this.studio_take(cx));
+                    cx.background_executor().timer(std::time::Duration::from_secs(6)).await;
+                    let _ = this.update(cx, |this, cx| this.show_place(super::Place::Editor, cx));
+                    cx.background_executor().timer(std::time::Duration::from_secs(7)).await;
+                    let _ = this.update(cx, |this, cx| {
+                        this.studio_take(cx);
+                        this.show_place(super::Place::Live, cx);
+                    });
+                    tracing::info!("CHECK studio-take-self: done");
+                })
+                .detach();
+            }
             // every format side by side, with LIGHTAIR_TEST_EVENTS sent (screenshots)
             Ok("side-by-side") => {
                 self.side_by_side = true;

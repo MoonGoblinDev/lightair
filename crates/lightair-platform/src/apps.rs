@@ -18,6 +18,12 @@ pub fn hide_window(window: &str) -> bool {
     imp::hide_window(window)
 }
 
+/// Whether a window in a capture's window list is this Lightair's own (macOS: by its owner
+/// process). For recording Lightair itself in a demo, never anyone else's screen.
+pub fn is_own_window(window: &str) -> bool {
+    imp::is_own_window(window)
+}
+
 /// The open apps with windows (the ones in the Dock or taskbar), by name; not Lightair itself.
 pub fn running() -> Vec<App> {
     let mut out = imp::running();
@@ -63,6 +69,10 @@ mod imp {
             CFRelease(list as *const std::ffi::c_void);
             pid
         }
+    }
+
+    pub fn is_own_window(window: &str) -> bool {
+        window.parse::<u32>().ok().and_then(window_owner).is_some_and(|pid| pid as u32 == std::process::id())
     }
 
     pub fn hide_window(window: &str) -> bool {
@@ -176,6 +186,11 @@ mod imp {
     const SHELL: [&str; 6] =
         ["explorer.exe", "textinputhost.exe", "applicationframehost.exe", "shellexperiencehost.exe", "searchhost.exe", "startmenuexperiencehost.exe"];
 
+    pub fn is_own_window(window: &str) -> bool {
+        let exe = window.rsplit(':').next().unwrap_or("").replace("#3A", ":").replace("#22", "#").to_lowercase();
+        std::env::current_exe().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase())).as_deref() == Some(exe.as_str())
+    }
+
     pub fn hide_window(window: &str) -> bool {
         // libobs's `title:class:exe`, `#3A` for ":" and `#22` for "#" inside each part
         let exe = window.rsplit(':').next().unwrap_or("").replace("#3A", ":").replace("#22", "#").to_lowercase();
@@ -200,6 +215,10 @@ mod imp {
     }
 
     pub fn hide_window(_: &str) -> bool {
+        false
+    }
+
+    pub fn is_own_window(_: &str) -> bool {
         false
     }
 }

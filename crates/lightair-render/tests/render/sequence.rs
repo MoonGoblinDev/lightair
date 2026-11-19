@@ -453,6 +453,39 @@ fn a_takes_scene_comes_back_as_layers_where_they_were() {
 }
 
 #[test]
+fn what_was_behind_a_takes_screen_stays_behind_it() {
+    use lightair_store::studio_take_scene::{SceneObject, StudioTakeScene, What};
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("Studio take.lightair-take");
+    std::fs::create_dir_all(folder.join("layers")).unwrap();
+    let Some(_) = lavfi(&folder, "screen.mp4", "color=c=blue:s=640x360:r=30:d=2") else {
+        eprintln!("FFmpeg isn't installed; skipping");
+        return;
+    };
+    let ff = media::ffmpeg().unwrap();
+    assert!(Command::new(&ff).args(["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=yellow:s=200x200", "-frames:v", "1"]).arg(folder.join("layers/0-logo.png")).status().unwrap().success());
+    let screen = lightair_core::Id::new();
+    std::fs::write(
+        folder.join("take.json"),
+        format!(r#"{{"duration_ms":2000,"video":[{{"name":"Screen","kind":"screen","file":"screen.mp4","input":"{screen}"}}],"audio":[]}}"#),
+    )
+    .unwrap();
+    let layer = |name: &str, what| SceneObject { name: name.into(), x: 0.0, y: 0.0, w: 1.0, h: 1.0, rotation: 0.0, opacity: 1.0, what };
+    StudioTakeScene {
+        canvas: (1920, 1080),
+        objects: vec![
+            layer("Backdrop", What::Colour { color: 0x00FF00, alpha: 1.0 }),
+            layer("My app", What::Recorded { source: screen }),
+            layer("Logo", What::Image { file: "layers/0-logo.png".into() }),
+        ],
+    }
+    .write(&folder)
+    .unwrap();
+    let names: Vec<String> = Media::studio_take_layout(&folder).into_iter().map(|p| p.name).collect();
+    assert_eq!(names, ["Backdrop", "My app", "Logo"], "the screen where its layer was, named after it");
+}
+
+#[test]
 fn every_audio_track_of_a_file_is_a_clip_of_its_own() {
     use lightair_render::sound;
     let dir = tempfile::tempdir().unwrap();

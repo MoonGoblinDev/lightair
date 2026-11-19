@@ -79,10 +79,11 @@ impl Media {
         })
     }
 
-    /// A Studio studio_take as layers, as its scene was (its `scene.json`): the screen drawn with its
-    /// look across the frame (when it has one), then each layer in drawing order where it was
-    /// (cameras, pictures, video files, text, colours), then each recorded mixer track's
-    /// sound. A studio_take without a scene: its parts ([`Media::studio_take_parts`]), unplaced.
+    /// A Studio studio_take as layers, as its scene was (its `scene.json`): each layer in drawing
+    /// order where it was (cameras, pictures, video files, text, colours), with the screen drawn
+    /// with its look across the frame (when it has one) where its layer was, so what was behind
+    /// it stays behind it; then each recorded mixer track's sound. A studio_take without a scene:
+    /// its parts ([`Media::studio_take_parts`]), unplaced.
     pub fn studio_take_layout(folder: &Path) -> Vec<Part> {
         let parts = Media::studio_take_parts(folder);
         let Some(scene) = lightair_store::studio_take_scene::StudioTakeScene::read(folder) else {
@@ -93,18 +94,29 @@ impl Media {
         let screen = crate::export::studio_take_screen(&videos);
         let (canvas_w, canvas_h) = (scene.canvas.0.max(1) as f32, scene.canvas.1.max(1) as f32);
         let mut out = Vec::new();
-        // the screen, with its look, across the frame
-        if let Some(screen) = screen
+        // the screen's layer in the scene: what was drawn before it stays behind it
+        let screen_layer = screen.and_then(|screen| {
+            scene.objects.iter().position(|l| {
+                matches!(&l.what, lightair_store::studio_take_scene::What::Recorded { source: input } if screen["input"].as_str() == Some(&input.to_string()))
+            })
+        });
+        let mut screen_part = None;
+        if screen.is_some()
             && let Some(main) = parts.first()
         {
             // named as its layer was in the scene
-            let named = scene.objects.iter().find_map(|l| match &l.what {
-                lightair_store::studio_take_scene::What::Recorded { source: input } if screen["input"].as_str() == Some(&input.to_string()) => Some(l.name.clone()),
-                _ => None,
-            });
-            out.push(Part { name: named.unwrap_or_else(|| "Screen".into()), ..Part::of(main.clone()) });
+            let named = screen_layer.map(|i| scene.objects[i].name.clone());
+            screen_part = Some(Part { name: named.unwrap_or_else(|| "Screen".into()), ..Part::of(main.clone()) });
         }
-        for layer in &scene.objects {
+        // a screen with no layer of its own goes at the back
+        if screen_layer.is_none() {
+            out.extend(screen_part.take());
+        }
+        for (i, layer) in scene.objects.iter().enumerate() {
+            // the screen, with its look, across the frame, where its layer was
+            if Some(i) == screen_layer {
+                out.extend(screen_part.take());
+            }
             use lightair_store::studio_take_scene::What;
             let place = Some(Placement { x: layer.x, y: layer.y, w: layer.w, h: layer.h, rotation: layer.rotation, opacity: layer.opacity, canvas: scene.canvas });
             let part = match &layer.what {

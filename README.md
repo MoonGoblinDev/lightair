@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <b>A native live-production studio for streamers and creators.</b><br>
-  The engine inside OBS, with a fast native interface, and everything you used to install a plugin for already built in.
+  <b>Record it, zoom it, edit it, and go live.</b><br>
+  App demos with zooms that follow your clicks, every screen, camera and mic in its own file, a real editor, and a live studio on the engine inside OBS.
 </p>
 
 <p align="center">
@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <img src="site/assets/app.webp" alt="Lightair while recording: grouped layers in the Hierarchy, the main scene with a camera and a sub alert on the canvas, the mixer with Voice Clarity, EQ, compressor and ducker, both formats recording" width="100%">
+  <img src="site/assets/editor-zoom.webp" alt="Lightair's Editor: a Studio take of an app on a gradient backdrop, a 2× zoom selected on the zoom track with its settings, the screen, backdrop, mic and music on their own tracks" width="100%">
 </p>
 
-Lightair keeps **libobs**, the engine inside OBS Studio (capture, compositing, encoding, outputs and its plugins), and replaces everything you touch with an interface written in **Rust** on **GPUI**. Scenes, audio, chat, alerts, widgets, automations and multistreaming are designed together, share one undo history, and are controllable from anywhere.
+Lightair is one app for app demos, podcasts and streams. Record a **Studio take** and it keeps the pointer, clicks and keys as data, so it can zoom where you clicked and redraw the pointer smooth; it keeps every screen, camera and mic in a file of its own; and its **Editor** cuts it all on a real timeline. The same app is a full live studio. Underneath is **libobs**, the engine inside OBS Studio, with an interface written in **Rust** on **GPUI**.
 
 ## Download
 
@@ -34,13 +34,28 @@ Lightair updates itself (Settings › About), and never installs an update while
 
 ## What's inside
 
+**Record app demos**
+- **Studio takes**: a screen or window recorded raw, with the pointer, clicks and keys kept as data. Zoom in where you click, follow along while you type, redraw the pointer bigger and smoother, put the screen on a backdrop with rounded corners. Live in the scene, or afterwards in the Editor.
+- **Every part, its own file**: each screen and camera at its own full size, and each mic and music track as its own WAV, beside the finished picture. The Library shows what's inside each take: trim or save any part.
+
+**Edit in the same app**
+- The **Editor**: video and audio tracks, a zoom track for takes (move, stretch and aim each zoom), titles and lower thirds that move, shapes, stickers, filters and transitions, captions from what's said, speed, markers, fades, voice cleaning and music that ducks under speech. Export to MP4.
+- The **Library**: every recording, take, clip and export, by workspace and by day, searchable.
+
+**Podcasts**
+- Every mic a channel strip with **Voice Clarity** in one switch, every one recorded to its own file; face-aware camera effects; landscape and vertical at once.
+
+<p align="center">
+  <img src="site/assets/editor-titles.webp" alt="The Editor's Text panel with title styles, a moving title selected with its settings, and a timeline of titles, a shape, a take, its backdrop and its sound" width="100%">
+</p>
+
 **Build the show**
 - Layers and scenes you edit right on the canvas: move, resize, rotate, crop, with snapping, multi-select and undo for everything.
 - One show, several **formats**: landscape, vertical, square or 4:5 canvases with their own layouts, auto-reframed, edited side by side, with platform safe areas.
 - Transitions: Cut, Fade, **Move** (layers glide to their new places), Slide, Wipe, Dip and Stinger, plus Studio mode with Take.
 - Cameras, screens, windows and apps, images, video, text, countdowns and clocks, and full Chromium browser layers.
 - **Effects** on a camera, face-aware (the Lightair Effect Stack): skin, makeup, segmentation and looks, on Core ML (macOS) and DirectML (Windows). Colour correction, keying and the rest on any layer, plus OBS filter plugins.
-- Screen zoom and pointer for tutorials. Import your OBS scene collections.
+- Import your OBS scene collections.
 
 **Sound right**
 - A real mixer: channel strips with meters, faders, pan, trim, polarity, mono, cue and effects (Voice Clarity, EQ, compressor, limiter, VST3 plugins).
@@ -64,7 +79,6 @@ Lightair updates itself (Settings › About), and never installs an update while
 **An interface that gets out of the way**
 - Every panel docks, tabs and rearranges: drop a tab at a sidebar's outer edge for a second sidebar, or open any panel in a window of its own.
 - A console that tells you what needs attention (an unplugged mic, a stream that stopped) and fixes it.
-- A Library of every recording and an Editor to cut them.
 
 <p align="center">
   <img src="site/assets/formats.webp" alt="Landscape and vertical formats of one show side by side: the vertical one puts the camera on top and the chat below" width="100%">
