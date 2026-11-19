@@ -270,6 +270,11 @@ impl StudioWindow {
         // Development: open a dialog on launch for screenshots (no clicking needed).
         match std::env::var("LIGHTAIR_OPEN").as_deref() {
             Ok("add-object") => self.open_add_object(window, cx),
+            // a group shown ("add-object:widgets"), or a search typed ("add-object:?chat")
+            Ok(hook) if hook.starts_with("add-object:") => {
+                self.open_add_object(window, cx);
+                self.add_object_hook(&hook[11..], window, cx);
+            }
             // a tab dragged inside this window ("dock-drag:1338,60>1432,600", in points), held
             // over its drop a while, then dropped; the right dock's layout logged
             Ok(hook) if hook.starts_with("dock-drag:") => {
