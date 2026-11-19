@@ -62,6 +62,34 @@ impl Session {
         true
     }
 
+    /// Several platforms' totals as one: counts and money added up, the latest of each kind
+    /// the newest, the biggest gift the biggest.
+    pub fn merged<'a>(parts: impl IntoIterator<Item = &'a Session>) -> Session {
+        let mut out = Session::default();
+        for s in parts {
+            for (k, n) in &s.counts {
+                *out.counts.entry(k.clone()).or_default() += n;
+            }
+            for (k, n) in &s.totals {
+                *out.totals.entry(k.clone()).or_default() += n;
+            }
+            for (k, v) in &s.latest {
+                if out.latest.get(k).is_none_or(|o| o["ts"].as_i64() < v["ts"].as_i64()) {
+                    out.latest.insert(k.clone(), v.clone());
+                }
+            }
+            if let Some(t) = &s.top {
+                let bigger = out.top.as_ref().is_none_or(|o| {
+                    if o["currency"] == t["currency"] { o["amount"].as_f64() < t["amount"].as_f64() } else { o["ts"].as_i64() < t["ts"].as_i64() }
+                });
+                if bigger {
+                    out.top = Some(t.clone());
+                }
+            }
+        }
+        out
+    }
+
     pub fn to_json(&self) -> Value {
         serde_json::to_value(self).unwrap_or(Value::Null)
     }
@@ -94,5 +122,22 @@ mod tests {
         assert_eq!(s.totals["USD"], 25.0);
         assert_eq!(s.latest["follow"]["name"], "a");
         assert_eq!(s.latest["cheer"]["amount"], 500.0);
+    }
+
+    #[test]
+    fn platforms_merge() {
+        let (mut a, mut b) = (Session::default(), Session::default());
+        a.add(&ev(Kind::Follow, "first", None));
+        a.add(&ev(Kind::Paid, "small", Some((5.0, "USD"))));
+        let mut late = ev(Kind::Follow, "second", None);
+        late.ts_ms += 1_000;
+        late.platform = "youtube".into();
+        b.add(&late);
+        b.add(&ev(Kind::Paid, "big", Some((50.0, "USD"))));
+        let m = Session::merged([&a, &b]);
+        assert_eq!(m.counts["follow"], 2);
+        assert_eq!(m.totals["USD"], 55.0);
+        assert_eq!(m.latest["follow"]["name"], "second");
+        assert_eq!(m.top.unwrap()["name"], "big");
     }
 }

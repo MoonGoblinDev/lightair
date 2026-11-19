@@ -18,6 +18,19 @@ pub use win::NativePreview;
 /// The window's native layer, shared by what draws into it (the canvas, the mixer).
 pub type Shared = std::rc::Rc<std::cell::RefCell<Option<NativePreview>>>;
 
+/// Hides the pointer until it moves (the canvas full screen, as a video player does).
+pub fn hide_cursor() {
+    #[cfg(target_os = "macos")]
+    mac::hide_cursor();
+}
+
+/// Hides the menu bar and the Dock outright (not just until the pointer reaches them: the
+/// canvas full screen). Leaving full screen puts back what was there.
+pub fn hide_menu_bar() {
+    #[cfg(target_os = "macos")]
+    mac::hide_menu_bar();
+}
+
 /// Whether the preview is drawn under the UI (macOS: Core Animation; Windows: DirectComposition,
 /// `native_preview/win.rs`; `LIGHTAIR_GPUI_PREVIEW=1` draws it with GPUI as before).
 pub fn on() -> bool {
@@ -130,6 +143,15 @@ unsafe fn set_colour(layer: Id_, colour: Hsla) {
 
 unsafe fn new_layer() -> Id_ {
     unsafe { send(class(c"CALayer"), c"new") }
+}
+
+pub(super) fn hide_menu_bar() {
+    // NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar
+    unsafe { send_u64(send(class(c"NSApplication"), c"sharedApplication"), c"setPresentationOptions:", (1 << 1) | (1 << 3)) };
+}
+
+pub(super) fn hide_cursor() {
+    unsafe { send_bool(class(c"NSCursor"), c"setHiddenUntilMouseMoves:", true) };
 }
 
 /// Changes layers without Core Animation's implicit animation.

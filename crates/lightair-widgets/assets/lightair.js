@@ -100,6 +100,7 @@
           emit(first ? 'load' : 'reload', api);
           break;
         case 'fields': api.fields = msg.fields || {}; emit('fields', api.fields); break;
+        case 'reload': location.reload(); break;
         case 'session': api.session = msg.session || {}; emit('session', api.session); break;
         case 'storage': api.storage = msg.storage || {}; emit('storage', api.storage); break;
         case 'event': emit('event', msg.event); break;

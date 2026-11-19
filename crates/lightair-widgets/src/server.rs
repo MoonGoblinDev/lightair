@@ -55,6 +55,8 @@ pub(crate) struct Shared {
     instances: Mutex<HashMap<String, Instance>>,
     conns: Mutex<Vec<Conn>>,
     session: Mutex<Session>,
+    /// The same totals, per platform (for widgets that listen to some platforms only).
+    sessions: Mutex<HashMap<String, Session>>,
     queues: Mutex<HashMap<String, Queue>>,
     icons: Mutex<Option<Icons>>,
     next_conn: AtomicU64,
@@ -94,6 +96,7 @@ impl Widgets {
             instances: Mutex::new(HashMap::new()),
             conns: Mutex::new(Vec::new()),
             session: Mutex::new(Session::default()),
+            sessions: Mutex::new(HashMap::new()),
             queues: Mutex::new(HashMap::new()),
             icons: Mutex::new(None),
             next_conn: AtomicU64::new(1),
@@ -155,13 +158,16 @@ impl Widgets {
 
     /// The widgets the workspace has (their settings); open ones get changed settings at once.
     pub fn set_instances(&self, list: Vec<Instance>) {
-        let mut changed = Vec::new();
+        let (mut changed, mut recoded) = (Vec::new(), Vec::new());
         {
             let mut instances = self.shared.instances.lock();
             let mut next = HashMap::new();
             for i in list {
-                if instances.get(&i.id).is_none_or(|old| old.fields != i.fields || old.custom != i.custom) {
-                    changed.push(i.id.clone());
+                match instances.get(&i.id) {
+                    // its code changed (made its own, edited, put back): the page loads again
+                    Some(old) if !code_matches(&old.custom, &i.custom) || old.platforms != i.platforms => recoded.push(i.id.clone()),
+                    Some(old) if old.fields == i.fields => {}
+                    _ => changed.push(i.id.clone()),
                 }
                 next.insert(i.id.clone(), i);
             }
@@ -170,6 +176,9 @@ impl Widgets {
         for id in changed {
             let Some(values) = self.shared.values(&id) else { continue };
             self.shared.send_to(&id, &json!({"type": "fields", "fields": values}).to_string());
+        }
+        for id in recoded {
+            self.shared.send_to(&id, &json!({"type": "reload"}).to_string());
         }
     }
 
@@ -329,14 +338,32 @@ impl Shared {
         }
     }
 
+    /// A widget's session totals: its platforms' (every platform's, when it listens to all).
+    fn session_for(&self, id: &str) -> Value {
+        let platforms = self.instances.lock().get(id).map(|i| i.platforms.clone()).unwrap_or_default();
+        if platforms.is_empty() {
+            return self.session.lock().to_json();
+        }
+        let sessions = self.sessions.lock();
+        Session::merged(platforms.iter().filter_map(|p| sessions.get(p))).to_json()
+    }
+
     fn event(&self, e: &ChatEvent) {
         let counted = self.session.lock().add(e);
-        let mut out = vec![json!({"type": "event", "event": e}).to_string()];
-        if counted && e.kind != lightair_live::Kind::Message {
-            out.push(json!({"type": "session", "session": self.session.lock().to_json()}).to_string());
-        }
+        self.sessions.lock().entry(e.platform.clone()).or_default().add(e);
+        let event = json!({"type": "event", "event": e}).to_string();
+        // each widget that listens to its platform: the event, and its totals when they changed
+        let hears: HashMap<String, bool> = self.instances.lock().iter().map(|(id, i)| (id.clone(), i.hears(&e.platform))).collect();
+        let mut totals: HashMap<String, String> = HashMap::new();
         for c in self.conns.lock().iter() {
-            for m in &out {
+            if !hears.get(&c.instance).copied().unwrap_or(true) {
+                continue;
+            }
+            let _ = c.tx.send(event.clone());
+            if counted && e.kind != lightair_live::Kind::Message {
+                let m = totals
+                    .entry(c.instance.clone())
+                    .or_insert_with(|| json!({"type": "session", "session": self.session_for(&c.instance)}).to_string());
                 let _ = c.tx.send(m.clone());
             }
         }
@@ -344,7 +371,7 @@ impl Shared {
             return;
         }
         // subathon timers count on whether or not they're on screen
-        let timers: Vec<String> = self.instances.lock().values().filter(|i| i.kind == "subathon").map(|i| i.id.clone()).collect();
+        let timers: Vec<String> = self.instances.lock().values().filter(|i| i.kind == "subathon" && i.hears(&e.platform)).map(|i| i.id.clone()).collect();
         for id in timers {
             let values = self.values(&id).unwrap_or_default();
             if let Some(changes) = catalog::subathon_event(&values, &store::load(&self.store_dir, &id), e) {
@@ -352,7 +379,7 @@ impl Shared {
             }
         }
         // the alert boxes' queues
-        let alert_boxes: Vec<String> = self.instances.lock().values().filter(|i| catalog::queues_alerts(&i.kind)).map(|i| i.id.clone()).collect();
+        let alert_boxes: Vec<String> = self.instances.lock().values().filter(|i| catalog::queues_alerts(&i.kind) && i.hears(&e.platform)).map(|i| i.id.clone()).collect();
         let mut queues = self.queues.lock();
         for id in alert_boxes {
             let q = queues.entry(id).or_default();
@@ -396,13 +423,15 @@ impl Shared {
 
     fn load_message(&self, id: &str) -> String {
         let history = self.hub.history();
-        let mut recents: Vec<&ChatEvent> = history.iter().rev().filter(|e| !e.deleted).take(100).collect();
+        let instance = self.instances.lock().get(id).cloned();
+        let hears = |e: &ChatEvent| instance.as_ref().is_none_or(|i| i.hears(&e.platform));
+        let mut recents: Vec<&ChatEvent> = history.iter().rev().filter(|e| !e.deleted && hears(e)).take(100).collect();
         recents.reverse();
         json!({
             "type": "load",
             "id": id,
             "fields": self.values(id).unwrap_or_default(),
-            "session": self.session.lock().to_json(),
+            "session": self.session_for(id),
             "recents": recents,
             "storage": store::load(&self.store_dir, id),
             "data": self.data.lock().clone(),
@@ -606,9 +635,53 @@ fn feed(mut ws: WebSocket<TcpStream>, shared: &Arc<Shared>, instance: &str) -> i
     result
 }
 
+/// Whether two widgets' code is the same (where it's kept aside).
+fn code_matches(a: &Option<crate::Custom>, b: &Option<crate::Custom>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.same_code(b),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn widgets_get_only_their_platforms_events() {
+        let dir = std::env::temp_dir().join(format!("lightair-widget-store-{}", std::process::id()));
+        let w = Widgets::start(Hub::new(), dir.clone()).unwrap();
+        let every = crate::Instance::new("label", None);
+        let mut youtube = crate::Instance::new("label", None);
+        youtube.platforms = vec!["youtube".into()];
+        w.set_instances(vec![every.clone(), youtube.clone()]);
+        // a page open for each
+        let (tx_every, rx_every) = crossbeam_channel::unbounded();
+        let (tx_youtube, rx_youtube) = crossbeam_channel::unbounded();
+        w.shared.conns.lock().push(Conn { id: 1, instance: every.id.clone(), tx: tx_every });
+        w.shared.conns.lock().push(Conn { id: 2, instance: youtube.id.clone(), tx: tx_youtube });
+        let follow = |platform: &str, name: &str| {
+            let mut e = ChatEvent::new(platform, "c", lightair_live::Kind::Follow);
+            e.user = Some(lightair_live::User { display_name: name.into(), ..Default::default() });
+            e
+        };
+        w.shared.event(&follow("twitch", "tw"));
+        w.shared.event(&follow("youtube", "yt"));
+        let got = |rx: &crossbeam_channel::Receiver<String>| -> Vec<Value> { rx.try_iter().map(|m| serde_json::from_str(&m).unwrap()).collect() };
+        let (all, yt) = (got(&rx_every), got(&rx_youtube));
+        let events = |ms: &[Value]| ms.iter().filter(|m| m["type"] == "event").map(|m| m["event"]["platform"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(events(&all), ["twitch", "youtube"]);
+        assert_eq!(events(&yt), ["youtube"]);
+        // totals: every platform's, or its own
+        let last = |ms: &[Value]| ms.iter().rev().find(|m| m["type"] == "session").unwrap()["session"].clone();
+        assert_eq!(last(&all)["counts"]["follow"], 2);
+        assert_eq!(last(&yt)["counts"]["follow"], 1);
+        assert_eq!(last(&yt)["latest"]["follow"]["name"], "yt");
+        // its load: its own totals and recent events
+        assert_eq!(serde_json::from_str::<Value>(&w.shared.load_message(&youtube.id)).unwrap()["session"]["counts"]["follow"], 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn queries_decode() {

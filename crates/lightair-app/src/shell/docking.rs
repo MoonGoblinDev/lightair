@@ -2,6 +2,8 @@
 //! dock panel, so it can be resized, collapsed, tabbed with others or moved. `StudioWindow`
 //! keeps the state and handlers; each region's panel renders through it.
 
+use std::sync::Arc;
+
 use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::dock::{BasePanel, DockLayout, DockPlacement, DockSkin, Panel, PanelEvent, panel_handle};
@@ -180,6 +182,8 @@ impl Render for ShellPanel {
             match region {
                 Region::Hierarchy => w.hierarchy_panel(&workspace, cx).into_any_element(),
                 Region::Scenes => w.scenes_panel(&workspace, cx).into_any_element(),
+                // (in the main window while it's in a window of its own, or full screen: where it is)
+                Region::Canvas if w.canvas_out && w.main_window == Some(window.window_handle()) => w.canvas_away(cx).into_any_element(),
                 Region::Canvas => w.canvas_panel(&workspace, cx).into_any_element(),
                 Region::Inspector => {
                     w.ensure_colour_pickers(window, cx);
@@ -192,6 +196,13 @@ impl Render for ShellPanel {
 }
 
 impl StudioWindow {
+    /// A canvas panel of its own for the canvas's window (the dock's stays in the dock, drawn
+    /// only in this window: a view drawn in two windows is redrawn only in the last one).
+    pub(super) fn new_canvas_panel(&self, cx: &mut Context<Self>) -> Arc<dyn gpui_kit::component::dock::BasePanelView> {
+        let me = cx.entity();
+        panel_handle(cx.new(|cx| ShellPanel::new(me, Region::Canvas, cx)))
+    }
+
     /// Builds the dock on first render (panels need this window's entity).
     pub(super) fn ensure_dock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.dock.is_some() {
@@ -383,6 +394,21 @@ impl StudioWindow {
                 self.add_vertical(cx);
                 self.send_test_events(window, cx);
             }
+            // the canvas full screen ("fullscreen-back": then back after a few seconds)
+            Ok(hook @ ("fullscreen" | "fullscreen-back")) => {
+                // (in front, as when it's asked for by hand: full screen is the active app's)
+                cx.activate(true);
+                self.toggle_canvas_fullscreen(window, cx);
+                if hook.ends_with("-back") {
+                    cx.spawn_in(window, async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
+                        let _ = this.update_in(cx, |this, window, cx| this.toggle_canvas_fullscreen(window, cx));
+                        cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+                        let _ = this.update_in(cx, |_, window, _| window.activate_window());
+                    })
+                    .detach();
+                }
+            }
             // a panel in a window of its own ("popout-chat")
             Ok(hook) if hook.starts_with("popout-") => {
                 // ("…-back": then back in the dock after a few seconds)
@@ -391,9 +417,12 @@ impl StudioWindow {
                     self.pop_out(panel, window, cx);
                 }
                 if hook.ends_with("-back") {
-                    cx.spawn(async move |this, cx| {
+                    cx.spawn_in(window, async move |this, cx| {
                         cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
-                        StudioWindow::all_back(this, cx);
+                        StudioWindow::all_back(this.clone(), cx);
+                        // in front, as when it's brought back by hand (a window hidden behind
+                        // others isn't drawn)
+                        let _ = this.update_in(cx, |_, window, _| window.activate_window());
                     })
                     .detach();
                 }
@@ -433,6 +462,42 @@ impl StudioWindow {
                 self.send_test_events(window, cx);
             }
             // a widget added and selected; LIGHTAIR_TEST_EVENTS ("sub,paid,…") then sent to it
+            // a widget added and selected, Source and Transform folded so its settings show
+            // ("inspect-widget-goal:code": its code made its own; ":folder", kept in a folder too)
+            Ok(hook) if hook.starts_with("inspect-widget-") => {
+                let (kind, code) = hook[15..].split_once(':').unwrap_or((&hook[15..], ""));
+                self.add_widget(kind, None, window, cx);
+                self.collapsed.borrow_mut().extend(["Source", "Transform"]);
+                // (":css": custom CSS given to it, as the field does when left)
+                if code == "css" {
+                    let source = {
+                        let s = self.studio.read(cx);
+                        let w = s.workspace();
+                        s.selected_scene.and_then(|id| w.scene(id)).and_then(|sc| s.selected_object.and_then(|o| sc.object(o))).and_then(|o| o.source)
+                    };
+                    if let Some(id) = source {
+                        self.set_web_css(id, "body { outline: 4px solid lime; }".into(), cx);
+                    }
+                }
+                // (":twitch+youtube": listening to those platforms only)
+                if code.contains('+') {
+                    self.set_selected_widget_platforms(code.split('+').map(str::to_string).collect(), cx);
+                }
+                // (":large": in the large code editor, once its editors are made)
+                if code == "large" {
+                    self.customize_selected_widget(false, cx);
+                    cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+                        let _ = this.update(cx, |this, cx| this.expand_selected_code(cx));
+                    })
+                    .detach();
+                }
+                if code == "code" || code == "folder" {
+                    self.customize_selected_widget(code == "folder", cx);
+                    // scrolled to the code
+                    self.inspector_scroll.set_offset(point(px(0.), px(-2000.)));
+                }
+            }
             Ok(hook) if hook.trim_start_matches("activity-").starts_with("widget-") => {
                 for kind in hook.trim_start_matches("activity-")[7..].split(',') {
                     match kind.strip_prefix("import:") {
@@ -816,6 +881,17 @@ impl StudioWindow {
                 self.select_object(top, cx);
                 self.zoom = 2.5;
                 self.pan = (-700.0, -350.0);
+            }
+            // the top object selected, its Inspector showing ("inspect-shape": rounded, with a border)
+            Ok(hook @ ("inspect" | "inspect-shape")) => {
+                let top = {
+                    let s = self.studio.read(cx);
+                    s.selected_scene.and_then(|id| s.workspace().scene(id)).and_then(|sc| sc.objects.last().map(|l| l.id))
+                };
+                self.select_object(top, cx);
+                if hook == "inspect-shape" {
+                    self.inspect_shape_hook(cx);
+                }
             }
             Ok("gizmo") => {
                 let top = {

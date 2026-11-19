@@ -94,6 +94,7 @@ actions!(
         ZoomOut,
         ZoomToFit,
         ZoomToActual,
+        ToggleCanvasFullscreen,
         Scene1,
         Scene2,
         Scene3,
@@ -158,6 +159,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new(crate::ui::key("cmd--"), ZoomOut, Some("Studio")),
         KeyBinding::new(crate::ui::key("cmd-0"), ZoomToFit, Some("Studio")),
         KeyBinding::new(crate::ui::key("cmd-alt-0"), ZoomToActual, Some("Studio")),
+        KeyBinding::new(crate::ui::key("cmd-shift-f"), ToggleCanvasFullscreen, Some("Studio")),
         KeyBinding::new(crate::ui::key("cmd-c"), CopySelection, Some("Studio")),
         KeyBinding::new(crate::ui::key("cmd-x"), CutSelection, Some("Studio")),
         KeyBinding::new(crate::ui::key("cmd-v"), PasteObjects, Some("Studio")),
@@ -326,6 +328,9 @@ pub struct StudioWindow {
     /// dialog is open.
     collapsed: RefCell<std::collections::HashSet<&'static str>>,
     sliders: RefCell<HashMap<String, inspector::BoundSlider>>,
+    /// An Inspector number being dragged, or typed into.
+    scrub: Option<inspector::Scrub>,
+    number_edit: Option<inspector::NumberEdit>,
     /// The Effect catalog sheet, when open.
     effect_sheet: Option<effects::EffectSheet>,
     /// What each source's face effects see (polled while it's selected).
@@ -336,6 +341,12 @@ pub struct StudioWindow {
     colour_pickers: std::collections::HashMap<String, effects::ColourPicker>,
     /// Colour controls of text, colour objects and widgets.
     colours: colour_field::ColourFields,
+    /// Widgets whose code is kept in a folder: what the folder held when last looked at; and
+    /// the task looking (`widget_props::sync_widget_folders`).
+    widget_folders: HashMap<Id, lightair_widgets::Custom>,
+    /// The Inspector's scrolling (a screenshot hook scrolls it).
+    inspector_scroll: ScrollHandle,
+    folder_watch: Option<Task<()>>,
     /// A text object being typed into on the canvas.
     canvas_text: Option<canvas_text::CanvasText>,
     /// Open plugin editor windows, by effect.
@@ -440,6 +451,15 @@ pub struct StudioWindow {
     /// previews show in it, and where each canvas's picture is (window points), as laid out.
     native: std::rc::Rc<RefCell<Option<crate::native_preview::NativePreview>>>,
     native_layers: HashSet<Id>,
+    /// The canvas in a window of its own: that window's layer under its UI (made when the
+    /// window first draws), and whether the previews show in it now.
+    canvas_out: bool,
+    canvas_native: crate::native_preview::Shared,
+    layers_out: bool,
+    /// The canvas full screen: its window (only the picture, on black).
+    canvas_full: Option<AnyWindowHandle>,
+    /// This window (the canvas tells it from its own).
+    main_window: Option<AnyWindowHandle>,
     native_rects: std::rc::Rc<RefCell<HashMap<Id, Bounds<Pixels>>>>,
     /// Resizable, collapsible, rearrangeable panels (built on first render).
     dock: Option<Entity<gpui_kit::component::dock::DockArea>>,
@@ -470,6 +490,9 @@ pub(crate) fn display_settings() -> serde_json::Value {
 
 impl StudioWindow {
     pub fn new(studio: Entity<Studio>, preview: Preview, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // drawn again when it comes back to the front (changes made while another window or
+        // Space covered it, the canvas full screen, weren't drawn)
+        cx.observe_window_activation(window, |_, _, cx| cx.notify()).detach();
         cx.observe_in(&studio, window, |this, studio, window, cx| {
             this.sync_studio_preview(cx);
             this.prune_plugin_editors(cx);
@@ -703,11 +726,16 @@ impl StudioWindow {
             add_object: None,
             collapsed: RefCell::new(["Canvases"].into_iter().collect()),
             sliders: RefCell::default(),
+            scrub: None,
+            number_edit: None,
             effect_sheet: None,
             presence: Default::default(),
             fx_groups: Default::default(),
             colour_pickers: Default::default(),
             colours: Default::default(),
+            widget_folders: Default::default(),
+            inspector_scroll: ScrollHandle::new(),
+            folder_watch: None,
             canvas_text: None,
             plugin_editors: Default::default(),
             plugin_list: None,
@@ -766,6 +794,11 @@ impl StudioWindow {
             automations_panel,
             native,
             native_layers: HashSet::new(),
+            canvas_out: false,
+            canvas_native: Default::default(),
+            layers_out: false,
+            canvas_full: None,
+            main_window: None,
             native_rects: Default::default(),
         }
     }
@@ -1890,19 +1923,52 @@ impl StudioWindow {
             *native = crate::native_preview::NativePreview::attach(window, tok::bg_app(), tok::bg_canvas_well());
         }
         let Some(n) = native.as_mut() else { return false };
+        // the canvas in a window of its own (once that window has its layer): the previews
+        // show there, and the main window's well is hidden
+        let out = self.canvas_out && self.canvas_native.borrow().is_some();
+        if out != self.layers_out {
+            self.layers_out = out;
+            self.native_layers.clear();
+            if out {
+                n.place(None, &[]);
+            }
+        }
+        let mut popped = self.canvas_native.borrow_mut();
+        let target = match popped.as_mut() {
+            Some(c) if out => c,
+            _ => &mut *n,
+        };
         for (id, preview) in &self.previews {
             if self.native_layers.insert(*id) {
-                preview.set_layer(Some(n.picture(*id)));
+                preview.set_layer(Some(target.picture(*id)));
             }
         }
         let gone: Vec<Id> = self.native_layers.iter().copied().filter(|id| !self.previews.contains_key(id)).collect();
         for id in gone {
             self.native_layers.remove(&id);
-            n.forget(id);
+            target.forget(id);
         }
+        drop(popped);
         n.set_visible(self.place == Place::Live);
         n.show_player(self.place == Place::Editor);
         true
+    }
+
+    /// The canvas goes back to the main window: its previews show in the main window's layer
+    /// again, before the window they showed in closes (and its layer goes with it).
+    fn canvas_home(&mut self) {
+        self.canvas_out = false;
+        if self.layers_out {
+            self.layers_out = false;
+            self.native_layers.clear();
+            if let Some(n) = self.native.borrow_mut().as_mut() {
+                for (id, preview) in &self.previews {
+                    self.native_layers.insert(*id);
+                    preview.set_layer(Some(n.picture(*id)));
+                }
+            }
+        }
+        self.canvas_native.borrow_mut().take();
     }
 
     /// Something on screen moves without input: redrawn 30 times a second.
@@ -1938,8 +2004,10 @@ impl StudioWindow {
 // ================================================================= render
 impl Render for StudioWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.main_window = Some(window.window_handle());
         let native = self.sync_native(window);
         self.tick_add_object();
+        self.watch_widget_folders(cx);
         self.ensure_dock(window, cx);
         self.sync_crop_preview(cx);
         self.refresh_sizes(cx);
@@ -2130,6 +2198,7 @@ impl Render for StudioWindow {
             }))
             .on_action(cx.listener(|this, _: &ZoomToFit, _, cx| this.zoom_to_fit(cx)))
             .on_action(cx.listener(|this, _: &ZoomToActual, _, cx| this.zoom_to_actual(cx)))
+            .on_action(cx.listener(|this, _: &ToggleCanvasFullscreen, window, cx| this.toggle_canvas_fullscreen(window, cx)))
             // Space held: dragging the canvas pans it.
             .capture_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
                 // the Editor: space plays, and its tools' keys (unless a text field has the keys)
@@ -2220,6 +2289,7 @@ impl Render for StudioWindow {
                 Place::Editor => div().flex().flex_1().min_h_0().child(self.editor.clone()),
             })
             .child(self.status_bar(cx))
+            .children(self.widget_code_overlay(cx))
             .children(self.add_object_overlay(cx))
             .children(self.effect_catalog_overlay(cx))
             .children(self.source_picker_overlay(cx))
@@ -3377,7 +3447,11 @@ impl StudioWindow {
                     .on_click(cx.listener(|this, _, _, cx| this.zoom_by(1.25, None, cx))),
             );
         let safe = if vertical { self.safe_vertical } else { self.safe_landscape };
-        bar = bar.child(zoom).child(divider()).child(
+        // the whole screen (its own window: the tab's right-click menu)
+        let away = ui::icon_button("canvas-fullscreen", "fullscreen", tok::text_secondary())
+            .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Full screen: just the picture (⇧⌘F, Esc to leave)").into_owned()).build(w, cx))
+            .on_click(cx.listener(|this, _, window, cx| this.toggle_canvas_fullscreen(window, cx)));
+        bar = bar.child(away).child(divider()).child(zoom).child(divider()).child(
             div()
                 .id("safe-areas")
                 .flex()
@@ -3550,7 +3624,7 @@ impl StudioWindow {
         let studio = self.studio.read(cx);
         let bounds_map = self.stage_bounds.clone();
         let fid = shown.id;
-        let native = self.native.borrow().is_some();
+        let native = if self.canvas_out { self.canvas_native.borrow().is_some() } else { self.native.borrow().is_some() };
         // drawn under the UI (native_preview): only whether it has started is needed here, and
         // asking for a frame would have the preview read every frame back
         let frame = match self.previews.get(&fid) {
@@ -4054,7 +4128,9 @@ impl StudioWindow {
 
     fn canvas_panel(&self, workspace: &Workspace, cx: &mut Context<Self>) -> impl IntoElement {
         let live = runtime().any_stream_running();
-        let native = self.native.borrow().is_some();
+        // the layer under the window it's in: the main window's, or its own window's
+        let layer = if self.canvas_out { self.canvas_native.clone() } else { self.native.clone() };
+        let native = layer.borrow().is_some();
         let stages: Vec<AnyElement> =
             self.visible_canvases(workspace).iter().map(|f| self.stage(workspace, f, cx).into_any_element()).collect();
         let well =
@@ -4085,7 +4161,7 @@ impl StudioWindow {
                     .children(self.canvas_text_overlay(cx))
                     // last: the stages have said where their pictures are this frame
                     .when(native, |d| {
-                        let (n, rects) = (self.native.clone(), self.native_rects.clone());
+                        let (n, rects) = (layer.clone(), self.native_rects.clone());
                         let shown: Vec<Id> = self.visible_canvases(workspace).iter().map(|c| c.id).collect();
                         d.child(
                             canvas(
@@ -4389,7 +4465,7 @@ impl StudioWindow {
             .flex_col()
             .size_full()
             .pt_2()
-            .child(div().id("inspector-scroll").flex_1().min_h_0().w_full().pb_3().overflow_y_scroll().child(content))
+            .child(div().id("inspector-scroll").track_scroll(&self.inspector_scroll).flex_1().min_h_0().w_full().pb_3().overflow_y_scroll().child(content))
     }
 
     /// The FPS readout in the top bar; a click shows the frame counts.

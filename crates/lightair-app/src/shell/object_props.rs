@@ -27,8 +27,10 @@ pub(super) struct TextEdit {
 
 /// The custom CSS editor for the selected web page.
 pub(super) struct CssEdit {
-    source: Id,
-    state: Entity<EditorState>,
+    pub(super) source: Id,
+    pub(super) state: Entity<EditorState>,
+    /// Counts keystrokes, so only the last one's pause keeps the CSS.
+    typed: u64,
     _events: Subscription,
 }
 
@@ -48,8 +50,8 @@ pub(super) struct ObjectProps {
     timer: Option<(Id, TimerStatus, Instant)>,
     /// The address field for the selected web page.
     web: Option<TextEdit>,
-    /// Its custom CSS.
-    web_css: Option<CssEdit>,
+    /// Its custom CSS (a widget's too).
+    pub(super) web_css: Option<CssEdit>,
     /// The selected widget's settings.
     pub(super) widget: Option<super::widget_props::WidgetEdit>,
 }
@@ -188,6 +190,20 @@ impl StudioWindow {
                         InputEvent::Change => {
                             let css = state.read(cx).value().to_string();
                             this.studio.read(cx).engine().post(move |s| s.reconciler.web_restyle(id, css));
+                            // kept once typing pauses too (leaving the field isn't always seen:
+                            // a field scrolled away, another window taking the focus)
+                            let Some(edit) = this.props.web_css.as_mut().filter(|t| t.source == id) else { return };
+                            edit.typed += 1;
+                            let n = edit.typed;
+                            cx.spawn(async move |this, cx| {
+                                cx.background_executor().timer(Duration::from_millis(600)).await;
+                                let _ = this.update(cx, |this, cx| {
+                                    let Some(edit) = this.props.web_css.as_ref().filter(|t| t.source == id && t.typed == n) else { return };
+                                    let css = edit.state.read(cx).value().to_string();
+                                    this.set_web_css(id, css, cx);
+                                });
+                            })
+                            .detach();
                         }
                         InputEvent::Blur => {
                             let css = state.read(cx).value().to_string();
@@ -195,7 +211,7 @@ impl StudioWindow {
                         }
                         _ => {}
                     });
-                    self.props.web_css = Some(CssEdit { source: i.id, state, _events: events });
+                    self.props.web_css = Some(CssEdit { source: i.id, state, typed: 0, _events: events });
                 }
                 let t = self.props.web_css.as_ref().unwrap();
                 let focused = t.state.read(cx).focus_handle(cx).is_focused(window);
@@ -283,7 +299,7 @@ impl StudioWindow {
         self.exec(Command::SetSourceSettings { source, settings: with(&i.settings, "url", json!(url)) }, cx);
     }
 
-    fn set_web_css(&mut self, source: Id, css: String, cx: &mut Context<Self>) {
+    pub(super) fn set_web_css(&mut self, source: Id, css: String, cx: &mut Context<Self>) {
         let workspace = self.studio.read(cx).workspace().clone();
         let Some(i) = workspace.sources.get(&source) else { return };
         if i.settings["css"].as_str().unwrap_or("") == css {

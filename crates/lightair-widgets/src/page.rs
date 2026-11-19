@@ -45,26 +45,30 @@ pub fn substitute(text: &str, values: &Map<String, Value>) -> String {
 }
 
 pub fn build(i: &Instance) -> String {
-    if let Some(page) = catalog::page(&i.kind) {
-        return page.to_string();
-    }
-    let Some(c) = &i.custom else { return "<!doctype html><title>Widget</title>".into() };
+    let Some(c) = &i.custom else {
+        return catalog::page(&i.kind).unwrap_or("<!doctype html><title>Widget</title>").to_string();
+    };
+    // a built-in widget made one's own uses the bridge as it always did; an imported one may
+    // have been written for StreamElements (with jQuery) or Streamlabs
+    let imported = catalog::page(&i.kind).is_none();
     let values = fields::values(&fields::parse(&c.fields), &i.fields);
     format!(
         r#"<!doctype html>
 <html><head><meta charset="utf-8">
 <style>html, body {{ margin: 0; background: transparent; overflow: hidden; }}</style>
 <style>{css}</style>
-<script>{jquery}</script>
-<script src="/lightair.js"></script>
-<script src="/{shim}"></script>
-</head><body>
+{jquery}<script src="/lightair.js"></script>
+{shim}</head><body>
 {html}
 <script>{js}</script>
 </body></html>"#,
-        shim = if is_streamlabs(&c.js) { "sl-shim.js" } else { "se-shim.js" },
+        shim = match (imported, is_streamlabs(&c.js)) {
+            (false, _) => String::new(),
+            (true, true) => "<script src=\"/sl-shim.js\"></script>\n".into(),
+            (true, false) => "<script src=\"/se-shim.js\"></script>\n".into(),
+        },
         css = substitute(&c.css, &values),
-        jquery = JQUERY,
+        jquery = if imported { format!("<script>{JQUERY}</script>\n") } else { String::new() },
         html = substitute(&c.html, &values),
         js = substitute(&c.js, &values),
     )

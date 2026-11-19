@@ -383,18 +383,27 @@ impl StudioWindow {
             l.scale_x = (l.scale_x * by).clamp(0.05, 20.0);
             l.scale_y = (l.scale_y * by).clamp(0.05, 20.0);
         };
+        let at = move |f: fn(&mut Layout, f32)| {
+            move |v: f32| {
+                let mut l = lo;
+                f(&mut l, v);
+                set(&|m| *m = l)
+            }
+        };
+        let letter = |text: &'static str| div().w(px(10.)).child(text).into_any_element();
         let grid = div()
             .grid()
             .grid_cols(2)
             .gap_1()
-            .child(self.field("ex", "X", format!("{:.0}", lo.x), set(&|l| l.x -= 10.0), set(&|l| l.x += 10.0), cx))
-            .child(self.field("ey", "Y", format!("{:.0}", lo.y), set(&|l| l.y -= 10.0), set(&|l| l.y += 10.0), cx))
-            .child(self.field(
+            .child(self.number("ex", letter("X"), lo.x, "", 1.0, at(|l, v| l.x = v), cx))
+            .child(self.number("ey", letter("Y"), lo.y, "", 1.0, at(|l, v| l.y = v), cx))
+            .child(self.number(
                 "er",
-                "↻",
-                format!("{:.0}°", lo.rotation),
-                set(&|l| l.rotation -= 15.0),
-                set(&|l| l.rotation += 15.0),
+                ui::icon("rotate-cw").size(px(11.)).into_any_element(),
+                lo.rotation,
+                "°",
+                0.5,
+                at(|l, v| l.rotation = v),
                 cx,
             ))
             .child(self.field(

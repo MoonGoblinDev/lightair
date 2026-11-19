@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::{Input as TextInput, InputEvent, InputState};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
@@ -24,6 +25,33 @@ pub(super) struct BoundSlider {
     dragging: bool,
     on_change: Rc<dyn Fn(f32) -> Command>,
     _events: Subscription,
+}
+
+/// A number being dragged sideways (`number`): where the drag began, the value then, how much a
+/// point of travel changes it, and the command a new value makes.
+pub(super) struct Scrub {
+    key: SharedString,
+    x0: f32,
+    v0: f32,
+    step: f32,
+    /// Values are multiples of this.
+    snap: f32,
+    moved: bool,
+    apply: Rc<dyn Fn(f32) -> Command>,
+}
+
+/// A number being typed (`number`, clicked without dragging).
+pub(super) struct NumberEdit {
+    key: SharedString,
+    input: Entity<InputState>,
+    apply: Rc<dyn Fn(f32) -> Command>,
+    _events: Subscription,
+}
+
+/// A number as the Inspector shows it: whole, without "-0".
+fn whole(v: f32) -> String {
+    let r = v.round();
+    format!("{:.0}", if r == 0.0 { 0.0 } else { r })
 }
 
 impl StudioWindow {
@@ -73,7 +101,121 @@ impl StudioWindow {
             )
     }
 
-    /// A labelled number with small −/+ (shift-free steps of `step`).
+    /// A labelled number: drag it sideways to change it (⇧ ten times faster, ⌥ finer; one undo
+    /// step per drag), or click it to type one (Enter or clicking away keeps it, Escape doesn't).
+    /// `step`: the change per point dragged.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn number(
+        &self,
+        key: impl Into<SharedString>,
+        label: AnyElement,
+        value: f32,
+        unit: &'static str,
+        step: f32,
+        apply: impl Fn(f32) -> Command + 'static,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        self.number_snapped(key, label, value, unit, step, 1.0, apply, cx)
+    }
+
+    /// `number`, its values multiples of `snap`.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn number_snapped(
+        &self,
+        key: impl Into<SharedString>,
+        label: AnyElement,
+        value: f32,
+        unit: &'static str,
+        step: f32,
+        snap: f32,
+        apply: impl Fn(f32) -> Command + 'static,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let key: SharedString = key.into();
+        let apply: Rc<dyn Fn(f32) -> Command> = Rc::new(apply);
+        let editing = self.number_edit.as_ref().filter(|e| e.key == key).map(|e| e.input.clone());
+        let scrubbing = self.scrub.as_ref().is_some_and(|s| s.key == key);
+        let weak = cx.weak_entity();
+        div()
+            .id(ElementId::Name(key.clone()))
+            .relative()
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .h(px(26.))
+            .min_w_0()
+            .pl_2()
+            .pr_1()
+            .rounded(px(5.))
+            .bg(tok::bg_raised())
+            .border_1()
+            .border_color(if editing.is_some() || scrubbing { tok::border_strong() } else { tok::bg_raised() })
+            .hover(|d| d.border_color(tok::border_strong()))
+            .child(div().flex().flex_none().items_center().text_size(px(11.)).text_color(tok::text_tertiary()).child(label))
+            .map(|d| match editing {
+                Some(input) => d.child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
+                            if ev.keystroke.key == "escape" {
+                                cx.stop_propagation();
+                                this.finish_number(false, window, cx);
+                            }
+                        }))
+                        .child(TextInput::new(&input).appearance(false).xsmall()),
+                ),
+                None => d
+                    .cursor(CursorStyle::ResizeLeftRight)
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_size(px(12.))
+                            .font_family(crate::ui::MONO)
+                            .child(format!("{}{unit}", whole(value))),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, ev: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            let x0 = f32::from(ev.position.x);
+                            let key = key.clone();
+                            this.scrub = Some(Scrub { key, x0, v0: value, step, snap, moved: false, apply: apply.clone() });
+                            cx.notify();
+                        }),
+                    )
+                    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| this.scrub_up(window, cx))),
+            })
+            // while dragged: the pointer followed anywhere in the window
+            .when(scrubbing, |d| {
+                d.child(
+                    canvas(
+                        |_, _, _| {},
+                        move |_, _, window, _| {
+                            let w = weak.clone();
+                            window.on_mouse_event(move |ev: &MouseMoveEvent, phase, _, cx| {
+                                if phase == DispatchPhase::Bubble {
+                                    let _ = w.update(cx, |this, cx| this.scrub_move(ev, cx));
+                                }
+                            });
+                            let w = weak.clone();
+                            window.on_mouse_event(move |ev: &MouseUpEvent, phase, window, cx| {
+                                if phase == DispatchPhase::Bubble && ev.button == MouseButton::Left {
+                                    let _ = w.update(cx, |this, cx| this.scrub_up(window, cx));
+                                }
+                            });
+                        },
+                    )
+                    .absolute()
+                    .size_0(),
+                )
+            })
+    }
+
+    /// A labelled value with small −/+ (for one that isn't a plain number: a duration, a zoom).
     pub(super) fn field(
         &self,
         id: &'static str,
@@ -89,26 +231,107 @@ impl StudioWindow {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(20.))
+                .size(px(18.))
                 .rounded(px(4.))
                 .cursor_pointer()
                 .text_color(tok::text_tertiary())
                 .hover(|d| d.bg(tok::bg_selected()).text_color(tok::text()))
-                .child(ui::icon(icon).size(px(12.)))
+                .child(ui::icon(icon).size(px(11.)))
                 .on_click(cx.listener(move |this, _, _, cx| this.exec(cmd.clone(), cx)))
         };
         div()
             .flex()
             .items_center()
             .gap_1()
-            .h(px(30.))
-            .px_2()
-            .rounded(px(6.))
+            .h(px(26.))
+            .pl_2()
+            .pr_1()
+            .rounded(px(5.))
             .bg(tok::bg_raised())
-            .child(div().w(px(16.)).text_size(px(11.)).text_color(tok::text_tertiary()).child(label))
-            .child(div().flex_1().text_size(px(12.)).font_family(crate::ui::MONO).child(value))
+            .when(!label.is_empty(), |d| d.child(div().flex_none().text_size(px(11.)).text_color(tok::text_tertiary()).child(label)))
+            .child(div().flex_1().min_w_0().text_size(px(12.)).font_family(crate::ui::MONO).child(value))
             .child(small(0, "minus", minus))
             .child(small(1, "plus", plus))
+    }
+
+    fn scrub_move(&mut self, ev: &MouseMoveEvent, cx: &mut Context<Self>) {
+        let Some(s) = &mut self.scrub else { return };
+        let dx = f32::from(ev.position.x) - s.x0;
+        let first = !s.moved;
+        if first {
+            if dx.abs() < 3.0 {
+                return;
+            }
+            s.moved = true;
+        }
+        let rate = if ev.modifiers.shift { 10.0 } else if ev.modifiers.alt { 0.2 } else { 1.0 };
+        let snap = s.snap.max(f32::EPSILON);
+        let cmd = (s.apply)(((s.v0 + dx * s.step * rate) / snap).round() * snap);
+        if first {
+            self.studio.update(cx, |st, _| st.begin_gesture());
+        }
+        self.exec(cmd, cx);
+    }
+
+    /// The drag ends; a click (no drag) opens the number for typing.
+    fn scrub_up(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(s) = self.scrub.take() else { return };
+        if s.moved {
+            self.studio.update(cx, |st, _| st.end_gesture());
+        } else {
+            let input = cx.new(|cx| InputState::new(window, cx));
+            input.update(cx, |state, cx| {
+                state.set_value(whole(s.v0), window, cx);
+                state.focus(window, cx);
+                state.select_all(window, cx);
+            });
+            let events = cx.subscribe_in(&input, window, |this, _, ev: &InputEvent, window, cx| match ev {
+                InputEvent::PressEnter { .. } => this.finish_number(true, window, cx),
+                InputEvent::Blur => this.finish_number(true, window, cx),
+                _ => {}
+            });
+            self.number_edit = Some(NumberEdit { key: s.key, input, apply: s.apply, _events: events });
+        }
+        cx.notify();
+    }
+
+    /// Ends typing a number: the value typed is kept (`commit`), if it's a number.
+    fn finish_number(&mut self, commit: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(e) = self.number_edit.take() else { return };
+        let typed = e.input.read(cx).value().to_string();
+        let typed = typed.trim().trim_end_matches(['°', '%']).trim_end_matches("px").trim();
+        if commit && let Ok(v) = typed.parse::<f32>() && v.is_finite() {
+            self.exec((e.apply)(v), cx);
+        }
+        if e.input.focus_handle(cx).is_focused(window) {
+            window.focus(&self.focus, cx);
+        }
+        cx.notify();
+    }
+
+    /// For screenshots: the selected object rounded, with a border, tilted and cropped (so every
+    /// Transform row shows).
+    pub(super) fn inspect_shape_hook(&mut self, cx: &mut Context<Self>) {
+        let cmd = {
+            let s = self.studio.read(cx);
+            let workspace = s.workspace();
+            let canvas = self.canvas_id(workspace);
+            let scene = s.selected_scene.and_then(|id| workspace.scene(id));
+            let object = scene.and_then(|sc| s.selected_object.and_then(|id| sc.object(id)));
+            match (scene, object) {
+                (Some(sc), Some(o)) => o.layouts.get(&canvas).map(|lo| {
+                    let mut l = *lo;
+                    l.shape = Some(Shape { border: 6.0, ..Shape::new(ShapeKind::Rounded) });
+                    l.tilt_y = 18.0;
+                    l.crop.left = 40;
+                    Command::SetLayout { scene: sc.id, object: o.id, canvas, layout: l }
+                }),
+                _ => None,
+            }
+        };
+        if let Some(cmd) = cmd {
+            self.exec(cmd, cx);
+        }
     }
 
     /// A row of mutually exclusive options; `options` are (label, command, selected).
@@ -246,94 +469,25 @@ impl StudioWindow {
                     })),
             );
 
-        // Transform.
-        let grid = div()
-            .grid()
-            .grid_cols(2)
-            .gap_1()
-            .child(self.field("tx", "X", format!("{:.0}", lo.x), set(&|l| l.x -= 10.0), set(&|l| l.x += 10.0), cx))
-            .child(self.field("ty", "Y", format!("{:.0}", lo.y), set(&|l| l.y -= 10.0), set(&|l| l.y += 10.0), cx))
-            .child(self.field(
-                "tw",
-                "W",
-                format!("{:.0}", lo.width),
-                set(&|l| l.width = (l.width - 10.0).max(8.0)),
-                set(&|l| l.width += 10.0),
-                cx,
-            ))
-            .child(self.field(
-                "th",
-                "H",
-                format!("{:.0}", lo.height),
-                set(&|l| l.height = (l.height - 10.0).max(8.0)),
-                set(&|l| l.height += 10.0),
-                cx,
-            ))
-            .child(self.field(
-                "tr",
-                "↻",
-                format!("{:.0}°", lo.rotation),
-                set(&|l| l.rotation -= 15.0),
-                set(&|l| l.rotation += 15.0),
-                cx,
-            ));
-        let mut fits = div().flex().gap_0p5().p_0p5().rounded(px(6.)).bg(tok::bg_raised());
-        for (i, (fit, label, tip)) in [
-            (Fit::Fit, "Fit", "Whole picture, inside the box"),
-            (Fit::Fill, "Fill", "Cover the box, crop the overflow"),
-            (Fit::Stretch, "Stretch", "Stretch to the box"),
-            (Fit::Original, "1:1", "Original size"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let cmd = Command::SetLayout { scene: sid, object: lid, canvas: fid, layout: Layout { fit, ..lo } };
-            let on = lo.fit == fit;
-            fits = fits.child(
-                div()
-                    .id(("fit", i))
-                    .flex_1()
-                    .text_center()
-                    .py_1()
-                    .rounded(px(4.))
-                    .text_size(px(11.))
-                    .cursor_pointer()
-                    .when(on, |d| d.bg(tok::bg_selected()).text_color(tok::text()))
-                    .when(!on, |d| d.text_color(tok::text_tertiary()))
-                    .tooltip(move |w, cx| Tooltip::new(tip).build(w, cx))
-                    .child(label)
-                    .on_click(cx.listener(move |this, _, _, cx| this.exec(cmd.clone(), cx))),
-            );
-        }
-        // Crop is on the canvas (the side handles); here, undo it.
-        let cropped = lo.crop != lightair_core::Crop::default();
-        let reset = set(&|l| l.crop = lightair_core::Crop::default());
-        let crop_actions = div().flex().gap_1().when(cropped, |d| {
-            d.child(
-                Button::new("reset-crop")
-                    .label("Uncrop")
-                    .xsmall()
-                    .ghost()
-                    .tooltip("Drag a side handle on the canvas to crop")
-                    .on_click(cx.listener(move |this, _, _, cx| this.exec(reset.clone(), cx))),
-            )
-        });
-        let mut transform =
-            self.section("Transform", Some(crop_actions.into_any_element()), cx).child(grid).child(fits);
-        // Flip and 3D.
-        let toggle = |id: &'static str,
-                      icon: &'static str,
-                      tip: &'static str,
-                      on: bool,
-                      cmd: Command,
-                      cx: &mut Context<Self>| {
+        // Transform: position and rotation, then size and flips, three to a row; then how the
+        // picture fits its box, and its shape.
+        let at = move |f: fn(&mut Layout, f32)| {
+            move |v: f32| {
+                let mut l = lo;
+                f(&mut l, v);
+                Command::SetLayout { scene: sid, object: lid, canvas: fid, layout: l }
+            }
+        };
+        let letter = |text: &'static str| div().w(px(10.)).child(text).into_any_element();
+        let flip = |id: &'static str, icon: &'static str, tip: &'static str, on: bool, cmd: Command, cx: &mut Context<Self>| {
             div()
                 .id(id)
                 .flex()
+                .flex_1()
                 .items_center()
                 .justify_center()
-                .size(px(30.))
-                .rounded(px(6.))
+                .h(px(26.))
+                .rounded(px(5.))
                 .cursor_pointer()
                 .bg(if on { tok::bg_selected() } else { tok::bg_raised() })
                 .hover(|d| d.bg(tok::bg_selected()))
@@ -343,37 +497,77 @@ impl StudioWindow {
         };
         let flip_h = set(&|l| l.flip_h = !l.flip_h);
         let flip_v = set(&|l| l.flip_v = !l.flip_v);
-        let flat = set(&|l| {
-            l.tilt_x = 0.0;
-            l.tilt_y = 0.0;
-        });
-        let tilted = lo.tilt_x.abs() > 0.01 || lo.tilt_y.abs() > 0.01;
-        transform = transform.child(
+        let grid = div()
+            .grid()
+            .grid_cols(3)
+            .gap_1()
+            .child(self.number("tx", letter("X"), lo.x, "", 1.0, at(|l, v| l.x = v), cx))
+            .child(self.number("ty", letter("Y"), lo.y, "", 1.0, at(|l, v| l.y = v), cx))
+            .child(self.number(
+                "tr",
+                ui::icon("rotate-cw").size(px(11.)).into_any_element(),
+                lo.rotation,
+                "°",
+                0.5,
+                at(|l, v| l.rotation = v),
+                cx,
+            ))
+            .child(self.number("tw", letter("W"), lo.width, "", 1.0, at(|l, v| l.width = v.max(8.0)), cx))
+            .child(self.number("th", letter("H"), lo.height, "", 1.0, at(|l, v| l.height = v.max(8.0)), cx))
+            .child(
+                div()
+                    .flex()
+                    .gap_1()
+                    .child(flip("flip-h", "flip-horizontal-2", "Flip left↔right", lo.flip_h, flip_h, cx))
+                    .child(flip("flip-v", "flip-vertical-2", "Flip top↕bottom", lo.flip_v, flip_v, cx)),
+            );
+        let fit_to = |fit: Fit| Command::SetLayout { scene: sid, object: lid, canvas: fid, layout: Layout { fit, ..lo } };
+        let fits = self.segmented(
+            "fit",
+            vec![
+                ("Fit", fit_to(Fit::Fit), lo.fit == Fit::Fit),
+                ("Fill", fit_to(Fit::Fill), lo.fit == Fit::Fill),
+                ("Stretch", fit_to(Fit::Stretch), lo.fit == Fit::Stretch),
+                ("1:1", fit_to(Fit::Original), lo.fit == Fit::Original),
+            ],
+            cx,
+        );
+        // Shape: part of the object's frame, cut from the cropped picture.
+        let shape = lo.shape;
+        let with_shape = |sh: Option<Shape>| Command::SetLayout {
+            scene: sid,
+            object: lid,
+            canvas: fid,
+            layout: Layout { shape: sh, ..lo },
+        };
+        let keep = |kind: ShapeKind| Some(Shape { kind, ..shape.unwrap_or(Shape::new(kind)) });
+        let shapes = self.segmented(
+            "shape",
+            vec![
+                ("None", with_shape(None), shape.is_none()),
+                ("Rounded", with_shape(keep(ShapeKind::Rounded)), shape.is_some_and(|s| s.kind == ShapeKind::Rounded)),
+                ("Circle", with_shape(keep(ShapeKind::Circle)), shape.is_some_and(|s| s.kind == ShapeKind::Circle)),
+                ("Pill", with_shape(keep(ShapeKind::Pill)), shape.is_some_and(|s| s.kind == ShapeKind::Pill)),
+            ],
+            cx,
+        );
+        // a setting's name, then its control
+        let row = |label: &'static str, control: AnyElement| {
             div()
                 .flex()
                 .items_center()
-                .gap_1()
-                .child(toggle("flip-h", "flip-horizontal-2", "Flip left↔right", lo.flip_h, flip_h, cx))
-                .child(toggle("flip-v", "flip-vertical-2", "Flip top↕bottom", lo.flip_v, flip_v, cx))
-                .child(div().flex_1())
-                .child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child("3D: drag the ⊙ handle"))
-                .when(tilted, |d| {
-                    d.child(
-                        Button::new("flat")
-                            .label("Flat")
-                            .xsmall()
-                            .ghost()
-                            .on_click(cx.listener(move |this, _, _, cx| this.exec(flat.clone(), cx))),
-                    )
-                }),
-        );
-        if tilted {
-            let row = |label: &'static str, slider: Slider, value: String| {
+                .gap_2()
+                .child(div().flex_none().w(px(56.)).text_size(px(12.)).text_color(tok::text_secondary()).child(label))
+                .child(div().flex_1().min_w_0().child(control))
+        };
+        // a slider's row: its value at the right
+        let slider_row = |label: &'static str, slider: Slider, value: String| {
+            row(
+                label,
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().w(px(64.)).text_size(px(12.)).text_color(tok::text_secondary()).child(label))
                     .child(div().flex_1().child(slider))
                     .child(
                         div()
@@ -384,7 +578,46 @@ impl StudioWindow {
                             .text_color(tok::text_tertiary())
                             .child(value),
                     )
-            };
+                    .into_any_element(),
+            )
+        };
+
+        // In the header: undo a crop or a tilt (both made on the canvas), and how to make them.
+        let cropped = lo.crop != lightair_core::Crop::default();
+        let reset = set(&|l| l.crop = lightair_core::Crop::default());
+        let flat = set(&|l| {
+            l.tilt_x = 0.0;
+            l.tilt_y = 0.0;
+        });
+        let tilted = lo.tilt_x.abs() > 0.01 || lo.tilt_y.abs() > 0.01;
+        let actions = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .when(cropped, |d| {
+                d.child(
+                    Button::new("reset-crop")
+                        .label("Uncrop")
+                        .xsmall()
+                        .ghost()
+                        .on_click(cx.listener(move |this, _, _, cx| this.exec(reset.clone(), cx))),
+                )
+            })
+            .when(tilted, |d| {
+                d.child(
+                    Button::new("flat")
+                        .label("Flat")
+                        .xsmall()
+                        .ghost()
+                        .on_click(cx.listener(move |this, _, _, cx| this.exec(flat.clone(), cx))),
+                )
+            })
+            .child(ui::info("transform-info", "On the canvas: drag a side handle to crop, and the ⊙ handle to tilt in 3D"));
+        let mut transform = self
+            .section("Transform", Some(actions.into_any_element()), cx)
+            .child(grid)
+            .child(row("Fit", fits.into_any_element()));
+        if tilted {
             let key = |name: &str| format!("tilt:{lid}:{fid}:{name}");
             let tx = self.slider(
                 key("x"),
@@ -400,49 +633,12 @@ impl StudioWindow {
                 move |v| Command::SetLayout { scene: sid, object: lid, canvas: fid, layout: Layout { tilt_y: v, ..lo } },
                 cx,
             );
-            transform = transform.child(row("Tilt ↕", tx, format!("{:.0}°", lo.tilt_x))).child(row(
-                "Tilt ↔",
-                ty,
-                format!("{:.0}°", lo.tilt_y),
-            ));
+            transform = transform
+                .child(slider_row("Tilt ↕", tx, format!("{:.0}°", lo.tilt_x)))
+                .child(slider_row("Tilt ↔", ty, format!("{:.0}°", lo.tilt_y)));
         }
-        // Shape: part of the object's frame, cut from the cropped picture.
-        let shape = lo.shape;
-        let with_shape = |sh: Option<Shape>| Command::SetLayout {
-            scene: sid,
-            object: lid,
-            canvas: fid,
-            layout: Layout { shape: sh, ..lo },
-        };
-        let keep = |kind: ShapeKind| Some(Shape { kind, ..shape.unwrap_or(Shape::new(kind)) });
-        transform = transform.child(self.segmented(
-            "shape",
-            vec![
-                ("Rectangle", with_shape(None), shape.is_none()),
-                ("Rounded", with_shape(keep(ShapeKind::Rounded)), shape.is_some_and(|s| s.kind == ShapeKind::Rounded)),
-                ("Circle", with_shape(keep(ShapeKind::Circle)), shape.is_some_and(|s| s.kind == ShapeKind::Circle)),
-                ("Pill", with_shape(keep(ShapeKind::Pill)), shape.is_some_and(|s| s.kind == ShapeKind::Pill)),
-            ],
-            cx,
-        ));
+        transform = transform.child(row("Shape", shapes.into_any_element()));
         if let Some(sh) = shape {
-            let row = |label: &'static str, slider: Slider, value: String| {
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(div().w(px(64.)).text_size(px(12.)).text_color(tok::text_secondary()).child(label))
-                    .child(div().flex_1().child(slider))
-                    .child(
-                        div()
-                            .w(px(40.))
-                            .text_right()
-                            .text_size(px(11.))
-                            .font_family(crate::ui::MONO)
-                            .text_color(tok::text_tertiary())
-                            .child(value),
-                    )
-            };
             let set_shape = move |f: fn(&mut Shape, f32)| {
                 move |v: f32| {
                     let mut s = sh;
@@ -453,12 +649,12 @@ impl StudioWindow {
             let key = |name: &str| format!("shape:{lid}:{fid}:{name}");
             if sh.kind == ShapeKind::Rounded {
                 let s = self.slider(key("radius"), (0.0, 1.0, 0.01), sh.radius, set_shape(|s, v| s.radius = v), cx);
-                transform = transform.child(row("Corners", s, format!("{:.0}%", sh.radius * 100.0)));
+                transform = transform.child(slider_row("Corners", s, format!("{:.0}%", sh.radius * 100.0)));
             }
             let s = self.slider(key("feather"), (0.0, 40.0, 1.0), sh.feather, set_shape(|s, v| s.feather = v), cx);
-            transform = transform.child(row("Softness", s, format!("{:.0} px", sh.feather)));
+            transform = transform.child(slider_row("Softness", s, format!("{:.0} px", sh.feather)));
             let s = self.slider(key("border"), (0.0, 40.0, 1.0), sh.border, set_shape(|s, v| s.border = v), cx);
-            transform = transform.child(row("Border", s, format!("{:.0} px", sh.border)));
+            transform = transform.child(slider_row("Border", s, format!("{:.0} px", sh.border)));
             if sh.border > 0.0 {
                 let current = super::object_props::rgb_of(sh.border_color);
                 let mut swatches = div().flex().flex_wrap().gap_1p5();
@@ -477,7 +673,7 @@ impl StudioWindow {
                             .on_click(cx.listener(move |this, _, _, cx| this.exec(cmd.clone(), cx))),
                     );
                 }
-                transform = transform.child(swatches);
+                transform = transform.child(row("", swatches.into_any_element()));
             }
         }
 

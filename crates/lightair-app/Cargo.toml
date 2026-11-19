@@ -36,7 +36,8 @@ base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 libc = "0.2"
 serde.workspace = true
-gpui-kit.workspace = true
+# code editors: HTML, CSS, JavaScript and JSON coloured (a widget's code, custom CSS)
+gpui-kit = { workspace = true, features = ["tree-sitter-html", "tree-sitter-css", "tree-sitter-javascript"] }
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
