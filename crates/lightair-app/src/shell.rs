@@ -2282,7 +2282,7 @@ impl Render for StudioWindow {
             .when(!native, |d| d.bg(tok::bg_app()))
             .text_color(tok::text())
             .text_size(px(13.))
-            .child(self.title_bar(&workspace, f32::from(window.viewport_size().width), cx))
+            .child(self.title_bar(&workspace, f32::from(window.viewport_size().width), window.is_maximized(), cx))
             .child(match self.place {
                 Place::Live => div().flex().flex_1().min_h_0().children(self.dock.clone()),
                 Place::Library => div().flex().flex_1().min_h_0().child(self.library.clone()),
@@ -2875,7 +2875,7 @@ impl StudioWindow {
     /// The title bar, laid out for the window's `width`: full; compact (the performance readout
     /// as its dot, Record as its symbol) when that doesn't fit beside the centred Library · Live
     /// · Editor; and narrow (the switcher in the row, not centred) when even that doesn't.
-    fn title_bar(&self, workspace: &Workspace, width: f32, cx: &mut Context<Self>) -> impl IntoElement {
+    fn title_bar(&self, workspace: &Workspace, width: f32, maximized: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let editor = self.place == Place::Editor;
         let studio = self.studio.read(cx);
         let has_destination = workspace.outputs.destinations.iter().any(|d| d.enabled);
@@ -2887,19 +2887,27 @@ impl StudioWindow {
         let recording = matches!(rec, OutputState::Active { .. }) || taking;
         // what fits: each side's width, roughly, against half of what the switcher leaves
         let streaming_now = runtime().any_stream_running();
-        let half = (width - 210.0) / 2.0;
-        let left = 84.0 + 7.5 * workspace.name.chars().count() as f32 + 40.0 + if streaming_now { 52.0 } else { 0.0 } + if editor { 160.0 } else { 0.0 };
+        // (the switcher: Library · Live · Editor, about 160 wide)
+        let half = (width - 170.0) / 2.0;
+        // Windows: Settings and the virtual camera sit on the left (the right has the window's
+        // buttons), before the workspace
+        let moved_left = if cfg!(windows) { 28.0 + if editor { 0.0 } else { 64.0 } + 24.0 } else { 0.0 };
+        let left = TITLE_BAR_LEFT + moved_left + 7.5 * workspace.name.chars().count() as f32 + 40.0 + if streaming_now { 52.0 } else { 0.0 } + if editor { 160.0 } else { 0.0 };
         let right = |compact: bool| -> f32 {
             if editor {
                 return 260.0;
             }
-            let perf = if compact { 28.0 } else { 150.0 };
+            // what's on the right, as wide as each is drawn (the frame rate is in the footer now)
             let live = if streaming_now { 130.0 } else { 76.0 };
             let tools = if recording && !taking { 84.0 } else { 0.0 };
-            let record = if compact && !recording && !taking { 58.0 } else { 160.0 };
-            // [Clip | Replay] and [virtual camera | ⌄]
+            // "● Record ⌄" about 100 wide, just "● ⌄" 58; recording, its time shows too
+            let record = if recording || taking { 160.0 } else if compact { 58.0 } else { 104.0 };
+            // [Clip | Replay], and (not on Windows: they're on the left) [virtual camera | ⌄] and Settings
             let clips = if self.studio.read(cx).last_clip.is_some() { 66.0 } else { 36.0 };
-            12.0 + perf + live + tools + record + clips + 64.0 + 28.0 + 12.0 * 7.0
+            let settings_and_camera = if cfg!(windows) { 0.0 } else { 64.0 + 28.0 };
+            let items = 3.0 + if tools > 0.0 { 1.0 } else { 0.0 } + if cfg!(windows) { 0.0 } else { 2.0 };
+            // the gaps between them and before them, and the bar's own margin
+            live + tools + record + clips + settings_and_camera + 12.0 * items + 12.0 + window_controls_width()
         };
         let compact = left > half || right(false) > half;
         let narrow = left > half || right(true) > half;
@@ -2960,24 +2968,37 @@ impl StudioWindow {
                 .on_click(cx.listener(|this, _, _, cx| this.open_go_live(cx)))
         };
 
-        div()
+        // Windows: the bar moves the window (a double click maximises it), as a title bar does.
+        // What's on it blocks that (`occlude`: Windows would take a click there for the title
+        // bar's), so only its empty parts drag; the window's buttons sit beside it, not on it
+        // (the first control area under the pointer is the one Windows hears about).
+        let settings = ui::icon_button("open-settings", "settings", tok::text_secondary())
+            .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Settings (⌘,)").into_owned()).build(w, cx))
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_settings(cx)));
+        let (mut settings_left, mut settings_right) = (None, None);
+        if cfg!(windows) {
+            settings_left = Some(settings);
+        } else {
+            settings_right = Some(settings);
+        }
+        let bar = div()
             .relative()
             .flex()
+            .flex_1()
+            .min_w_0()
+            .h_full()
             .items_center()
-            .h(px(44.))
-            .pl(px(84.))
+            .pl(px(TITLE_BAR_LEFT))
             .pr_3()
             .gap_3()
-            .border_b_1()
-            .border_color(tok::border())
-            .bg(tok::bg_app())
-            // Library · Live · Editor, in the middle of the bar whatever is either side (in the
-            // row when the window is too narrow for that)
-            .when(!narrow, |d| d.child(div().absolute().inset_0().flex().items_center().justify_center().child(self.place_switcher(cx))))
-            .child(div().min_w_0().flex_shrink_1().overflow_hidden().child(self.workspace_picker(workspace, cx)))
-            .when(narrow, |d| d.child(div().flex_none().child(self.place_switcher(cx))))
+            .window_control_area(WindowControlArea::Drag)
+            // Windows: Settings, then the virtual camera, then the workspace
+            .when_some(settings_left, |d, s| d.child(div().flex_none().occlude().child(s)))
+            .when(cfg!(windows) && !editor, |d| d.child(div().flex_none().occlude().child(self.virtual_camera_control(cx))))
+            .child(div().min_w_0().flex_shrink_1().overflow_hidden().occlude().child(self.workspace_picker(workspace, cx)))
+            .when(narrow, |d| d.child(div().flex_none().occlude().child(self.place_switcher(cx))))
             // the Editor: its workspace beside the workspace
-            .when(editor, |d| d.child(self.editor.update(cx, |e, cx| e.title_left(cx))))
+            .when(editor, |d| d.child(div().occlude().child(self.editor.update(cx, |e, cx| e.title_left(cx)))))
             .when(streaming, |d| {
                 d.child(
                     div()
@@ -2992,17 +3013,37 @@ impl StudioWindow {
                 )
             })
             .child(div().flex_1())
-            // the Editor: undo, redo and export here; what records and streams only while it does
-            .when(editor, |d| d.child(self.editor.update(cx, |e, cx| e.title_right(cx))))
-            .when(!editor || streaming, |d| d.child(go_live))
-            .children(recording_tools.filter(|_| !taking))
-            .when(!editor || recording || taking, |d| d.child(record))
-            .when(!editor, |d| d.child(self.clip_control(cx)).child(self.virtual_camera_control(cx)))
             .child(
-                ui::icon_button("open-settings", "settings", tok::text_secondary())
-                    .tooltip(|w, cx| Tooltip::new(crate::ui::keys_label("Settings (⌘,)").into_owned()).build(w, cx))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_settings(cx))),
-            )
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .occlude()
+                    // the Editor: undo, redo and export here; what records and streams only while it does
+                    .when(editor, |d| d.child(self.editor.update(cx, |e, cx| e.title_right(cx))))
+                    .when(!editor || streaming, |d| d.child(go_live))
+                    .children(recording_tools.filter(|_| !taking))
+                    .when(!editor || recording || taking, |d| d.child(record))
+                    .when(!editor, |d| d.child(self.clip_control(cx)))
+                    .when(!editor && !cfg!(windows), |d| d.child(self.virtual_camera_control(cx)))
+                    .children(settings_right),
+            );
+        div()
+            .relative()
+            .flex()
+            .items_center()
+            .h(px(44.))
+            .border_b_1()
+            .border_color(tok::border())
+            .bg(tok::bg_app())
+            .child(bar)
+            .when(cfg!(windows), |d| d.child(window_controls(maximized)))
+            // Library · Live · Editor, in the middle of the window whatever is either side
+            // (over the bar, after it: on top, so it takes its clicks; in the row when the window
+            // is too narrow for that)
+            .when(!narrow, |d| {
+                d.child(div().absolute().inset_0().flex().items_center().justify_center().child(div().occlude().child(self.place_switcher(cx))))
+            })
     }
 
     fn refresh_sizes(&self, cx: &mut Context<Self>) {
@@ -4654,6 +4695,57 @@ fn transition_preview(kind: TransitionKind, direction: Direction, t: Option<f32>
             .child(scene(t >= 0.5, 0.0, 0.0))
             .child(div().absolute().left(relative(-0.55 + 1.6 * t)).top_0().w(relative(0.5)).h_full().bg(rgb(0x7C5CFF))),
     }
+}
+
+/// Room on the title bar's left: macOS's window buttons sit there (the window's title bar is
+/// see-through); elsewhere just a margin.
+const TITLE_BAR_LEFT: f32 = if cfg!(target_os = "macos") { 84.0 } else { 12.0 };
+
+/// Windows: the width of the window's buttons (three, 46 px each, as Windows draws them).
+fn window_controls_width() -> f32 {
+    if cfg!(windows) { 3.0 * 46.0 } else { 0.0 }
+}
+
+/// Windows' icon font for its window buttons: Segoe Fluent Icons (Windows 11), else Segoe MDL2
+/// Assets (Windows 10), which has the same glyphs.
+fn caption_font() -> &'static str {
+    static FONT: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    FONT.get_or_init(|| {
+        let fonts = std::env::var_os("WINDIR").map(std::path::PathBuf::from).unwrap_or_else(|| r"C:\Windows".into()).join("Fonts");
+        if fonts.join("SegoeIcons.ttf").exists() { "Segoe Fluent Icons" } else { "Segoe MDL2 Assets" }
+    })
+}
+
+/// Windows: minimise, maximise (restore) and close, at the title bar's right, drawn as Windows
+/// draws them. Windows itself handles them (their areas answer its hit-tests), so they behave
+/// as a native window's: Snap Layouts on maximise, and so on.
+fn window_controls(maximized: bool) -> impl IntoElement {
+    let button = |id: &'static str, glyph: char, area: WindowControlArea, close: bool| {
+        div()
+            .id(id)
+            .flex()
+            .items_center()
+            .justify_center()
+            .w(px(46.))
+            .h_full()
+            .flex_none()
+            .font_family(caption_font())
+            .text_size(px(10.))
+            .text_color(tok::text_secondary())
+            .when(close, |d| {
+                d.hover(|s| s.bg(rgb(0xC42B1C)).text_color(rgb(0xFFFFFF))).active(|s| s.bg(rgb(0xB22A1C)).text_color(rgb(0xFFFFFF)))
+            })
+            .when(!close, |d| d.hover(|s| s.bg(tok::bg_selected()).text_color(tok::text())).active(|s| s.bg(tok::bg_selected())))
+            .window_control_area(area)
+            .child(glyph.to_string())
+    };
+    div()
+        .flex()
+        .h_full()
+        .flex_none()
+        .child(button("window-minimize", '\u{E921}', WindowControlArea::Min, false))
+        .child(button("window-maximize", if maximized { '\u{E923}' } else { '\u{E922}' }, WindowControlArea::Max, false))
+        .child(button("window-close", '\u{E8BB}', WindowControlArea::Close, true))
 }
 
 #[cfg(test)]
