@@ -63,12 +63,16 @@ impl Render for PanelWindow {
             let mut n = shared.borrow_mut();
             if n.is_none() {
                 *n = crate::native_preview::NativePreview::attach(window, tok::bg_panel(), tok::bg_canvas_well());
-                // made: the main window moves the previews to it, and the canvas redraws
+                // made: the previews move to it now (the main window, covered, may not draw),
+                // and the canvas redraws
                 if n.is_some() {
                     let me = self.home.me.clone();
                     cx.defer(move |cx| {
                         if let Some(me) = me.upgrade() {
-                            me.update(cx, |_, cx| cx.notify());
+                            me.update(cx, |s, cx| {
+                                s.hand_previews();
+                                cx.notify();
+                            });
                         }
                     });
                 }
@@ -314,7 +318,7 @@ impl StudioWindow {
                     }
                     true
                 });
-                window.toggle_simple_fullscreen();
+                enter_fullscreen(window);
                 let focus = cx.focus_handle();
                 cx.new(|cx| {
                     let observed = me2.upgrade().map(|me| cx.observe(&me, |_, _, cx| cx.notify()));
@@ -330,7 +334,7 @@ impl StudioWindow {
                     cx.spawn(async move |_, cx| {
                         cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
                         let _ = handle.update(cx, |_, w, _| {
-                            if w.is_simple_fullscreen() {
+                            if is_fullscreen(w) {
                                 crate::native_preview::hide_menu_bar();
                             }
                         });
@@ -458,6 +462,21 @@ impl CanvasScreen {
     }
 }
 
+/// Full screen: macOS's "simple" kind (the whole screen, menu bar, Dock and notch area too, no
+/// Space of its own, no animation); elsewhere the window's own (Windows: no frame, over the
+/// whole monitor, the taskbar too; simple full screen does nothing there).
+fn enter_fullscreen(window: &mut Window) {
+    if cfg!(target_os = "macos") {
+        window.toggle_simple_fullscreen();
+    } else {
+        window.toggle_fullscreen();
+    }
+}
+
+fn is_fullscreen(window: &Window) -> bool {
+    window.is_simple_fullscreen() || window.is_fullscreen()
+}
+
 /// Closes the full screen canvas's window: out of full screen first (so the menu bar and Dock
 /// come back; a window closed while it's full screen can stay), then closed.
 fn close_fullscreen(handle: AnyWindowHandle, me: WeakEntity<StudioWindow>, cx: &mut App) {
@@ -487,13 +506,19 @@ impl Render for CanvasScreen {
             if n.is_none() {
                 let black: Hsla = gpui_kit::rgb(0x000000).into();
                 *n = crate::native_preview::NativePreview::attach(window, black, black);
+                // made: the previews move to it now (this window covers the main one, which
+                // then doesn't draw), and this window draws the picture
                 if n.is_some() {
                     let me = self.me.clone();
                     cx.defer(move |cx| {
                         if let Some(me) = me.upgrade() {
-                            me.update(cx, |_, cx| cx.notify());
+                            me.update(cx, |s, cx| {
+                                s.hand_previews();
+                                cx.notify();
+                            });
                         }
                     });
+                    cx.notify();
                 }
             }
         }
@@ -502,7 +527,7 @@ impl Render for CanvasScreen {
             window.focus(&self.focus, cx);
         }
         // once full screen: nothing of the system's shows either, not even on the pointer's way
-        if !self.bare && window.is_simple_fullscreen() {
+        if !self.bare && is_fullscreen(window) {
             self.bare = true;
             crate::native_preview::hide_menu_bar();
         }

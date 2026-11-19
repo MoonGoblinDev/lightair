@@ -1922,9 +1922,26 @@ impl StudioWindow {
         if native.is_none() {
             *native = crate::native_preview::NativePreview::attach(window, tok::bg_app(), tok::bg_canvas_well());
         }
+        if native.is_none() {
+            return false;
+        }
+        drop(native);
+        self.hand_previews();
+        let mut native = self.native.borrow_mut();
         let Some(n) = native.as_mut() else { return false };
-        // the canvas in a window of its own (once that window has its layer): the previews
-        // show there, and the main window's well is hidden
+        n.set_visible(self.place == Place::Live);
+        n.show_player(self.place == Place::Editor);
+        true
+    }
+
+    /// Each canvas's preview showing in the layer it belongs in: the main window's, or (the
+    /// canvas in a window of its own, or full screen, once that window has its layer) that
+    /// window's, with the main window's well hidden. Called as the main window draws, and by
+    /// the other window as soon as its layer is made: by then the main window may be covered
+    /// (full screen covers it at once) and not drawing, and the canvas would stay blank.
+    pub(super) fn hand_previews(&mut self) {
+        let mut native = self.native.borrow_mut();
+        let Some(n) = native.as_mut() else { return };
         let out = self.canvas_out && self.canvas_native.borrow().is_some();
         if out != self.layers_out {
             self.layers_out = out;
@@ -1948,10 +1965,6 @@ impl StudioWindow {
             self.native_layers.remove(&id);
             target.forget(id);
         }
-        drop(popped);
-        n.set_visible(self.place == Place::Live);
-        n.show_player(self.place == Place::Editor);
-        true
     }
 
     /// The canvas goes back to the main window: its previews show in the main window's layer
