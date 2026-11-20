@@ -1,8 +1,8 @@
 # Avatars (VTubing)
 
-Status (2026-11-20): **VRM** and **Live2D** avatars work, following the face; VRM also follows
-the body and hands (macOS), still jittery. Next: the remaining 2D formats. **To continue in
-another session, start at "Handoff" below.**
+Status (2026-11-20): **VRM**, **Live2D** and **Inochi2D** avatars work, following the face; VRM
+also follows the body and hands (macOS), still jittery. Next: nijigenerate (nijilive) puppets,
+then Ayatsuri 2D and Umamo. **To continue in another session, start at "Handoff" below.**
 
 An **Avatar** is an object like a camera: a character model that moves with the person in front
 of a camera. The camera's picture is never shown; only the character is. Any camera works
@@ -14,8 +14,8 @@ of a camera. The camera's picture is never shown; only the character is. Any cam
 |---|---|---|---|---|
 | 1 | **VRM** 0.x and 1.0 | `.vrm` (glTF) | Ours | Open; humanoid bones, expressions, MToon, spring bones |
 | 2 | **Live2D** Cubism 3–5 | `.model3.json`, `.moc3`, textures, `.physics3.json`, `.exp3.json`, `.motion3.json` | mocari (pure Rust, MIT; Lightair's fork at third_party/mocari, github.com/MoonGoblinDev/Mocari) — no Cubism Core or SDK | In: face → standard parameters (angles, body, eyes, gaze, brows, vowels or mouth, breath), the model's own EyeBlink and LipSync groups, physics, pose, expressions; drawn with clip masks, blend modes, multiply and screen colours (`lightair-engine::avatar2d`). See "Licensing" |
-| 3 | **Inochi2D** | `.inp`, `.inx` | Inox2D (Rust, BSD-2: github.com/Inochi2D/inox2d), to fork as mocari was | Open format. Not started |
-| 4 | **nijigenerate** | nijilive puppets (`.inp`/`.inx`, derived from Inochi2D 0.8) | Inox2D, extended for nijilive's differences (reference: github.com/nijigenerate/nijilive, D, BSD-2) | Not started |
+| 3 | **Inochi2D** | `.inp`, `.inx` | Inox2D (Rust, BSD-2; Lightair's fork at third_party/inox2d, github.com/MoonGoblinDev/inox2d), with Inochi2D 0.8's MeshGroups added | Done: parameters found by name from the face (head, body, eyes, gaze, brows, mouth, breath), physics, MeshGroups, masks, composites, blend modes (`lightair-avatar::inochi2d`, drawn by `lightair-engine::avatar_inochi2d`) |
+| 4 | **nijigenerate** | nijilive puppets (`.inp`/`.inx`, derived from Inochi2D 0.8) | the Inox2D fork, extended for nijilive's differences (reference: github.com/nijigenerate/nijilive, D, BSD-2) | MeshGroups (shared with Inochi2D 0.8) done; nijilive's own nodes not started |
 | 5 | **Ayatsuri 2D** | its own models (it also reads `.moc3` v3 to v5.3) | github.com/Ayatsuri2D/ayatsuri_2d (Rust, GPL-3.0: fine for Lightair) | Not started |
 | 6 | **Umamo** | its own format | github.com/future2d/umamo (Kotlin editor, GPL-3.0): format to read in Rust | Not started |
 
@@ -42,8 +42,8 @@ model file ──► loader (per format) ──► model ──► poser (per fo
 - **Face rig** (`lightair-avatar::rig`): from the 2D landmarks, head rotation (fitted to
   MediaPipe's canonical face), eye openness, gaze (irises), brows, mouth open and width, and
   the vowels (A I U E O). Calibrated to a neutral face (Calibrate), smoothed, mirrored.
-- **Models** (`lightair-avatar::vrm`, `live2d`; later `inochi2d`, …): parsed once, off the
-  graphics thread.
+- **Models** (`lightair-avatar::vrm`, `live2d`, `inochi2d`; later nijilive, …): parsed once,
+  off the graphics thread.
 - **Posing** (`lightair-avatar::pose`): bones from the rig (head and neck, a little spine),
   arms down from the T-pose, idle breathing; expressions (blink, vowels, look); spring bones;
   CPU skinning and morphs, so drawing is one dynamic vertex buffer per mesh.
@@ -55,12 +55,12 @@ model file ──► loader (per format) ──► model ──► poser (per fo
   `framing` (head, bust, half, full), `width`, `height`, `calibration`.
 
 
-## Handoff (2026-11-20)
+## Handoff (2026-11-20, Inochi2D added the same day)
 
 ### What's built
 
 - **The Avatar object** (`lightair_avatar`): Add Object › Avatar, or Object › Add Avatar…, takes
-  a `.vrm` or a Live2D `.model3.json`. Inspector (`crates/lightair-app/src/shell/avatar_props.rs`):
+  a `.vrm`, a Live2D `.model3.json` or an Inochi2D `.inp`/`.inx`. Inspector (`crates/lightair-app/src/shell/avatar_props.rs`):
   status line (+ "Body: …" for VRM), Camera (a device; its picture is never shown), Calibrate,
   Follows (VRM: face only / upper body / full body), Framing, Zoom, Size, Mirror, Show tracking
   (the trackers' picture and points in the avatar's corner), Expression (VRM's standard ones,
@@ -83,28 +83,53 @@ model file ──► loader (per format) ──► model ──► poser (per fo
   EyeBlink/LipSync groups, physics, pose, expressions; clip masks (a texture each time the mask
   set changes), normal/additive/multiply blends, multiply and screen colours. Tried on Live2D's
   sample "Niziiro Mao" (moc3 v5, blend shapes): correct.
+- **Inochi2D** (`crates/lightair-avatar/src/inochi2d.rs` on the Inox2D fork; drawn by
+  `crates/lightair-engine/src/avatar_inochi2d.rs`): parameters a face drives are found by their
+  names' words (`by_name`: "Head:: Yaw-Pitch", "Head:: Roll", "Body:: …", "Eye:: Left:: Blink",
+  "… Move" for gaze, brows, "Mouth:: Shape" x form / y open, "Mouth:: Open", "Breath"; physics,
+  arms, hair, tail are left alone); Inochi Session's bindings in a puppet, when there, set the
+  head's reach in degrees. Signs checked on renders: +x on the head's yaw-pitch turns toward the
+  viewer's right, +y looks up, roll is the opposite of ours. Inox2D's draw calls are recorded into
+  a list of `Op`s (masks, mask content, parts, composites) with each part's vertices posed, which
+  the libobs renderer replays: masks into a texture (libobs's Metal shaders can't `discard`, so a
+  mask's threshold is a step and masks add up or dodge by blending), a composite's children into
+  a layer laid down after with its tint and blend, Inochi2D's seven blend modes as blend
+  functions. Inochi2D's textures are stored premultiplied (no premultiplying again). Inox2D
+  panics on bad puppets: loading and posing are inside `catch_unwind` (a puppet that panics while
+  posing stops where it was). Tried on Inochi2D's samples Aka (0.7) and Midori (0.8, MeshGroups):
+  correct, through libobs too.
 
 ### Where the code is
 
 | Piece | Files |
 |---|---|
 | Source, camera, trackers, VRM drawing, status/calibrate procs | `crates/lightair-engine/src/avatar.rs` |
-| Live2D drawing | `crates/lightair-engine/src/avatar2d.rs` |
-| Models, face rig, body solve, posing | `crates/lightair-avatar/src/{vrm,glb,rig,body,pose,live2d}.rs` |
+| Live2D drawing; `Flat`/`FlatGpu`, either flat kind | `crates/lightair-engine/src/avatar2d.rs` |
+| Inochi2D drawing | `crates/lightair-engine/src/avatar_inochi2d.rs` |
+| Models, face rig, body solve, posing | `crates/lightair-avatar/src/{vrm,glb,rig,body,pose,live2d,inochi2d}.rs` |
 | Trackers (C/C++/ObjC++) | `modules/lightair-effect-stack/src/{face-api.c,body-tracker.h}`, `src/tracker/body-*.{cpp,mm,hpp}` |
 | Models for the trackers | `modules/lightair-effect-stack/data/models/` (+ `NOTICE.md`); Core ML conversions by `tools/convert-coreml.py body` |
 | App | `crates/lightair-app/src/shell/avatar_props.rs`, `add_avatar` in `shell.rs`, Kind::Avatar in `shell/add_object.rs`, Object › Add Avatar… in `shell/app_menu.rs` |
 | Live2D runtime | `third_party/mocari` (submodule: github.com/MoonGoblinDev/Mocari, a fork of Eatgrapes/Mocari) |
+| Inochi2D runtime | `third_party/inox2d` (submodule: github.com/MoonGoblinDev/inox2d, a fork of Inochi2D/inox2d); MeshGroups in `inox2d/src/meshgroup.rs` |
 
 ### Running and testing
 
 - Sample models (not in the repository): VRM `~/Development/vroid-re/reference/exports/base-female.vrm`,
   `base-male.vrm`, `~/Development/vroid-re/exports/live-test.vrm` (its bow sits over the mouth
-  at rest: the model's own); Live2D `~/Downloads/mao_en/runtime/mao_pro.model3.json`.
+  at rest: the model's own); Live2D `~/Downloads/mao_en/runtime/mao_pro.model3.json`; Inochi2D
+  `~/Downloads/inochi2d-samples/Aka.inx`, `Midori.inx` (CC BY 4.0, from
+  media.githubusercontent.com/media/Inochi2D/example-models/main/<name>.inx; the repository holds
+  only LFS pointers).
 - `LIGHTAIR_VRM=<.vrm> LIGHTAIR_VRM_OUT=<dir> cargo test -p lightair-avatar --release --test vrm`:
   loading, posing, software renders; `LIGHTAIR_LIVE2D=<.model3.json> cargo test -p lightair-avatar --release --test live2d`.
+- `LIGHTAIR_INOCHI2D=<.inx> LIGHTAIR_INOCHI2D_OUT=<dir> cargo test -p lightair-avatar --release --test inochi2d -- --nocapture`:
+  the parameters found (printed), poses drawn in software the way libobs draws them;
+  `LIGHTAIR_INOCHI2D_PROBE=x,y` lists the parts drawing that pixel, `LIGHTAIR_INOCHI2D_ONLY=<name>`
+  draws only parts so named. `cargo run -p lightair-avatar --release --example inochi2d-dump <.inx>`
+  prints a puppet's meta, parameters and vendor data (Inochi Session's bindings).
 - Through real libobs: `cargo test -p lightair-preview --test preview avatar` with `LIGHTAIR_VRM`,
-  `LIGHTAIR_LIVE2D`, `LIGHTAIR_VRM_OUT` (pictures), `LIGHTAIR_BODY_IMAGE` (the body tracker on a
+  `LIGHTAIR_LIVE2D`, `LIGHTAIR_INOCHI2D`, `LIGHTAIR_VRM_OUT` (pictures), `LIGHTAIR_BODY_IMAGE` (the body tracker on a
   picture), `LIGHTAIR_BODY_JSON_OUT`.
 - Live tracking recorded: run Lightair with `LIGHTAIR_AVATAR_DUMP=<file>` (e.g.
   `open -g --env LIGHTAIR_AVATAR_DUMP=/tmp/body.jsonl /Applications/Lightair.app`), then
@@ -124,6 +149,18 @@ model file ──► loader (per format) ──► model ──► poser (per fo
   fixes: `git -C third_party/mocari fetch upstream && git -C third_party/mocari merge upstream/master`.
   Nothing has had to change in it yet (pinned at upstream 29a4792).
 
+### The Inox2D fork
+
+- Same arrangement as mocari: `third_party/inox2d` (origin MoonGoblinDev/inox2d, upstream
+  Inochi2D/inox2d, branch `main`); Lightair depends on `third_party/inox2d/inox2d`. Upstream:
+  `git -C third_party/inox2d fetch upstream && git -C third_party/inox2d merge upstream/main`.
+- Lightair's commit `37bc27a` on upstream d4dd9dd: MeshGroups (ported from inochi2d v0.8.7's
+  `core/nodes/meshgroup`: fixed and dynamic groups, translated children, propagating
+  composites; a node follows the nearest group reached through Parts), params applied at (0, 0)
+  too, `Puppet::params()`, `Puppet::textured_meshes()`, `ParamCtx::get()`,
+  `InoxNodeUuid::raw()`, glam 0.30, warnings fixed. **Not pushed yet** (needs the owner's word;
+  until then the submodule points at a commit only this checkout has).
+
 ### Next, in order
 
 1. **Live2D polish**: check Calibrate and Mirror with a person (signs and ranges were checked on
@@ -132,14 +169,16 @@ model file ──► loader (per format) ──► model ──► poser (per fo
    fades (mocari's ExpressionManager fades; a weight setting exists but isn't used for Live2D);
    framing of wide models (centred on the head's top fifth today); more test models (Cubism 3 and
    4, several textures, inverted masks, offscreen parts).
-2. **Inochi2D**: fork Inox2D into `third_party/inox2d` the way mocari was; a `crates/lightair-avatar/src/inochi2d.rs`
-   puppet (load `.inp`/`.inx`, set parameters from the `Face`: Inochi2D parameters are 1D or 2D
-   with arbitrary names, so map the conventional ones (head, eyes, mouth) and let the rest be;
-   Inochi Session's tracking bindings are the reference); draw like Live2D in a
-   `crates/lightair-engine` module (Inochi2D has masks, blend modes and composites). Sample
-   models: Inochi2D's own (Aka, Midori) from its site.
+2. **Inochi2D** (done; polish when someone uses it): check with a person (signs and ranges were
+   checked on renders only); try more puppets, especially ones rigged by others with other
+   parameter names (`by_name` in `inochi2d.rs`); Inochi Session's ExpressionBindings (Lua-like
+   expressions) and its Blendshape sources beyond the ones read; opacity and tint bindings (Inox2D
+   ignores them: `BindingValues::Opacity`); disabled nodes (`enabled: false`, drawn today).
 3. **nijigenerate / nijilive**: compare nijilive's puppet format with Inochi2D 0.8 and extend
-   the Inox2D fork for the differences.
+   the Inox2D fork for the differences. MeshGroups (from nijigenerate's author, in Inochi2D
+   0.8) are in already; nijilive adds deformers (`core/nodes/deformer`: grid, path/curve,
+   physics drivers), filters and more node types: read `source/nijilive/core/nodes/` and port
+   what puppets use. Sample puppets: nijigenerate's own.
 4. **Ayatsuri 2D**: read its own format with its Rust crates (GPL-3.0); its `.moc3` reader is a
    second opinion for Live2D models mocari draws wrongly.
 5. **Umamo**: its format, read in Rust (port from its Kotlin; GPL-3.0).
@@ -150,6 +189,10 @@ model file ──► loader (per format) ──► model ──► poser (per fo
 
 ## Known issues (to come back to)
 
+- **Inochi2D, small differences from the source art** (2026-11-20): on Midori a sliver of the back
+  hair's texture shows above the head where the leaf covers it in the art, and a thin line or two
+  beside the bow; the same parts drawn in software look the same, so it's in posing (Inox2D's
+  transforms or physics against the reference), not drawing.
 - **VRM body and hand tracking still jitter** (2026-11-20, set aside to start on the 2D
   formats). What's in: MediaPipe BlazePose and hands (Core ML / ONNX), joints built from the
   picture's points plus the model's depth, One Euro filtering (tuned on a replayed recording),

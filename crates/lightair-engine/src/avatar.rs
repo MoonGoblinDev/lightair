@@ -6,9 +6,10 @@
 //! shader close to VRM's MToon, with outlines, into a texture with depth, transparent around
 //! the character.
 //!
-//! Live2D models (`.model3.json`) are drawn by [`crate::avatar2d`], posed by the same face.
+//! Flat (2D) avatars, Live2D models (`.model3.json`) and Inochi2D puppets (`.inp`, `.inx`), are
+//! drawn by [`crate::avatar2d`] and [`crate::avatar_inochi2d`], posed by the same face.
 //!
-//! Settings: `file` (a .vrm or a Live2D .model3.json), `device` (the camera's unique id; none: no tracking), `mirror`
+//! Settings: `file` (a .vrm, a Live2D .model3.json or an Inochi2D .inp/.inx), `device` (the camera's unique id; none: no tracking), `mirror`
 //! (bool, on by default), `framing` ("head", "bust", "half", "full"), `zoom`, `width`,
 //! `height`, `calibration` (JSON from the `calibrate` proc), `expression` (an expression's
 //! name, e.g. "happy") and `expression_weight`; `body` ("off", "upper", "full"): how much of the
@@ -164,7 +165,9 @@ fn set_string(cd: *mut sys::calldata_t, name: &CStr, v: &CStr) {
 }
 
 fn set_ptr(cd: *mut sys::calldata_t, name: &CStr, p: *mut c_void) {
-    unsafe { sys::calldata_set_data(cd, name.as_ptr(), &p as *const _ as *const c_void, std::mem::size_of::<*mut c_void>()) };
+    unsafe {
+        sys::calldata_set_data(cd, name.as_ptr(), &p as *const _ as *const c_void, std::mem::size_of::<*mut c_void>())
+    };
 }
 
 fn set_int(cd: *mut sys::calldata_t, name: &CStr, v: i64) {
@@ -173,7 +176,9 @@ fn set_int(cd: *mut sys::calldata_t, name: &CStr, v: i64) {
 
 fn get_ptr(cd: &mut sys::calldata_t, name: &CStr) -> *mut c_void {
     let mut p: *mut c_void = std::ptr::null_mut();
-    unsafe { sys::calldata_get_data(cd, name.as_ptr(), &mut p as *mut _ as *mut c_void, std::mem::size_of::<*mut c_void>()) };
+    unsafe {
+        sys::calldata_get_data(cd, name.as_ptr(), &mut p as *mut _ as *mut c_void, std::mem::size_of::<*mut c_void>())
+    };
     p
 }
 
@@ -191,16 +196,15 @@ enum Load {
     Failed(String, String),
 }
 
-/// A model read: VRM (shared), or Live2D (moved to the graphics side once, when first drawn).
+/// A model read: VRM (shared), or a flat one, Live2D or Inochi2D (moved to the graphics side
+/// once, when first drawn), with its expressions.
 #[derive(Clone)]
 enum Loaded {
     Vrm(Arc<Model>),
-    Live2d(Arc<Mutex<Option<Box<crate::avatar2d::Loaded2d>>>>, Vec<String>),
+    Flat(Arc<Mutex<Option<Box<crate::avatar2d::Flat>>>>, Vec<String>),
 }
 
-fn is_live2d(file: &str) -> bool {
-    file.to_ascii_lowercase().ends_with(".model3.json")
-}
+use crate::avatar2d::is_flat;
 
 /// libobs's 4×4 matrix (rows: x, y, z axes and translation).
 #[repr(C, align(16))]
@@ -247,8 +251,18 @@ impl Gpu {
         let mut textures = Vec::new();
         for img in &model.images {
             // every level given (libobs reads one pointer a level)
-            let data: Vec<*const u8> = std::iter::once(img.rgba.as_ptr()).chain(img.mips.iter().map(|m| m.as_ptr())).collect();
-            let t = unsafe { sys::gs_texture_create(img.width, img.height, sys::GS_RGBA, data.len() as u32, data.as_ptr() as *mut *const u8, 0) };
+            let data: Vec<*const u8> =
+                std::iter::once(img.rgba.as_ptr()).chain(img.mips.iter().map(|m| m.as_ptr())).collect();
+            let t = unsafe {
+                sys::gs_texture_create(
+                    img.width,
+                    img.height,
+                    sys::GS_RGBA,
+                    data.len() as u32,
+                    data.as_ptr() as *mut *const u8,
+                    0,
+                )
+            };
             textures.push(t);
         }
         let mut prims = Vec::new();
@@ -327,9 +341,9 @@ struct Grab {
 /// What only the graphics thread touches.
 struct Render {
     avatar: Option<(String, Avatar)>,
-    /// A Live2D model instead, and its GPU side.
-    puppet: Option<(String, Box<crate::avatar2d::Loaded2d>)>,
-    gpu2d: Option<crate::avatar2d::Gpu2d>,
+    /// A flat model instead (Live2D, Inochi2D), and its GPU side.
+    puppet: Option<(String, Box<crate::avatar2d::Flat>)>,
+    gpu2d: Option<crate::avatar2d::FlatGpu>,
     gpu: Option<Gpu>,
     effect: *mut sys::gs_effect_t,
     /// The shader without cutouts (renderers without `discard`).
@@ -396,13 +410,15 @@ impl Shared {
         std::thread::Builder::new()
             .name("lightair-avatar-load".into())
             .spawn(move || {
-                let result = if is_live2d(&file) {
-                    crate::avatar2d::Loaded2d::load(std::path::Path::new(&file)).map(|l| {
-                        let names = l.expressions.clone();
-                        Loaded::Live2d(Arc::new(Mutex::new(Some(Box::new(l)))), names)
+                let result = if is_flat(&file) {
+                    crate::avatar2d::Flat::load(std::path::Path::new(&file)).map(|l| {
+                        let names = l.expressions();
+                        Loaded::Flat(Arc::new(Mutex::new(Some(Box::new(l)))), names)
                     })
                 } else {
-                    std::fs::read(&file).map_err(|e| e.to_string()).and_then(|b| Model::load(&b).map(|m| Loaded::Vrm(Arc::new(m))).map_err(|e| e.to_string()))
+                    std::fs::read(&file)
+                        .map_err(|e| e.to_string())
+                        .and_then(|b| Model::load(&b).map(|m| Loaded::Vrm(Arc::new(m))).map_err(|e| e.to_string()))
                 };
                 let Some(me) = me.upgrade() else { return };
                 let mut load = me.load.lock();
@@ -410,7 +426,7 @@ impl Shared {
                 if matches!(&*load, Load::Loading(p) if *p == file) {
                     *load = match result {
                         Ok(m) => {
-                            tracing::info!(file, live2d = matches!(m, Loaded::Live2d(..)), "avatar loaded");
+                            tracing::info!(file, flat = matches!(m, Loaded::Flat(..)), "avatar loaded");
                             Load::Ready(file, m)
                         }
                         Err(e) => {
@@ -435,7 +451,11 @@ impl Shared {
         if shown {
             *self.hidden_since.lock() = None;
             if cam.is_none() && !device.is_empty() {
-                let Some((kind, settings)) = crate::kinds::resolve(lightair_model::kinds::CAMERA, &json!({"device": device, "height": 720})) else { return };
+                let Some((kind, settings)) =
+                    crate::kinds::resolve(lightair_model::kinds::CAMERA, &json!({"device": device, "height": 720}))
+                else {
+                    return;
+                };
                 if let Some(media) = crate::access::needed_by(kind)
                     && crate::access::hold_back(media)
                 {
@@ -497,13 +517,27 @@ impl Shared {
             return None;
         }
         let (w, h) = self.render.lock().grab.size;
-        let joints3d = b.has3d.then(|| std::array::from_fn(|j| (b.j3[j][3] > 0.5).then(|| Vec3::new(b.j3[j][0], b.j3[j][1], b.j3[j][2]))));
-        let joints2d = std::array::from_fn(|j| (b.j2[j][2] > 0.0).then(|| (glam::Vec2::new(b.j2[j][0], b.j2[j][1]), b.j2[j][2])));
-        let hands = std::array::from_fn(|side| {
-            b.hand_present[side].then(|| std::array::from_fn(|k| (glam::Vec2::new(b.hand[side][k][0], b.hand[side][k][1]), b.hand[side][k][2])))
+        let joints3d = b.has3d.then(|| {
+            std::array::from_fn(|j| (b.j3[j][3] > 0.5).then(|| Vec3::new(b.j3[j][0], b.j3[j][1], b.j3[j][2])))
         });
-        let hands3d = std::array::from_fn(|side| b.hand_present[side].then(|| std::array::from_fn(|k| Vec3::from(b.hand3d[side][k]))));
-        Some(BodyFrame { joints3d, joints2d, hands, hands3d, aspect: w.max(1) as f32 / h.max(1) as f32, frame_id: b.frame_id })
+        let joints2d =
+            std::array::from_fn(|j| (b.j2[j][2] > 0.0).then(|| (glam::Vec2::new(b.j2[j][0], b.j2[j][1]), b.j2[j][2])));
+        let hands = std::array::from_fn(|side| {
+            b.hand_present[side].then(|| {
+                std::array::from_fn(|k| (glam::Vec2::new(b.hand[side][k][0], b.hand[side][k][1]), b.hand[side][k][2]))
+            })
+        });
+        let hands3d = std::array::from_fn(|side| {
+            b.hand_present[side].then(|| std::array::from_fn(|k| Vec3::from(b.hand3d[side][k])))
+        });
+        Some(BodyFrame {
+            joints3d,
+            joints2d,
+            hands,
+            hands3d,
+            aspect: w.max(1) as f32 / h.max(1) as f32,
+            frame_id: b.frame_id,
+        })
     }
 
     /// The face the tracker sees, if any, and its points (for the tracking view).
@@ -529,9 +563,15 @@ impl Shared {
             face.pts.get(s..s + n).unwrap_or(&[])
         };
         let mesh = region(FT_MESH);
-        let irises: Vec<[f32; 2]> = [FT_LEFT_PUPIL, FT_RIGHT_PUPIL].iter().flat_map(|&r| region(r).first().copied()).collect();
+        let irises: Vec<[f32; 2]> =
+            [FT_LEFT_PUPIL, FT_RIGHT_PUPIL].iter().flat_map(|&r| region(r).first().copied()).collect();
         let grab = self.render.lock().grab.size;
-        let m = lightair_avatar::rig::measure(&Landmarks { mesh, irises: &irises, width: grab.0.max(1) as f32, height: grab.1.max(1) as f32 })?;
+        let m = lightair_avatar::rig::measure(&Landmarks {
+            mesh,
+            irises: &irises,
+            width: grab.0.max(1) as f32,
+            height: grab.1.max(1) as f32,
+        })?;
         Some((m, mesh.iter().chain(&irises).copied().collect()))
     }
 }
@@ -717,7 +757,12 @@ impl Render {
             sys::gs_depth_function(sys::GS_LESS);
             sys::gs_blend_state_push();
             sys::gs_enable_blending(true);
-            sys::gs_blend_function_separate(sys::GS_BLEND_SRCALPHA, sys::GS_BLEND_INVSRCALPHA, sys::GS_BLEND_ONE, sys::GS_BLEND_INVSRCALPHA);
+            sys::gs_blend_function_separate(
+                sys::GS_BLEND_SRCALPHA,
+                sys::GS_BLEND_INVSRCALPHA,
+                sys::GS_BLEND_ONE,
+                sys::GS_BLEND_INVSRCALPHA,
+            );
 
             let e = self.effect;
             let param = |n: &CStr| sys::gs_effect_get_param_by_name(e, n.as_ptr());
@@ -734,16 +779,25 @@ impl Render {
                 if ps.is_empty() {
                     return 0.0;
                 }
-                let c = ps.iter().step_by((ps.len() / 16).max(1)).copied().sum::<Vec3>() / ps.iter().step_by((ps.len() / 16).max(1)).count() as f32;
+                let c = ps.iter().step_by((ps.len() / 16).max(1)).copied().sum::<Vec3>()
+                    / ps.iter().step_by((ps.len() / 16).max(1)).count() as f32;
                 c.distance(cam.eye)
             };
-            let blended = |i: usize| model.materials[model.primitives[i].material].alpha == lightair_avatar::vrm::AlphaMode::Blend;
+            let blended = |i: usize| {
+                model.materials[model.primitives[i].material].alpha == lightair_avatar::vrm::AlphaMode::Blend
+            };
             let depths: Vec<f32> = order.iter().map(|&i| if blended(i) { depth(i) } else { 0.0 }).collect();
             order.sort_by(|&a, &b| {
-                let (ma, mb) = (&model.materials[model.primitives[a].material], &model.materials[model.primitives[b].material]);
-                blended(a).cmp(&blended(b)).then(ma.queue_offset.cmp(&mb.queue_offset)).then(depths[b].total_cmp(&depths[a]))
+                let (ma, mb) =
+                    (&model.materials[model.primitives[a].material], &model.materials[model.primitives[b].material]);
+                blended(a)
+                    .cmp(&blended(b))
+                    .then(ma.queue_offset.cmp(&mb.queue_offset))
+                    .then(depths[b].total_cmp(&depths[a]))
             });
-            let tex = |t: Option<usize>| t.and_then(|t| gpu.textures.get(t).copied()).filter(|t| !t.is_null()).unwrap_or(self.white);
+            let tex = |t: Option<usize>| {
+                t.and_then(|t| gpu.textures.get(t).copied()).filter(|t| !t.is_null()).unwrap_or(self.white)
+            };
             for pass in [false, true] {
                 for &i in &order {
                     let p = &model.primitives[i];
@@ -766,22 +820,37 @@ impl Render {
                     sys::gs_effect_set_texture(param(c"matcap_tex"), tex(mat.matcap_texture));
                     let bc = mat.base_color;
                     let opaque = mat.alpha == lightair_avatar::vrm::AlphaMode::Opaque;
-                    sys::gs_effect_set_vec4(param(c"base_color"), &v4([bc[0], bc[1], bc[2], if opaque { 1.0 } else { bc[3] }]));
+                    sys::gs_effect_set_vec4(
+                        param(c"base_color"),
+                        &v4([bc[0], bc[1], bc[2], if opaque { 1.0 } else { bc[3] }]),
+                    );
                     let sc = mat.shade_color;
                     sys::gs_effect_set_vec4(param(c"shade_color"), &v4([sc[0], sc[1], sc[2], 1.0]));
-                    let em = if mat.emissive_texture.is_some() || mat.emissive != [0.0; 3] { mat.emissive } else { [0.0; 3] };
+                    let em = if mat.emissive_texture.is_some() || mat.emissive != [0.0; 3] {
+                        mat.emissive
+                    } else {
+                        [0.0; 3]
+                    };
                     sys::gs_effect_set_vec4(param(c"emissive"), &v4([em[0], em[1], em[2], 0.0]));
                     let rc = mat.rim_color;
                     sys::gs_effect_set_vec4(param(c"rim"), &v4([rc[0], rc[1], rc[2], 0.0]));
                     let mc = if mat.matcap_texture.is_some() { mat.matcap_factor } else { [0.0; 3] };
                     sys::gs_effect_set_vec4(param(c"matcap"), &v4([mc[0], mc[1], mc[2], 0.0]));
                     // toony, shift, rim lift, rim fresnel power
-                    sys::gs_effect_set_vec4(param(c"shading"), &v4([mat.shading_toony, mat.shading_shift, mat.rim_lift, mat.rim_fresnel_power]));
+                    sys::gs_effect_set_vec4(
+                        param(c"shading"),
+                        &v4([mat.shading_toony, mat.shading_shift, mat.rim_lift, mat.rim_fresnel_power]),
+                    );
                     // cutoff (or -1), unlit, opaque, outline lighting mix
                     let solid = cutoff >= 0.0 || opaque;
                     sys::gs_effect_set_vec4(
                         param(c"extra"),
-                        &v4([cutoff, if mat.unlit { 1.0 } else { 0.0 }, if solid { 1.0 } else { 0.0 }, mat.outline_lighting_mix]),
+                        &v4([
+                            cutoff,
+                            if mat.unlit { 1.0 } else { 0.0 },
+                            if solid { 1.0 } else { 0.0 },
+                            mat.outline_lighting_mix,
+                        ]),
                     );
                     let oc = mat.outline_color;
                     sys::gs_effect_set_vec4(param(c"outline"), &v4([oc[0], oc[1], oc[2], mat.outline_width]));
@@ -953,7 +1022,9 @@ impl Render {
             }
         }
         unsafe {
-            if !self.view_tex.is_null() && (sys::gs_texture_get_width(self.view_tex), sys::gs_texture_get_height(self.view_tex)) != (w, h) {
+            if !self.view_tex.is_null()
+                && (sys::gs_texture_get_width(self.view_tex), sys::gs_texture_get_height(self.view_tex)) != (w, h)
+            {
                 sys::gs_texture_destroy(self.view_tex);
                 self.view_tex = std::ptr::null_mut();
             }
@@ -1044,7 +1115,14 @@ unsafe extern "C" fn create(settings: *mut sys::obs_data_t, source: *mut sys::ob
             effect_failed: false,
             white: std::ptr::null_mut(),
             target: std::ptr::null_mut(),
-            grab: Grab { texrender: std::ptr::null_mut(), stage: [std::ptr::null_mut(); 2], size: (0, 0), next: 0, waiting: false, frame_id: 0 },
+            grab: Grab {
+                texrender: std::ptr::null_mut(),
+                stage: [std::ptr::null_mut(); 2],
+                size: (0, 0),
+                next: 0,
+                waiting: false,
+                frame_id: 0,
+            },
             smoother: Smoother::default(),
             last_tick: None,
             dirty: false,
@@ -1085,24 +1163,30 @@ unsafe extern "C" fn proc_status(data: *mut c_void, cd: *mut sys::calldata_t) {
     let weak = unsafe { &*(data as *const std::sync::Weak<Shared>) };
     let Some(s) = weak.upgrade() else { return };
     let expressions = match &*s.load.lock() {
-        Load::Ready(_, Loaded::Live2d(_, names)) => names.join("\n"),
+        Load::Ready(_, Loaded::Flat(_, names)) => names.join("\n"),
         _ => String::new(),
     };
     let (loaded, error, name) = match &*s.load.lock() {
-        Load::Ready(p, Loaded::Vrm(m)) => (true, String::new(), if m.meta.name.is_empty() { model_name(p) } else { m.meta.name.clone() }),
-        Load::Ready(p, Loaded::Live2d(..)) => (true, String::new(), model_name(p)),
+        Load::Ready(p, Loaded::Vrm(m)) => {
+            (true, String::new(), if m.meta.name.is_empty() { model_name(p) } else { m.meta.name.clone() })
+        }
+        Load::Ready(p, Loaded::Flat(..)) => (true, String::new(), model_name(p)),
         Load::Failed(_, e) => (false, e.clone(), String::new()),
         _ => (false, String::new(), String::new()),
     };
     let (tracking, body) = {
         let r = s.render.lock();
-        let body = if s.settings.lock().body == BodyMode::Off || is_live2d(&s.settings.lock().file) {
+        let body = if s.settings.lock().body == BodyMode::Off || is_flat(&s.settings.lock().file) {
             String::new()
         } else if *s.body_tracker.lock() == 0 {
             "no body tracker".to_string()
         } else {
             let seen = r.body.seen;
-            let parts: Vec<&str> = [(seen[1], "left arm"), (seen[2], "right arm"), (seen[3], "legs")].into_iter().filter(|(v, _)| *v > 0.5).map(|(_, n)| n).collect();
+            let parts: Vec<&str> = [(seen[1], "left arm"), (seen[2], "right arm"), (seen[3], "legs")]
+                .into_iter()
+                .filter(|(v, _)| *v > 0.5)
+                .map(|(_, n)| n)
+                .collect();
             let torso = if seen[0] > 0.5 { "body" } else { "no body" };
             if parts.is_empty() { torso.to_string() } else { format!("{torso}, {}", parts.join(", ")) }
         };
@@ -1123,7 +1207,7 @@ unsafe extern "C" fn proc_status(data: *mut c_void, cd: *mut sys::calldata_t) {
 fn model_name(path: &str) -> String {
     let file = std::path::Path::new(path).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     let lower = file.to_ascii_lowercase();
-    for ext in [".model3.json", ".vrm"] {
+    for ext in [".model3.json", ".vrm", ".inp", ".inx"] {
         if lower.ends_with(ext) {
             return file[..file.len() - ext.len()].to_string();
         }
@@ -1143,13 +1227,15 @@ unsafe extern "C" fn destroy(data: *mut c_void) {
     }
     let body = std::mem::take(&mut *s.body_tracker.lock());
     if body != 0
-        && let Some(mut cd) = tracker_call(c"lightair_body_tracker_free", |cd| set_ptr(cd, c"tracker", body as *mut c_void))
+        && let Some(mut cd) =
+            tracker_call(c"lightair_body_tracker_free", |cd| set_ptr(cd, c"tracker", body as *mut c_void))
     {
         free_cd(&mut cd);
     }
     let tracker = std::mem::take(&mut *s.tracker.lock());
     if tracker != 0
-        && let Some(mut cd) = tracker_call(c"lightair_face_tracker_free", |cd| set_ptr(cd, c"tracker", tracker as *mut c_void))
+        && let Some(mut cd) =
+            tracker_call(c"lightair_face_tracker_free", |cd| set_ptr(cd, c"tracker", tracker as *mut c_void))
     {
         free_cd(&mut cd);
     }
@@ -1184,7 +1270,7 @@ unsafe extern "C" fn video_tick(data: *mut c_void, _seconds: f32) {
         _ => None,
     };
     // (a Live2D model follows the face only)
-    let body_mode = if is_live2d(&settings.file) { BodyMode::Off } else { settings.body };
+    let body_mode = if is_flat(&settings.file) { BodyMode::Off } else { settings.body };
     let tracking = s.camera.lock().is_some();
     if tracking {
         s.tracker();
@@ -1218,7 +1304,7 @@ unsafe extern "C" fn video_tick(data: *mut c_void, _seconds: f32) {
                 r.avatar = Some((path, Avatar::new(m)));
             }
         }
-        Some((path, Loaded::Live2d(slot, _))) => {
+        Some((path, Loaded::Flat(slot, _))) => {
             r.avatar = None;
             if r.puppet.as_ref().is_none_or(|(p, _)| *p != path)
                 && let Some(l) = slot.lock().take()
@@ -1236,7 +1322,8 @@ unsafe extern "C" fn video_tick(data: *mut c_void, _seconds: f32) {
         if settings.mirror { f.mirrored() } else { f }
     });
     let face: Face = r.smoother.step(seen, dt);
-    let expression = (!settings.expression.is_empty()).then(|| (settings.expression.clone(), settings.expression_weight));
+    let expression =
+        (!settings.expression.is_empty()).then(|| (settings.expression.clone(), settings.expression_weight));
     r.body.step(body.as_ref(), settings.mirror, dt);
     let r = &mut *r;
     if let Some((_, a)) = r.avatar.as_mut() {
@@ -1245,7 +1332,7 @@ unsafe extern "C" fn video_tick(data: *mut c_void, _seconds: f32) {
         r.dirty = true;
     }
     if let Some((_, l)) = r.puppet.as_mut() {
-        l.puppet.update(&face, (!settings.expression.is_empty()).then_some(settings.expression.as_str()), dt);
+        l.update(&face, (!settings.expression.is_empty()).then_some(settings.expression.as_str()), dt);
         r.dirty = true;
     }
     r.grab_due = tracking;
@@ -1254,9 +1341,14 @@ unsafe extern "C" fn video_tick(data: *mut c_void, _seconds: f32) {
 unsafe extern "C" fn video_render(data: *mut c_void, _: *mut sys::gs_effect_t) {
     let s = shared(data);
     let settings = s.settings.lock().clone();
-    let camera = s.camera.lock().as_ref().map(|(_, c)| unsafe { sys::obs_source_get_ref(c.as_ptr()) }).filter(|c| !c.is_null());
+    let camera =
+        s.camera.lock().as_ref().map(|(_, c)| unsafe { sys::obs_source_get_ref(c.as_ptr()) }).filter(|c| !c.is_null());
     let tracker = *s.tracker.lock() as *mut c_void;
-    let body = if settings.body == BodyMode::Off || is_live2d(&settings.file) { std::ptr::null_mut() } else { *s.body_tracker.lock() as *mut c_void };
+    let body = if settings.body == BodyMode::Off || is_flat(&settings.file) {
+        std::ptr::null_mut()
+    } else {
+        *s.body_tracker.lock() as *mut c_void
+    };
     let mut r = s.render.lock();
     unsafe {
         // once a frame (the avatar may be drawn several times: on air, the preview, a thumbnail)
@@ -1286,22 +1378,21 @@ unsafe extern "C" fn video_render(data: *mut c_void, _: *mut sys::gs_effect_t) {
             if r.avatar.is_some() {
                 r.draw(&settings);
             }
-            // a Live2D model
+            // a flat model
             let path2d = r.puppet.as_ref().map(|(p, _)| p.clone());
-            if r.gpu2d.as_ref().map(|g| &g.path) != path2d.as_ref() {
+            if r.gpu2d.as_ref().map(|g| g.path()) != path2d.as_deref() {
                 if let Some(mut g) = r.gpu2d.take() {
                     g.destroy();
                 }
                 if let Some((p, l)) = &r.puppet {
-                    r.gpu2d = Some(crate::avatar2d::Gpu2d::new(p, l));
+                    r.gpu2d = Some(crate::avatar2d::FlatGpu::new(p, l));
                 }
             }
             if r.target.is_null() {
                 r.target = sys::gs_texrender_create(sys::GS_RGBA, sys::GS_Z24_S8);
             }
             if let (Some((_, l)), Some(g)) = (&r.puppet, &r.gpu2d) {
-                g.upload(&l.puppet);
-                g.draw(&l.puppet, r.target, settings.width, settings.height, settings.framing, settings.zoom);
+                g.draw(l, r.target, settings.width, settings.height, settings.framing, settings.zoom);
             }
         }
         if r.target.is_null() || (r.avatar.is_none() && r.puppet.is_none()) {
@@ -1393,7 +1484,14 @@ fn source_call(source: *mut sys::obs_source_t, name: &CStr) -> Option<sys::calld
 /// An avatar source's status.
 pub fn status(source: *mut sys::obs_source_t) -> Status {
     let Some(mut cd) = source_call(source, c"status") else { return Status::default() };
-    let s = Status { loaded: get_bool(&mut cd, c"loaded"), tracking: get_bool(&mut cd, c"tracking"), error: get_string(&mut cd, c"error"), name: get_string(&mut cd, c"name"), body: get_string(&mut cd, c"body"), expressions: get_string(&mut cd, c"expressions").lines().map(str::to_string).collect() };
+    let s = Status {
+        loaded: get_bool(&mut cd, c"loaded"),
+        tracking: get_bool(&mut cd, c"tracking"),
+        error: get_string(&mut cd, c"error"),
+        name: get_string(&mut cd, c"name"),
+        body: get_string(&mut cd, c"body"),
+        expressions: get_string(&mut cd, c"expressions").lines().map(str::to_string).collect(),
+    };
     free_cd(&mut cd);
     s
 }
@@ -1434,7 +1532,14 @@ pub fn track_body_once(bgra: &[u8], width: u32, height: u32) -> Option<BodyFrame
             effect_failed: false,
             white: std::ptr::null_mut(),
             target: std::ptr::null_mut(),
-            grab: Grab { texrender: std::ptr::null_mut(), stage: [std::ptr::null_mut(); 2], size: (width, height), next: 0, waiting: false, frame_id: 0 },
+            grab: Grab {
+                texrender: std::ptr::null_mut(),
+                stage: [std::ptr::null_mut(); 2],
+                size: (width, height),
+                next: 0,
+                waiting: false,
+                frame_id: 0,
+            },
             smoother: Smoother::default(),
             last_tick: None,
             dirty: false,
@@ -1493,7 +1598,13 @@ fn read_defaults() -> Settings {
 fn dump(b: &BodyFrame) {
     use std::io::Write;
     static FILE: std::sync::OnceLock<Option<Mutex<(std::fs::File, u64)>>> = std::sync::OnceLock::new();
-    let Some(file) = FILE.get_or_init(|| std::env::var_os("LIGHTAIR_AVATAR_DUMP").and_then(|p| std::fs::File::create(p).ok()).map(|f| Mutex::new((f, u64::MAX)))) else { return };
+    let Some(file) = FILE.get_or_init(|| {
+        std::env::var_os("LIGHTAIR_AVATAR_DUMP")
+            .and_then(|p| std::fs::File::create(p).ok())
+            .map(|f| Mutex::new((f, u64::MAX)))
+    }) else {
+        return;
+    };
     let mut f = file.lock();
     if f.1 == b.frame_id {
         return;

@@ -9,18 +9,13 @@ pub mod audio;
 pub mod audio_host;
 pub mod avatar;
 mod avatar2d;
+mod avatar_inochi2d;
 pub mod backdrop;
-pub mod pointer;
-#[cfg(target_os = "macos")]
-pub mod on_screen;
-#[cfg(target_os = "macos")]
-pub mod system_audio;
 pub mod devices;
 pub mod displays;
-pub mod kinds;
 mod engine;
 pub mod gpu;
-pub mod vcam;
+pub mod kinds;
 mod log;
 pub mod loudness;
 pub mod media;
@@ -29,17 +24,23 @@ pub mod media_source;
 pub mod meters;
 pub mod monitoring;
 pub mod obs;
+#[cfg(target_os = "macos")]
+pub mod on_screen;
 pub mod outputs;
-pub mod web;
 pub mod player;
 pub mod plugins;
+pub mod pointer;
 mod reconcile;
 mod runtime;
 pub mod studio_take;
+#[cfg(target_os = "macos")]
+pub mod system_audio;
 #[doc(hidden)]
 pub mod testing;
 pub mod timers;
 mod transition;
+pub mod vcam;
+pub mod web;
 
 pub use engine::{Capabilities, Engine, EngineConfig, EngineError, EngineState, Graphics, Modules, Stats, read_stats};
 pub use libobs_sys as sys;

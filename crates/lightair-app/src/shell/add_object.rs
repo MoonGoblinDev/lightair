@@ -89,7 +89,7 @@ const KINDS: &[(Kind, Group, &str, &str, &str)] = &[
     (Kind::App, Group::Capture, "layout-grid", "App", "Every window of one app"),
     (Kind::Web, Group::Capture, "globe", "Browser", "A website, overlay or alert widget, live"),
     (Kind::Phone, Group::Capture, "smartphone", "iPhone or iPad", "Its screen and sound, by cable"),
-    (Kind::Avatar, Group::Capture, "scan-face", "Avatar", "A VRM or Live2D character that moves with you"),
+    (Kind::Avatar, Group::Capture, "scan-face", "Avatar", "A VRM, Live2D or Inochi2D character that moves with you"),
     (Kind::Image, Group::Media, "image", "Image", "A picture or logo"),
     (Kind::Video, Group::Media, "clapperboard", "Video", "A video file, looped"),
     (Kind::Text, Group::Graphics, "type", "Text", "A title or caption"),
@@ -144,7 +144,14 @@ fn entries(query: &str, group: Group) -> Vec<Entry> {
         for &sub in WIDGET_GROUPS {
             for b in lightair_widgets::catalog::BUILTIN.iter().filter(|b| widget_group(b.kind) == sub) {
                 if matches(query, &[b.name, b.about, sub, "widget", "overlay", "alert"]) {
-                    out.push(Entry { pick: Pick::Widget(b.kind), group: Group::Widgets, sub: Some(sub), icon: b.icon, name: b.name, about: b.about });
+                    out.push(Entry {
+                        pick: Pick::Widget(b.kind),
+                        group: Group::Widgets,
+                        sub: Some(sub),
+                        icon: b.icon,
+                        name: b.name,
+                        about: b.about,
+                    });
                 }
             }
         }
@@ -175,7 +182,8 @@ fn lines(entries: &[Entry], headings: bool) -> Vec<Line> {
         if let Some(sub) = sub {
             out.push(Line::Sub(sub));
         }
-        let end = (i..entries.len()).find(|&j| entries[j].group != group || entries[j].sub != sub).unwrap_or(entries.len());
+        let end =
+            (i..entries.len()).find(|&j| entries[j].group != group || entries[j].sub != sub).unwrap_or(entries.len());
         for r in (i..end).step_by(2) {
             out.push(Line::Row(r, (r + 1 < end).then_some(r + 1)));
         }
@@ -440,12 +448,19 @@ impl StudioWindow {
     }
 
     /// Adds a widget: a built-in one, or an imported one (`custom`).
-    pub(super) fn add_widget(&mut self, kind: &str, custom: Option<lightair_widgets::Custom>, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn add_widget(
+        &mut self,
+        kind: &str,
+        custom: Option<lightair_widgets::Custom>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let builtin = lightair_widgets::catalog::by_kind(kind);
         let (w, h) = builtin.map_or((800, 600), |b| b.size);
         let name = builtin.map_or("Widget", |b| b.name).to_string();
         let instance = lightair_widgets::Instance::new(kind, custom);
-        let settings = serde_json::json!({"url": instance.address(), "width": w, "height": h, "fps": 30, "widget": instance});
+        let settings =
+            serde_json::json!({"url": instance.address(), "width": w, "height": h, "fps": 30, "widget": instance});
         let (place, sound) = builtin.map_or(((0.5, 0.5), true), |b| (b.place, b.sound));
         self.add_placed_object(&name, lightair_engine::web::KIND, settings, (w as f32, h as f32), place, sound, cx);
         self.close_add_object(window, cx);
@@ -453,7 +468,12 @@ impl StudioWindow {
 
     /// Brings in a StreamElements custom widget from a folder of its files.
     fn import_widget(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions { files: true, directories: true, multiple: false, prompt: Some("Import widget".into()) });
+        let paths = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: true,
+            multiple: false,
+            prompt: Some("Import widget".into()),
+        });
         self.close_add_object(window, cx);
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = paths.await else { return };
@@ -470,7 +490,15 @@ impl StudioWindow {
     }
 
     /// Adds a capture of the display, window or app chosen (`size`: its picture's, if known).
-    fn add_screen(&mut self, mode: i64, name: &str, value: &serde_json::Value, size: Option<(u32, u32)>, window: &mut Window, cx: &mut Context<Self>) {
+    fn add_screen(
+        &mut self,
+        mode: i64,
+        name: &str,
+        value: &serde_json::Value,
+        size: Option<(u32, u32)>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let settings = super::screen_pick::settings(mode, value);
         let (w, h) = size.map_or((1920.0, 1080.0), |(w, h)| (w as f32, h as f32));
         let name: String = name.chars().take(48).collect();
@@ -514,7 +542,13 @@ impl StudioWindow {
         }
         let url = super::object_props::web_address(&typed);
         let (w, h) = a.web_size;
-        let name = url.split("://").nth(1).and_then(|r| r.split('/').next()).filter(|h| !h.is_empty()).unwrap_or("Browser").to_string();
+        let name = url
+            .split("://")
+            .nth(1)
+            .and_then(|r| r.split('/').next())
+            .filter(|h| !h.is_empty())
+            .unwrap_or("Browser")
+            .to_string();
         let settings = serde_json::json!({"url": url, "width": w, "height": h, "fps": 30});
         self.add_source_object(&name, lightair_engine::web::KIND, settings, (w as f32, h as f32), cx);
         self.close_add_object(window, cx);
@@ -524,12 +558,14 @@ impl StudioWindow {
         let state = self.add_object.as_ref()?;
         let query = state.search.read(cx).value().to_string();
         let studio = self.studio.read(cx);
-        let scene: Option<String> = studio.selected_scene.and_then(|id| studio.workspace().scene(id)).map(|s| s.name.clone());
+        let scene: Option<String> =
+            studio.selected_scene.and_then(|id| studio.workspace().scene(id)).map(|s| s.name.clone());
         let step = state.step;
         let screen_mode = state.screens.as_ref().map(|p| p.mode);
 
         // the rail: the groups (with how many types each shows), and the scene they're added to
-        let mut rail = div().flex().flex_col().flex_none().w(px(184.)).p_2().gap(px(2.)).border_r_1().border_color(tok::border());
+        let mut rail =
+            div().flex().flex_col().flex_none().w(px(184.)).p_2().gap(px(2.)).border_r_1().border_color(tok::border());
         for &(group, name, icon) in GROUPS {
             let on = step == Step::Types && state.group == group;
             let count = entries(&query, group).len();
@@ -545,7 +581,9 @@ impl StudioWindow {
                     .cursor_pointer()
                     .text_size(px(13.))
                     .when(on, |d| d.bg(tok::bg_selected()).text_color(tok::text()))
-                    .when(!on, |d| d.text_color(tok::text_secondary()).hover(|d| d.bg(tok::bg_raised()).text_color(tok::text())))
+                    .when(!on, |d| {
+                        d.text_color(tok::text_secondary()).hover(|d| d.bg(tok::bg_raised()).text_color(tok::text()))
+                    })
                     .child(ui::icon(icon).size(px(15.)))
                     .child(div().flex_1().child(name))
                     .child(
@@ -580,7 +618,8 @@ impl StudioWindow {
             )
         });
 
-        let list = || div().id("add-object-list").flex().flex_col().flex_1().min_h_0().min_w_0().overflow_y_scroll().p_3();
+        let list =
+            || div().id("add-object-list").flex().flex_col().flex_1().min_h_0().min_w_0().overflow_y_scroll().p_3();
         let content: AnyElement = match step {
             Step::Types => {
                 let shown = entries(&query, state.group);
@@ -622,7 +661,9 @@ impl StudioWindow {
                                             cx.notify();
                                         }
                                     }))
-                                    .on_click(cx.listener(move |this, _, window, cx| this.add_entry(e.pick, window, cx)))
+                                    .on_click(
+                                        cx.listener(move |this, _, window, cx| this.add_entry(e.pick, window, cx)),
+                                    )
                             };
                             div()
                                 .flex()
@@ -640,7 +681,14 @@ impl StudioWindow {
             }
             Step::Web => {
                 let size = state.web_size;
-                let mut sizes = div().flex().gap(px(2.)).p(px(2.)).rounded(px(7.)).bg(tok::bg_app()).border_1().border_color(tok::border());
+                let mut sizes = div()
+                    .flex()
+                    .gap(px(2.))
+                    .p(px(2.))
+                    .rounded(px(7.))
+                    .bg(tok::bg_app())
+                    .border_1()
+                    .border_color(tok::border());
                 for (i, (label, detail, wh)) in [
                     ("Landscape", "1920 × 1080", (1920u32, 1080u32)),
                     ("HD", "1280 × 720", (1280, 720)),
@@ -691,7 +739,13 @@ impl StudioWindow {
                                 .flex()
                                 .items_baseline()
                                 .gap_2()
-                                .child(div().text_size(px(12.)).font_weight(FontWeight::MEDIUM).text_color(tok::text()).child(label))
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(tok::text())
+                                        .child(label),
+                                )
                                 .child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child(hint)),
                         )
                         .child(control)
@@ -754,8 +808,11 @@ impl StudioWindow {
                     for (i, (item, _)) in shown {
                         let (title, value) = (item.title.clone(), item.value.clone());
                         grid = grid.child(
-                            tile(("screen", i), icon, item.title.clone(), item.detail.clone(), None)
-                                .on_click(cx.listener(move |this, _, window, cx| this.add_screen(mode, &title, &value, None, window, cx))),
+                            tile(("screen", i), icon, item.title.clone(), item.detail.clone(), None).on_click(
+                                cx.listener(move |this, _, window, cx| {
+                                    this.add_screen(mode, &title, &value, None, window, cx)
+                                }),
+                            ),
                         );
                     }
                     body = body.child(grid);
@@ -796,7 +853,11 @@ impl StudioWindow {
                                         .border_1()
                                         .border_color(tok::border())
                                         .child(match thumb.frame() {
-                                            Some(f) => crate::frame_view::frame(f).absolute().size_full().object_fit(ObjectFit::Contain).into_any_element(),
+                                            Some(f) => crate::frame_view::frame(f)
+                                                .absolute()
+                                                .size_full()
+                                                .object_fit(ObjectFit::Contain)
+                                                .into_any_element(),
                                             None => div()
                                                 .absolute()
                                                 .size_full()
@@ -825,9 +886,17 @@ impl StudioWindow {
                                                 .whitespace_nowrap()
                                                 .child(item.title.clone()),
                                         )
-                                        .child(div().flex_none().text_size(px(11.)).text_color(tok::text_tertiary()).child(detail)),
+                                        .child(
+                                            div()
+                                                .flex_none()
+                                                .text_size(px(11.))
+                                                .text_color(tok::text_tertiary())
+                                                .child(detail),
+                                        ),
                                 )
-                                .on_click(cx.listener(move |this, _, window, cx| this.add_screen(mode, &title, &value, size, window, cx))),
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.add_screen(mode, &title, &value, size, window, cx)
+                                })),
                         );
                     }
                     body = body.child(grid);
@@ -835,7 +904,8 @@ impl StudioWindow {
                 body.into_any_element()
             }
             Step::Phones => {
-                let phones: Vec<_> = state.phones.iter().filter(|(name, _)| matches(&query, &[name])).cloned().collect();
+                let phones: Vec<_> =
+                    state.phones.iter().filter(|(name, _)| matches(&query, &[name])).cloned().collect();
                 let mut body = list();
                 if phones.is_empty() {
                     body = body.child(
@@ -855,7 +925,12 @@ impl StudioWindow {
                                     .bg(tok::bg_raised())
                                     .child(ui::icon("smartphone").size(px(20.)).text_color(tok::text_tertiary())),
                             )
-                            .child(div().text_size(px(13.)).text_color(tok::text_secondary()).child("No iPhone or iPad connected"))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .text_color(tok::text_secondary())
+                                    .child("No iPhone or iPad connected"),
+                            )
                             .child(
                                 div()
                                     .flex()
@@ -873,14 +948,16 @@ impl StudioWindow {
                 }
                 let mut grid = div().grid().grid_cols(2).gap(px(4.));
                 for (i, (name, uid)) in phones.into_iter().enumerate() {
-                    grid = grid.child(tile(("phone", i), "smartphone", name.clone(), "Its screen and sound", None).on_click(cx.listener(
-                        move |this, _, window, cx| this.add_phone(&name, &uid, window, cx),
-                    )));
+                    grid = grid.child(
+                        tile(("phone", i), "smartphone", name.clone(), "Its screen and sound", None)
+                            .on_click(cx.listener(move |this, _, window, cx| this.add_phone(&name, &uid, window, cx))),
+                    );
                 }
                 body.child(grid).into_any_element()
             }
             Step::Cameras => {
-                let cams: Vec<_> = self.camera_devices.iter().filter(|(label, _)| matches(&query, &[label])).cloned().collect();
+                let cams: Vec<_> =
+                    self.camera_devices.iter().filter(|(label, _)| matches(&query, &[label])).cloned().collect();
                 let mut body = list();
                 if cams.is_empty() {
                     body = body.child(if query.trim().is_empty() {
@@ -892,7 +969,8 @@ impl StudioWindow {
                 let mut grid = div().grid().grid_cols(2).gap(px(4.));
                 for (i, (label, uid)) in cams.into_iter().enumerate() {
                     // (by the device's transport type, not its name)
-                    let hint = if lightair_platform::devices::camera_is_virtual(&uid) { "Virtual camera" } else { "Camera" };
+                    let hint =
+                        if lightair_platform::devices::camera_is_virtual(&uid) { "Virtual camera" } else { "Camera" };
                     grid = grid.child(tile(("camera", i), "camera", label.clone(), hint, None).on_click(cx.listener(
                         move |this, _, window, cx| {
                             this.add_camera(&label, &uid, cx);
@@ -974,9 +1052,13 @@ impl StudioWindow {
             .border_color(tok::border())
             .bg(tok::bg_app().opacity(0.35))
             .map(|d| match step {
-                Step::Types => d.child(key_hint("↑ ↓ ← →", "Move")).child(key_hint("↵", "Add")).child(key_hint("esc", "Close")),
+                Step::Types => {
+                    d.child(key_hint("↑ ↓ ← →", "Move")).child(key_hint("↵", "Add")).child(key_hint("esc", "Close"))
+                }
                 Step::Web => d.child(key_hint("↵", "Add")).child(key_hint("esc", "Close")),
-                _ => d.child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child("Click one to add it")).child(key_hint("esc", "Close")),
+                _ => d
+                    .child(div().text_size(px(11.)).text_color(tok::text_tertiary()).child("Click one to add it"))
+                    .child(key_hint("esc", "Close")),
             });
 
         Some(
@@ -1008,7 +1090,9 @@ impl StudioWindow {
                         .border_color(tok::border_strong())
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .capture_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| this.add_object_key(ev, window, cx)))
+                        .capture_key_down(
+                            cx.listener(|this, ev: &KeyDownEvent, window, cx| this.add_object_key(ev, window, cx)),
+                        )
                         .child(header)
                         .child(div().flex().flex_1().min_h_0().child(rail).child(content))
                         .child(footer),
@@ -1021,7 +1105,13 @@ impl StudioWindow {
 /// A type, camera, window or app: its icon in a well, its name, and what it is. `on`: whether
 /// it's highlighted, for a list walked by keys (where the pointer moves the highlight too);
 /// `None` for one that just lights up under the pointer.
-fn tile(id: impl Into<ElementId>, icon: &str, name: impl Into<SharedString>, about: impl Into<SharedString>, on: Option<bool>) -> Stateful<Div> {
+fn tile(
+    id: impl Into<ElementId>,
+    icon: &str,
+    name: impl Into<SharedString>,
+    about: impl Into<SharedString>,
+    on: Option<bool>,
+) -> Stateful<Div> {
     let (hover, on) = (on.is_none(), on.unwrap_or(false));
     div()
         .id(id)

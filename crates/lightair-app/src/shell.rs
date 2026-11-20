@@ -1819,7 +1819,7 @@ impl StudioWindow {
         .detach();
     }
 
-    /// Asks for a VRM or Live2D (.model3.json) model and adds it as an avatar, following the face a camera sees (the
+    /// Asks for a VRM, Live2D (.model3.json) or Inochi2D (.inp, .inx) model and adds it as an avatar, following the face a camera sees (the
     /// camera the scenes already use, else the first one).
     pub(super) fn add_avatar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.add_menu = false;

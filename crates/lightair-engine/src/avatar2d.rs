@@ -22,7 +22,11 @@ pub struct Loaded2d {
 impl Loaded2d {
     pub fn load(path: &std::path::Path) -> Result<Loaded2d, String> {
         let puppet = Puppet::load(path).map_err(|e| e.to_string())?;
-        let mips = puppet.textures().iter().map(|t| lightair_avatar::vrm::mip_chain(t.width(), t.height(), t.rgba())).collect();
+        let mips = puppet
+            .textures()
+            .iter()
+            .map(|t| lightair_avatar::vrm::mip_chain(t.width(), t.height(), t.rgba()))
+            .collect();
         let expressions = puppet.expression_names();
         Ok(Loaded2d { puppet, mips, expressions })
     }
@@ -134,8 +138,18 @@ impl Gpu2d {
         let mut textures = Vec::new();
         for (t, mips) in l.puppet.textures().iter().zip(&l.mips) {
             // every level given (libobs reads one pointer a level)
-            let data: Vec<*const u8> = std::iter::once(t.rgba().as_ptr()).chain(mips.iter().map(|m| m.as_ptr())).collect();
-            textures.push(unsafe { sys::gs_texture_create(t.width(), t.height(), sys::GS_RGBA, data.len() as u32, data.as_ptr() as *mut *const u8, 0) });
+            let data: Vec<*const u8> =
+                std::iter::once(t.rgba().as_ptr()).chain(mips.iter().map(|m| m.as_ptr())).collect();
+            textures.push(unsafe {
+                sys::gs_texture_create(
+                    t.width(),
+                    t.height(),
+                    sys::GS_RGBA,
+                    data.len() as u32,
+                    data.as_ptr() as *mut *const u8,
+                    0,
+                )
+            });
         }
         let mut meshes = Vec::new();
         for m in l.puppet.meshes() {
@@ -195,7 +209,15 @@ impl Gpu2d {
     }
 
     /// Draws the model into `target` (`w`×`h`, cleared first). (Graphics context held.)
-    pub unsafe fn draw(&self, p: &Puppet, target: *mut sys::gs_texrender_t, w: u32, h: u32, framing: Framing, zoom: f32) {
+    pub unsafe fn draw(
+        &self,
+        p: &Puppet,
+        target: *mut sys::gs_texrender_t,
+        w: u32,
+        h: u32,
+        framing: Framing,
+        zoom: f32,
+    ) {
         if self.effect.is_null() || target.is_null() {
             return;
         }
@@ -248,7 +270,12 @@ impl Gpu2d {
                         if sys::gs_texrender_begin(self.mask, w, h) {
                             sys::gs_clear(sys::GS_CLEAR_COLOR, &clear, 1.0, 0);
                             sys::gs_ortho(left, right, top, bottom, -100.0, 100.0);
-                            sys::gs_blend_function_separate(sys::GS_BLEND_ONE, sys::GS_BLEND_INVSRCALPHA, sys::GS_BLEND_ONE, sys::GS_BLEND_INVSRCALPHA);
+                            sys::gs_blend_function_separate(
+                                sys::GS_BLEND_ONE,
+                                sys::GS_BLEND_INVSRCALPHA,
+                                sys::GS_BLEND_ONE,
+                                sys::GS_BLEND_INVSRCALPHA,
+                            );
                             for &mi in m.masks() {
                                 if mi >= 0 {
                                     draw_mesh(mi as usize, c"Mask");
@@ -265,11 +292,24 @@ impl Gpu2d {
                 sys::gs_effect_set_vec4(param(c"multiply"), &v4([mul[0], mul[1], mul[2], m.opacity()]));
                 sys::gs_effect_set_vec4(param(c"screen"), &v4([scr[0], scr[1], scr[2], mode]));
                 match m.blend_mode() {
-                    Moc3DrawableBlendMode::Normal => sys::gs_blend_function_separate(sys::GS_BLEND_ONE, sys::GS_BLEND_INVSRCALPHA, sys::GS_BLEND_ONE, sys::GS_BLEND_INVSRCALPHA),
-                    Moc3DrawableBlendMode::Additive => sys::gs_blend_function_separate(sys::GS_BLEND_ONE, sys::GS_BLEND_ONE, sys::GS_BLEND_ZERO, sys::GS_BLEND_ONE),
-                    Moc3DrawableBlendMode::Multiplicative => {
-                        sys::gs_blend_function_separate(sys::GS_BLEND_DSTCOLOR, sys::GS_BLEND_INVSRCALPHA, sys::GS_BLEND_ZERO, sys::GS_BLEND_ONE)
-                    }
+                    Moc3DrawableBlendMode::Normal => sys::gs_blend_function_separate(
+                        sys::GS_BLEND_ONE,
+                        sys::GS_BLEND_INVSRCALPHA,
+                        sys::GS_BLEND_ONE,
+                        sys::GS_BLEND_INVSRCALPHA,
+                    ),
+                    Moc3DrawableBlendMode::Additive => sys::gs_blend_function_separate(
+                        sys::GS_BLEND_ONE,
+                        sys::GS_BLEND_ONE,
+                        sys::GS_BLEND_ZERO,
+                        sys::GS_BLEND_ONE,
+                    ),
+                    Moc3DrawableBlendMode::Multiplicative => sys::gs_blend_function_separate(
+                        sys::GS_BLEND_DSTCOLOR,
+                        sys::GS_BLEND_INVSRCALPHA,
+                        sys::GS_BLEND_ZERO,
+                        sys::GS_BLEND_ONE,
+                    ),
                 }
                 draw_mesh(i, c"Draw");
             }
@@ -300,6 +340,102 @@ impl Gpu2d {
             if !self.mask.is_null() {
                 sys::gs_texrender_destroy(self.mask);
                 self.mask = std::ptr::null_mut();
+            }
+        }
+    }
+}
+
+/// A flat (2D) avatar: a Live2D model or an Inochi2D puppet, both posed by the face only.
+pub enum Flat {
+    Live2d(Loaded2d),
+    Inochi2d(crate::avatar_inochi2d::LoadedInochi),
+}
+
+/// Whether a file is a flat avatar's (`.model3.json`, `.inp`, `.inx`).
+pub fn is_flat(file: &str) -> bool {
+    is_live2d(file) || is_inochi2d(file)
+}
+
+pub fn is_live2d(file: &str) -> bool {
+    file.to_ascii_lowercase().ends_with(".model3.json")
+}
+
+pub fn is_inochi2d(file: &str) -> bool {
+    let f = file.to_ascii_lowercase();
+    f.ends_with(".inp") || f.ends_with(".inx")
+}
+
+impl Flat {
+    pub fn load(path: &std::path::Path) -> Result<Flat, String> {
+        if is_inochi2d(&path.to_string_lossy()) {
+            crate::avatar_inochi2d::LoadedInochi::load(path).map(Flat::Inochi2d)
+        } else {
+            Loaded2d::load(path).map(Flat::Live2d)
+        }
+    }
+
+    /// The model's own expressions (an Inochi2D puppet has none).
+    pub fn expressions(&self) -> Vec<String> {
+        match self {
+            Flat::Live2d(l) => l.expressions.clone(),
+            Flat::Inochi2d(_) => Vec::new(),
+        }
+    }
+
+    /// Poses it for this frame.
+    pub fn update(&mut self, face: &lightair_avatar::Face, expression: Option<&str>, dt: f32) {
+        match self {
+            Flat::Live2d(l) => l.puppet.update(face, expression, dt),
+            Flat::Inochi2d(l) => l.puppet.update(face, dt),
+        }
+    }
+}
+
+/// A flat avatar on the GPU.
+pub enum FlatGpu {
+    Live2d(Gpu2d),
+    Inochi2d(crate::avatar_inochi2d::GpuInochi),
+}
+
+impl FlatGpu {
+    /// (Graphics context held.)
+    pub unsafe fn new(path: &str, f: &Flat) -> FlatGpu {
+        match f {
+            Flat::Live2d(l) => FlatGpu::Live2d(unsafe { Gpu2d::new(path, l) }),
+            Flat::Inochi2d(l) => FlatGpu::Inochi2d(unsafe { crate::avatar_inochi2d::GpuInochi::new(path, l) }),
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        match self {
+            FlatGpu::Live2d(g) => &g.path,
+            FlatGpu::Inochi2d(g) => &g.path,
+        }
+    }
+
+    /// Uploads the pose and draws it into `target` (`w`×`h`). (Graphics context held.)
+    pub unsafe fn draw(&self, f: &Flat, target: *mut sys::gs_texrender_t, w: u32, h: u32, framing: Framing, zoom: f32) {
+        unsafe {
+            match (self, f) {
+                (FlatGpu::Live2d(g), Flat::Live2d(l)) => {
+                    g.upload(&l.puppet);
+                    g.draw(&l.puppet, target, w, h, framing, zoom);
+                }
+                (FlatGpu::Inochi2d(g), Flat::Inochi2d(l)) => {
+                    g.upload(&l.puppet);
+                    g.draw(&l.puppet, target, w, h, framing, zoom);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// (Graphics context held.)
+    pub unsafe fn destroy(&mut self) {
+        unsafe {
+            match self {
+                FlatGpu::Live2d(g) => g.destroy(),
+                FlatGpu::Inochi2d(g) => g.destroy(),
             }
         }
     }

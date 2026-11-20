@@ -2,8 +2,8 @@
 //! Calibrate, framing, size, mirror, zoom and an expression. The model itself is the Source
 //! section's file.
 
-use gpui_kit::component::Sizable;
 use gpui_kit::component::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
@@ -17,7 +17,14 @@ use crate::ui::{self, tok};
 pub(super) const KIND: &str = lightair_engine::avatar::KIND;
 
 /// Expressions every VRM model has: (setting, label).
-const EXPRESSIONS: &[(&str, &str)] = &[("", "None"), ("happy", "Happy"), ("angry", "Angry"), ("sad", "Sad"), ("relaxed", "Relaxed"), ("surprised", "Surprised")];
+const EXPRESSIONS: &[(&str, &str)] = &[
+    ("", "None"),
+    ("happy", "Happy"),
+    ("angry", "Angry"),
+    ("sad", "Sad"),
+    ("relaxed", "Relaxed"),
+    ("surprised", "Surprised"),
+];
 
 fn with(settings: &Value, key: &str, value: Value) -> Value {
     let mut s = if settings.is_object() { settings.clone() } else { json!({}) };
@@ -52,7 +59,10 @@ impl StudioWindow {
         match studio.engine().call(move |s| s.reconciler.avatar_calibrate(source)) {
             Some(cal) => {
                 self.avatar_note = Some((source, "Calibrated to your face now.".into()));
-                self.exec(Command::SetSourceSettings { source, settings: with(&settings, "calibration", json!(cal)) }, cx);
+                self.exec(
+                    Command::SetSourceSettings { source, settings: with(&settings, "calibration", json!(cal)) },
+                    cx,
+                );
             }
             None => self.avatar_note = Some((source, "No face in view: look at the camera and try again.".into())),
         }
@@ -82,7 +92,8 @@ impl StudioWindow {
         } else {
             (tok::warn(), "Looking for a face…".to_string())
         };
-        let body_line = (!status.body.is_empty() && !device.is_empty() && status.loaded).then(|| format!("Body: {}", status.body));
+        let body_line =
+            (!status.body.is_empty() && !device.is_empty() && status.loaded).then(|| format!("Body: {}", status.body));
         let state = div()
             .flex()
             .flex_col()
@@ -95,7 +106,9 @@ impl StudioWindow {
                     .child(div().flex_none().size(px(7.)).rounded_full().bg(dot))
                     .child(div().flex_1().min_w_0().text_size(px(12.)).text_color(tok::text_secondary()).child(line)),
             )
-            .children(body_line.map(|l| div().pl(px(15.)).text_size(px(11.)).text_color(tok::text_tertiary()).child(l)));
+            .children(
+                body_line.map(|l| div().pl(px(15.)).text_size(px(11.)).text_color(tok::text_tertiary()).child(l)),
+            );
         let show = s["show_tracking"].as_bool().unwrap_or(false);
         let show_cmd = set("show_tracking", json!(!show));
 
@@ -109,20 +122,21 @@ impl StudioWindow {
         let me = cx.entity().downgrade();
         let base = s.clone();
         let current = device.clone();
-        let camera = Button::new("avatar-camera").label(shown).small().outline().dropdown_menu(move |mut menu, _, _| {
-            let mut choices = vec![(String::new(), "None (no face following)".to_string())];
-            choices.extend(cameras.iter().cloned());
-            for (value, name) in choices {
-                let me = me.clone();
-                let cmd = Command::SetSourceSettings { source: id, settings: with(&base, "device", json!(value)) };
-                menu = menu.item(PopupMenuItem::new(name).checked(value == current).on_click(move |_, _, cx| {
-                    if let Some(me) = me.upgrade() {
-                        me.update(cx, |this, cx| this.exec(cmd.clone(), cx));
-                    }
-                }));
-            }
-            menu
-        });
+        let camera =
+            Button::new("avatar-camera").label(shown).small().outline().dropdown_menu(move |mut menu, _, _| {
+                let mut choices = vec![(String::new(), "None (no face following)".to_string())];
+                choices.extend(cameras.iter().cloned());
+                for (value, name) in choices {
+                    let me = me.clone();
+                    let cmd = Command::SetSourceSettings { source: id, settings: with(&base, "device", json!(value)) };
+                    menu = menu.item(PopupMenuItem::new(name).checked(value == current).on_click(move |_, _, cx| {
+                        if let Some(me) = me.upgrade() {
+                            me.update(cx, |this, cx| this.exec(cmd.clone(), cx));
+                        }
+                    }));
+                }
+                menu
+            });
 
         let body = s["body"].as_str().unwrap_or("upper");
         let bodies = [("Face only", "off"), ("Upper body", "upper"), ("Full body", "full")]
@@ -144,10 +158,14 @@ impl StudioWindow {
             })
             .collect();
         let expression = s["expression"].as_str().unwrap_or("");
-        // a Live2D model's own expressions; a VRM's standard ones
-        let live2d = file.to_ascii_lowercase().ends_with(".model3.json");
-        let choices: Vec<(String, String)> = if live2d {
-            std::iter::once((String::new(), "None".to_string())).chain(status.expressions.iter().map(|e| (e.clone(), e.clone()))).collect()
+        // a flat model's own expressions (Live2D; an Inochi2D puppet has none); a VRM's standard ones
+        let lower = file.to_ascii_lowercase();
+        let flat = [".model3.json", ".inp", ".inx"].iter().any(|e| lower.ends_with(e));
+        let no_expressions = flat && status.expressions.is_empty();
+        let choices: Vec<(String, String)> = if flat {
+            std::iter::once((String::new(), "None".to_string()))
+                .chain(status.expressions.iter().map(|e| (e.clone(), e.clone())))
+                .collect()
         } else {
             EXPRESSIONS.iter().map(|(v, n)| (v.to_string(), n.to_string())).collect()
         };
@@ -164,7 +182,9 @@ impl StudioWindow {
                     .text_size(px(11.))
                     .cursor_pointer()
                     .when(on, |d| d.bg(tok::bg_selected()).text_color(tok::text()))
-                    .when(!on, |d| d.bg(tok::bg_raised()).text_color(tok::text_secondary()).hover(|d| d.text_color(tok::text())))
+                    .when(!on, |d| {
+                        d.bg(tok::bg_raised()).text_color(tok::text_secondary()).hover(|d| d.text_color(tok::text()))
+                    })
                     .child(name)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !on {
@@ -177,7 +197,13 @@ impl StudioWindow {
         let mirror_cmd = set("mirror", json!(!mirror));
         let zoom = s["zoom"].as_f64().unwrap_or(1.0) as f32;
         let base = s.clone();
-        let zoom_slider = self.slider(format!("avatar-zoom-{id}"), (0.5, 2.0, 0.05), zoom, move |v| Command::SetSourceSettings { source: id, settings: with(&base, "zoom", json!(v)) }, cx);
+        let zoom_slider = self.slider(
+            format!("avatar-zoom-{id}"),
+            (0.5, 2.0, 0.05),
+            zoom,
+            move |v| Command::SetSourceSettings { source: id, settings: with(&base, "zoom", json!(v)) },
+            cx,
+        );
 
         self.section("Avatar", None, cx)
             .child(state)
@@ -208,8 +234,8 @@ impl StudioWindow {
                         self.avatar_note.as_ref().filter(|(s, _)| *s == id).map_or("Look at the camera, face relaxed, then click.".to_string(), |(_, n)| n.clone()),
                     )),
             )
-            // (a Live2D model follows the face only)
-            .when(!live2d, |d| {
+            // (a flat model follows the face only)
+            .when(!flat, |d| {
                 d.child(
                     div()
                         .flex()
@@ -264,8 +290,7 @@ impl StudioWindow {
                     )
                     .child(super::settings::switch("avatar-show-tracking", show).on_click(cx.listener(move |this, _, _, cx| this.exec(show_cmd.clone(), cx)))),
             )
-            .child(label("Expression"))
-            .child(expressions)
+            .when(!no_expressions, |d| d.child(label("Expression")).child(expressions))
             .into_any_element()
     }
 }
