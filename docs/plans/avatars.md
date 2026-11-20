@@ -164,11 +164,12 @@ model file ──► loader (per format) ──► model ──► poser (per fo
 ### Next, in order
 
 1. **Live2D polish**: check Calibrate and Mirror with a person (signs and ranges were checked on
-   renders only); play the model's Idle motion under tracking (mocari has `MotionPlayer`; motion
-   groups are in `model3.json`); `ParamEyeLSmile`/`ParamEyeRSmile` from a smile; expressions with
-   fades (mocari's ExpressionManager fades; a weight setting exists but isn't used for Live2D);
-   framing of wide models (centred on the head's top fifth today); more test models (Cubism 3 and
-   4, several textures, inverted masks, offscreen parts).
+   renders only). Done since: the model's Idle motions play under the face (one after another;
+   the face's parameters win), `ParamEyeLSmile`/`ParamEyeRSmile` from a clear smile; expressions
+   already fade in and out (mocari's ExpressionManager). Still: the expression weight setting
+   for Live2D (it needs the manager's players' `set_weight`); framing of wide models (centred on
+   the head's top fifth today); more test models (Cubism 3 and 4, several textures, inverted
+   masks, offscreen parts).
 2. **Inochi2D** (done; polish when someone uses it): check with a person (signs and ranges were
    checked on renders only); try more puppets, especially ones rigged by others with other
    parameter names (`by_name` in `inochi2d.rs`); Inochi Session's ExpressionBindings (Lua-like

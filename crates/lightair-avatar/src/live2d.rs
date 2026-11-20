@@ -31,6 +31,8 @@ struct Params {
     body: [Option<usize>; 3],
     eye_open: [Vec<usize>; 2],
     eye_ball: [Option<usize>; 2],
+    /// Eyes narrowing in a smile: the model's right, left.
+    eye_smile: [Option<usize>; 2],
     brow: [Option<usize>; 2],
     mouth_open: Vec<usize>,
     mouth_form: Option<usize>,
@@ -114,6 +116,7 @@ impl Puppet {
             // the model's right, left
             eye_open: [eye("ParamEyeROpen"), eye("ParamEyeLOpen")],
             eye_ball: ["ParamEyeBallX", "ParamEyeBallY"].map(find),
+            eye_smile: ["ParamEyeRSmile", "ParamEyeLSmile"].map(find),
             brow: ["ParamBrowRY", "ParamBrowLY"].map(find),
             mouth_open,
             mouth_form: find("ParamMouthForm"),
@@ -244,6 +247,10 @@ impl Puppet {
             set(Some(i), face.mouth_open);
         }
         set(p.mouth_form, face.mouth_wide.clamp(-1.0, 1.0));
+        // the eyes smile with a clear smile (not a little "ee")
+        let smile = 0.8 * ((face.mouth_wide - 0.25) / 0.75).clamp(0.0, 1.0);
+        set(p.eye_smile[0], smile);
+        set(p.eye_smile[1], smile);
         set(p.breath, 0.5 + 0.5 * (self.time * std::f32::consts::TAU / 3.5).sin());
         let _ = p.cheek;
         self.manager.tick(dt);
