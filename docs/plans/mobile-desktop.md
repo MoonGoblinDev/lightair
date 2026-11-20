@@ -12,7 +12,7 @@ internet MC-17, remote control of a phone's Studio MS-26) are listed last and no
 
 1. ✅ `native-tls` → `rustls` in the shared crates (lightair-core `55201b9`)
 2. ✅ `lightair-platform` backends by trait (lightair-core `e24f5d4`)
-3. ⬜ Licence check job in lightair-core (GitHub Actions: cargo deny, no path to libobs/cef/gpui, commit authors)
+3. ✅ Licence check job in lightair-core (GitHub Actions: cargo deny, no path to libobs/cef/gpui, commit authors)
 4. ✅ `chat.send` documented in `docs/remote-api.md`
 
 ## Phase 1 · Remote (05 §1–5, §9–10)
@@ -20,15 +20,15 @@ internet MC-17, remote control of a phone's Studio MS-26) are listed last and no
 5. ✅ TLS port 4456, pinned self-signed identity in the Keychain
 6. ✅ `pair.claim`, the consent alert, device keys, `Lightair-Key` sign-in, scopes (control, watch, camera)
 7. ✅ `pair.forget`
-8. ⬜ `pair.list`, `pair.remove` (a control device managing the paired devices)
-9. ⬜ Pairing by typed code: six words for the secret, the fingerprint shown as four words (05 §2, "Without a camera")
+8. ✅ `pair.list`, `pair.remove` (a control device managing the paired devices)
+9. ✅ Pairing by typed code: six words for the secret, the fingerprint shown as four words (05 §2, "Without a camera"); the words are made (consonant-vowel-consonant-vowel, 11 bits each), not a list (lightair-core)
 10. ✅ Settings › Remote API › Phones: pair, list, remove
 11. ✅ "Not seen for 6 months" on a device unseen for 180 days
 12. ✅ `pair.claim` limits: 5 a minute per address, then 15 minutes' lockout
-13. ⬜ At most 8 paired devices connected at once (05 §10)
+13. ✅ At most 8 paired devices connected at once (05 §10)
 14. ✅ mDNS advertisement
 15. ✅ `session.hello` with protocol 2 and features
-16. ⬜ Bounded event queues per client (1,000), meters and health dropped first, `session.resync` (05 §5)
+16. ✅ Bounded event queues per client (1,000), meters and health dropped first, `session.resync` (05 §5)
 17. ✅ Program preview stream (JPEG, ack pacing)
 18. ✅ `scene.thumbnails`
 19. ✅ Event `scene.thumbnail` (a scene's picture changed; one per scene per 5 s)
@@ -83,4 +83,4 @@ remote control of a phone's Studio (MS-26).
 
 ## Count
 
-39 of 53 done.
+44 of 53 done.

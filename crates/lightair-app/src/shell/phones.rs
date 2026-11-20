@@ -57,6 +57,9 @@ pub(crate) struct Phones {
     mdns: Option<Advertiser>,
     /// The offer the QR code shows, and its link.
     pub offer: Option<(Offer, String)>,
+    /// The same pairing to type instead (05 §2, "Without a camera"): its offer, its six words,
+    /// and this computer's fingerprint as four words to compare.
+    words: Option<(Offer, String, String)>,
     pub error: Option<String>,
     meters: Option<Task<()>>,
     /// Previews for phones' pictures: the program's, and scenes' for thumbnails.
@@ -224,6 +227,7 @@ impl StudioWindow {
             listener: None,
             mdns: None,
             offer: None,
+            words: None,
             error: None,
             meters: None,
             program_preview: None,
@@ -407,6 +411,9 @@ impl StudioWindow {
         let port = p.listener.as_ref().map_or(SECURE_PORT, |l| l.addr().port());
         let link = p.pairing.link(&offer, &p.desktop, &addresses, port, &identity.fingerprint_b64());
         p.offer = Some((offer, link));
+        let (typed, words) = p.pairing.offer_words(Scope::Control);
+        let fp = lightair_remote::pairing::fingerprint_words(&identity.fingerprint()).join(" ");
+        p.words = Some((typed, words.join(" "), fp));
         self.sync_phones(cx);
         // the code lasts two minutes; the sheet follows it
         cx.spawn(async move |this, cx| {
@@ -423,6 +430,9 @@ impl StudioWindow {
     pub(super) fn stop_pairing(&mut self, cx: &mut Context<Self>) {
         let p = &mut self.remote.phones;
         if let Some((offer, _)) = p.offer.take() {
+            p.pairing.withdraw(&offer);
+        }
+        if let Some((offer, ..)) = p.words.take() {
             p.pairing.withdraw(&offer);
         }
         self.sync_phones(cx);
@@ -472,6 +482,28 @@ impl StudioWindow {
             && (offer.expires_at == 0 || p.pairing.open())
         {
             group = group.child(pairing_code(link, offer, false));
+            if let Some((_, words, fp)) = &p.words {
+                group = group.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .px_3()
+                        .py_2()
+                        .rounded(px(8.))
+                        .bg(tok::bg_raised())
+                        .child(div().text_size(px(12.)).text_color(tok::text_secondary()).child(
+                            "No camera on the phone? In Lightair Live › Found on this network, choose this computer and type:",
+                        ))
+                        .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(words.clone()))
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(tok::text_tertiary())
+                                .child(format!("The phone should show this computer as: {fp}")),
+                        ),
+                );
+            }
         }
         for d in devices {
             let id = d.id.clone();
