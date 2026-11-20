@@ -30,7 +30,8 @@ use super::StudioWindow;
 use crate::ui::tok;
 
 /// What phones are told this desktop answers (lightair-live's docs/05 §9).
-const FEATURES: &[&str] = &["audio.levels", "preview.jpeg", "scene.thumbnails", "panic"];
+const FEATURES: &[&str] =
+    &["audio.levels", "preview.jpeg", "scene.thumbnails", "panic", "staging", "chat", "activity", "deck", "stream.info"];
 /// How often meters go out while a phone is connected.
 const METERS_EVERY: Duration = Duration::from_millis(50);
 const KEYCHAIN_SERVICE: &str = "Lightair remote TLS";
@@ -50,6 +51,10 @@ pub(crate) struct Phones {
     program_preview: Option<PhonePreview>,
     scene_preview: Option<PhonePreview>,
     panic: Panic,
+    /// The last chat event phones were told about, and the staging state they last saw.
+    told_chat: u64,
+    told_staging: Option<Value>,
+    told_at: std::time::Instant,
 }
 
 fn folder() -> PathBuf {
@@ -166,6 +171,9 @@ impl StudioWindow {
             program_preview: None,
             scene_preview: None,
             panic: Panic::default(),
+            told_chat: u64::MAX,
+            told_staging: None,
+            told_at: std::time::Instant::now(),
         }
     }
 
@@ -264,6 +272,12 @@ impl StudioWindow {
         if !server.clients().iter().any(|c| c.protocol == "Lightair phone") {
             return;
         }
+        // chat, activity and staging four times a second
+        if self.remote.phones.told_at.elapsed() >= Duration::from_millis(250) {
+            self.remote.phones.told_at = std::time::Instant::now();
+            self.tell_phones(cx);
+        }
+        let Some(server) = self.remote.running() else { return };
         let db = |v: f32| if v.is_finite() { json!(v) } else { Value::Null };
         let w = self.studio.read(cx).workspace().clone();
         let tracks: Vec<Value> = w
@@ -735,7 +749,7 @@ impl StudioWindow {
                 }
                 Ok(json!({}))
             }
-            _ => return None,
+            _ => return self.phone_more(call, cx),
         };
         let p = &self.remote.phones.panic;
         let state = json!({"muted_all": !p.muted.is_empty() && p.before_privacy.is_none(), "privacy": p.before_privacy.is_some()});
@@ -743,5 +757,157 @@ impl StudioWindow {
             server.emit("panic.state", state.clone());
         }
         Some(reply.map(|r| if call.method == "panic.get" { state } else { r }))
+    }
+}
+
+// ---------------------------------------------------------------- chat, activity, staging, deck
+
+/// What counts as activity (lightair-live's docs/05 §4.2): money, memberships, raids, follows.
+fn is_activity(kind: &lightair_live::event::Kind) -> bool {
+    use lightair_live::event::Kind;
+    matches!(kind, Kind::Paid | Kind::Membership | Kind::Raid { .. } | Kind::Follow)
+}
+
+fn deck_file() -> PathBuf {
+    folder().join("deck.json")
+}
+
+/// The deck's pages and version (`deck.json` in Phones/).
+fn read_deck() -> (Value, u64) {
+    let v: Value = std::fs::read_to_string(deck_file()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    (v.get("pages").cloned().unwrap_or_else(|| json!([])), v.get("version").and_then(Value::as_u64).unwrap_or(0))
+}
+
+/// `stream.info.get`: each connected channel's title, category and viewers, from the platforms
+/// (on the remote server's thread: it waits on the network). `platform` narrows it to one.
+pub(crate) fn stream_info(hub: &lightair_live::Hub, params: &Value) -> lightair_remote::Reply {
+    let only = params.get("platform").and_then(Value::as_str);
+    let mut channels: Vec<_> = hub.status().into_keys().filter(|c| only.is_none_or(|p| p == c.platform)).collect();
+    channels.sort_by(|a, b| (&a.platform, &a.channel).cmp(&(&b.platform, &b.channel)));
+    let out: Vec<Value> = channels
+        .into_iter()
+        .map(|c| match lightair_live::stream_info::info(&c.platform, &c.channel) {
+            Ok(i) => json!({
+                "platform": c.platform, "channel": c.channel, "live": i.live, "title": i.title,
+                "category": {"name": i.category}, "tags": [], "viewers": i.viewers, "started_ms": i.started_ms,
+                "editable": lightair_live::stream_info::can_edit(&c.platform),
+            }),
+            Err(e) => json!({"platform": c.platform, "channel": c.channel, "error": e}),
+        })
+        .collect();
+    Ok(json!(out))
+}
+
+impl StudioWindow {
+    fn staging_json(&self, cx: &App) -> Value {
+        let studio = self.studio.read(cx);
+        let w = studio.workspace();
+        let staged = studio.selected_scene.filter(|s| self.cue_scenes && Some(*s) != w.program);
+        json!({"enabled": self.cue_scenes, "staged": staged, "program": w.program})
+    }
+
+    /// New chat, activity and staging, to phones (lightair-live's docs/05 §4.2).
+    fn tell_phones(&mut self, cx: &mut Context<Self>) {
+        let hub = self.studio.read(cx).chat.clone();
+        let staging = self.staging_json(cx);
+        let mut out: Vec<(&str, Value)> = vec![];
+        let p = &mut self.remote.phones;
+        // the first look only notes where chat is: history comes from chat.history
+        let events = if p.told_chat == u64::MAX { vec![] } else { hub.since(p.told_chat) };
+        if p.told_chat == u64::MAX {
+            p.told_chat = hub.history().last().map_or(0, |e| e.id);
+        }
+        for e in events {
+            p.told_chat = p.told_chat.max(e.id);
+            match &e.kind {
+                lightair_live::event::Kind::Deletion { .. } => out.push(("chat.removed", json!(e))),
+                k if is_activity(k) => {
+                    out.push(("activity.item", json!(e)));
+                    if matches!(k, lightair_live::event::Kind::Paid) {
+                        out.push(("chat.message", json!(e)));
+                    }
+                }
+                _ => out.push(("chat.message", json!(e))),
+            }
+        }
+        if p.told_staging.as_ref() != Some(&staging) {
+            p.told_staging = Some(staging.clone());
+            out.push(("staging.state", staging));
+        }
+        if let Some(server) = self.remote.running() {
+            for (event, data) in out {
+                server.emit(event, data);
+            }
+        }
+    }
+
+    /// Staging, activity and the deck for phones (lightair-live's docs/05 §4.2).
+    pub(super) fn phone_more(&mut self, call: &lightair_remote::Call, cx: &mut Context<Self>) -> Option<lightair_remote::Reply> {
+        use lightair_model::Command;
+        use lightair_remote::ApiError;
+        let p = &call.params;
+        Some(match call.method.as_str() {
+            "staging.get" => Ok(self.staging_json(cx)),
+            "staging.enable" => {
+                let on = p.get("enabled").and_then(Value::as_bool).unwrap_or(true);
+                if on != self.cue_scenes {
+                    self.set_cue_scenes(on, cx);
+                }
+                Ok(self.staging_json(cx))
+            }
+            "staging.stage" => {
+                let w = self.studio.read(cx).workspace().clone();
+                let key = p.get("scene").and_then(Value::as_str).unwrap_or("");
+                let Some(scene) = w.scenes.iter().find(|s| s.id.to_string() == key || s.name == key).map(|s| s.id) else {
+                    return Some(Err(ApiError::not_found(format!("no scene {key}"))));
+                };
+                if !self.cue_scenes {
+                    self.set_cue_scenes(true, cx);
+                }
+                self.studio.update(cx, |s, _| s.select_scene(scene));
+                self.sync_studio_preview(cx);
+                cx.notify();
+                Ok(self.staging_json(cx))
+            }
+            "staging.take" => {
+                let studio = self.studio.read(cx);
+                let w = studio.workspace().clone();
+                let Some(staged) = studio.selected_scene.filter(|s| self.cue_scenes && Some(*s) != w.program) else {
+                    return Some(Err(ApiError::state("Nothing is staged.")));
+                };
+                let name = w.scene(staged).map(|s| s.name.clone()).unwrap_or_default();
+                self.remote_exec(call.client, &format!("Take {name}"), vec![Command::SetProgram { scene: Some(staged) }], cx)
+                    .map(|_| self.staging_json(cx))
+            }
+            "activity.history" => {
+                let limit = p.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize;
+                let items: Vec<_> = self.studio.read(cx).chat.history().into_iter().filter(|e| is_activity(&e.kind)).collect();
+                let start = items.len().saturating_sub(limit);
+                Ok(json!({"items": &items[start..]}))
+            }
+            "deck.get" => {
+                let (pages, version) = read_deck();
+                Ok(json!({"pages": pages, "version": version}))
+            }
+            "deck.set" => {
+                let (_, version) = read_deck();
+                if p.get("base_version").and_then(Value::as_u64) != Some(version) {
+                    return Some(Err(ApiError::state("The deck changed on another device. Reload it and try again.")));
+                }
+                let Some(pages) = p.get("pages").filter(|v| v.is_array()).cloned() else {
+                    return Some(Err(ApiError::invalid("`pages` is needed")));
+                };
+                let next = version + 1;
+                let _ = std::fs::create_dir_all(folder());
+                if let Err(e) = std::fs::write(deck_file(), json!({"pages": pages, "version": next}).to_string()) {
+                    return Some(Err(ApiError::failed(e.to_string())));
+                }
+                if let Some(server) = self.remote.running() {
+                    server.emit("deck.changed", json!({"version": next}));
+                }
+                Ok(json!({"version": next}))
+            }
+            _ => return None,
+        })
     }
 }
