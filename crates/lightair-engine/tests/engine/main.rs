@@ -15,6 +15,7 @@ mod mix_tracks;
 mod monitor;
 mod multi_recording;
 mod outputs;
+mod phone_camera;
 mod plugins;
 mod portable_kinds;
 mod reconcile;

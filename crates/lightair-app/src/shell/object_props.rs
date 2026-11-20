@@ -328,6 +328,8 @@ impl StudioWindow {
             Some(self.web_section(source, cx).into_any_element())
         } else if source.kind == super::avatar_props::KIND {
             Some(self.avatar_section(source, cx))
+        } else if source.kind == super::phone_camera::KIND {
+            Some(self.phone_camera_section(source, cx))
         } else {
             None
         }

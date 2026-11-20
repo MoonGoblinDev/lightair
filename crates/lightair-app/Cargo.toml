@@ -25,6 +25,9 @@ lightair-widgets.workspace = true
 getrandom = "0.3"
 lightair-preview.workspace = true
 lightair-web.workspace = true
+lightair-phone-camera.workspace = true
+# `lightair call`: one remote API call from the command line (mcp_bridge)
+tungstenite = "0.30"
 lightair-model.workspace = true
 lightair-audio.workspace = true
 lightair-store.workspace = true

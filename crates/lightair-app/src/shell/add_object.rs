@@ -78,6 +78,7 @@ enum Kind {
     Timer,
     Web,
     Phone,
+    PhoneCamera,
     Avatar,
 }
 
@@ -89,6 +90,7 @@ const KINDS: &[(Kind, Group, &str, &str, &str)] = &[
     (Kind::App, Group::Capture, "layout-grid", "App", "Every window of one app"),
     (Kind::Web, Group::Capture, "globe", "Browser", "A website, overlay or alert widget, live"),
     (Kind::Phone, Group::Capture, "smartphone", "iPhone or iPad", "Its screen and sound, by cable"),
+    (Kind::PhoneCamera, Group::Capture, "cast", "Phone camera", "A phone's camera and mic, over Wi-Fi (Lightair Live)"),
     (
         Kind::Avatar,
         Group::Capture,
@@ -372,6 +374,7 @@ impl StudioWindow {
             }
             Kind::Image => self.add_image(window, cx),
             Kind::Avatar => self.add_avatar(window, cx),
+            Kind::PhoneCamera => self.add_phone_camera(cx),
             Kind::Video => self.add_video(window, cx),
             Kind::Text => self.add_text(cx),
             Kind::Colour => self.add_colour(cx),
@@ -537,6 +540,19 @@ impl StudioWindow {
         // its sound in the mixer too (without a track a source is silent)
         self.add_placed_object(name, lightair_model::kinds::CAMERA, settings, (1080.0, 1920.0), (0.5, 0.5), true, cx);
         self.close_add_object(window, cx);
+    }
+
+    /// Adds a Phone camera layer (with its microphone's track) and shows its pairing code.
+    fn add_phone_camera(&mut self, cx: &mut Context<Self>) {
+        let n =
+            self.studio.read(cx).workspace().sources.values().filter(|s| s.kind == super::phone_camera::KIND).count();
+        let name = if n == 0 { "Phone camera".to_string() } else { format!("Phone camera {}", n + 1) };
+        let settings = super::phone_camera::default_settings();
+        if let Some(source) =
+            self.add_placed_object(&name, super::phone_camera::KIND, settings, (1920.0, 1080.0), (0.5, 0.5), true, cx)
+        {
+            self.pair_camera(source, cx);
+        }
     }
 
     /// Adds the web page typed in (an address without a scheme gets https://).

@@ -440,6 +440,9 @@ impl StudioWindow {
         if let Some(reply) = self.live_call(call, cx) {
             return reply;
         }
+        if let Some(reply) = self.camera_call(call, cx) {
+            return reply;
+        }
         let p = &call.params;
         let who = call.client;
         let w = self.studio.read(cx).workspace().clone();
@@ -961,6 +964,11 @@ impl StudioWindow {
                 defaults(&mut s, json!({"looping": true, "is_local_file": true}));
                 let name = std::path::Path::new(&file).file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or("Video".into());
                 NewSource { kind: "ffmpeg_source".into(), settings: s, size: size_in(&json!({}), 1920.0, 1080.0), sound: true, name }
+            }
+            "phone_camera" | super::phone_camera::KIND => {
+                defaults(&mut s, super::phone_camera::default_settings());
+                let size = size_in(&s, 1920.0, 1080.0);
+                NewSource { kind: super::phone_camera::KIND.into(), settings: s, size, sound: true, name: "Phone camera".into() }
             }
             "color" | "colour" | "color_source_v3" | "color_source" => {
                 let w = self.studio.read(cx).workspace().primary_canvas().clone();

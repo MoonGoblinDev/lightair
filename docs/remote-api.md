@@ -13,6 +13,7 @@ Lightair runs one local server (Settings › Remote API) that other apps and AI 
 | JSON-RPC 2.0 | `ws://host:4455/rpc` | Scripts and apps written for Lightair |
 | MCP (Streamable HTTP) | `http://host:4455/mcp` | AI agents (`Authorization: Bearer <password>`) |
 | MCP (stdio) | `…/Lightair.app/Contents/MacOS/lightair mcp` | Agents that start tools as programs; reads the password from the Keychain, opens Lightair on the first tool call if it's closed |
+| Command line | `…/Lightair.app/Contents/MacOS/lightair call <method> [params]` | One JSON-RPC call from a script (`lightair call scene.switch '{"scene": "Main"}'`), the password read from the Keychain; prints the result as JSON, or the error on stderr (exit 1) |
 
 Connecting Claude Code:
 
@@ -33,7 +34,7 @@ Scenes, objects, sources and tracks are named by id or by name. Positions are ca
 | `scene.switch` | `scene` | puts it on air |
 | `scene.create` | `name`, `switch?` | `id` |
 | `scene.rename` / `scene.remove` | `scene`, `name` | |
-| `object.add` | `kind` (text, image, video, color, browser, display, window, app, camera, timer, microphone, or a libobs id) or `source`; `scene?`, `name?`, `settings?`, `x? y? width? height?` | `object`, `source`, `track` |
+| `object.add` | `kind` (text, image, video, color, browser, display, window, app, camera, phone_camera, timer, microphone, or a libobs id) or `source`; `scene?`, `name?`, `settings?`, `x? y? width? height?` | `object`, `source`, `track` |
 | `object.update` | `object`, `scene?`, `name? visible? locked? x? y? width? height? rotation? opacity?`, `settings?` (merged into its source's) | the object |
 | `object.remove` | `object`, `scene?` | |
 | `object.move` | `object`, `position` (front, back, forward, backward) or `to` | |
@@ -49,10 +50,13 @@ Scenes, objects, sources and tracks are named by id or by name. Positions are ca
 | `screenshot` | `scene?`, `width?` | `mime`, `data` (base64 PNG) |
 | `commands.execute` | `commands` (Lightair commands, as in the journal), `label?` | |
 | `ui.select` | `scene?`, `object?` | selects it in the window |
+| `camera.pair` | `source` (a Phone camera layer) | `link` (the pairing code's link, for Lightair Live), `expires_at`; the person still allows the phone in Lightair |
+| `camera.status` | `source?` | `cameras: [{source, connected, phone, picture, rotation, received_kbps, state, health, tally}]`, `srt_port` |
+| `camera.control` | `source`, `control` (`zoom`, `torch`, `focus`, `exposure`, `white_balance`, as lightair-live's docs/05 §6) | sent to the layer's phone |
 | `auth.login` | `password` | (when not sent as `Authorization: Bearer`) |
 | `events.subscribe` | `events` (names; absent: all) | |
 
-Events arrive as `{"method": "event", "params": {"name", "data"}}`: `scene.program`, `scene.list`, `record.state`, `stream.state`, `vcam.state`, `clip.saved`, `audio.mute`, `audio.volume`, `object.visible`, `workspace.changed`.
+Events arrive as `{"method": "event", "params": {"name", "data"}}`: `scene.program`, `scene.list`, `record.state`, `stream.state`, `vcam.state`, `clip.saved`, `audio.mute`, `audio.volume`, `object.visible`, `workspace.changed`, `source.tally` (a Phone camera layer's `source`, `program`, `staged`, `live`, on change).
 
 ## obs-websocket
 

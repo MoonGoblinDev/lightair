@@ -28,6 +28,7 @@ pub mod obs;
 #[cfg(target_os = "macos")]
 pub mod on_screen;
 pub mod outputs;
+pub mod phone_camera;
 pub mod player;
 pub mod plugins;
 pub mod pointer;

@@ -30,8 +30,20 @@ use super::StudioWindow;
 use crate::ui::tok;
 
 /// What phones are told this desktop answers (lightair-live's docs/05 §9).
-const FEATURES: &[&str] =
-    &["audio.levels", "preview.jpeg", "scene.thumbnails", "panic", "staging", "chat", "activity", "deck", "stream.info", "outputs", "issues"];
+const FEATURES: &[&str] = &[
+    "audio.levels",
+    "preview.jpeg",
+    "scene.thumbnails",
+    "panic",
+    "staging",
+    "chat",
+    "activity",
+    "deck",
+    "stream.info",
+    "outputs",
+    "issues",
+    "tally",
+];
 /// How often meters go out while a phone is connected.
 const METERS_EVERY: Duration = Duration::from_millis(50);
 const KEYCHAIN_SERVICE: &str = "Lightair remote TLS";
@@ -60,6 +72,8 @@ pub(crate) struct Phones {
     /// The issues phones were told about, and when outputs' health was last sent.
     told_issues: Vec<Value>,
     told_health: std::time::Instant,
+    /// Phone camera layers (`phone_camera`).
+    pub cameras: super::phone_camera::Cameras,
 }
 
 fn folder() -> PathBuf {
@@ -118,6 +132,31 @@ impl Phones {
         self.listener = None;
         self.mdns = None;
     }
+
+    /// The TLS identity's private key, once read (phone cameras' passphrases are made from it).
+    pub(super) fn identity_key(&self) -> Option<Vec<u8>> {
+        self.identity.as_ref().map(|i| i.key_der.clone())
+    }
+
+    /// Whether the phones' port is open.
+    pub(super) fn listening(&self) -> bool {
+        self.listener.is_some()
+    }
+
+    /// Whether a pairing code can be made now (the identity read and the port open).
+    pub(super) fn ready(&self) -> bool {
+        self.identity.is_some() && self.listener.is_some()
+    }
+
+    /// A camera pairing code for a layer (`c=<source>`): the offer and its link.
+    pub(super) fn camera_offer(&self, source: &str) -> Option<(Offer, String)> {
+        let identity = self.identity.as_ref()?;
+        let offer = self.pairing.offer_camera(source);
+        let addresses: Vec<String> = lightair_platform::net::local_ip().into_iter().collect();
+        let port = self.listener.as_ref().map_or(SECURE_PORT, |l| l.addr().port());
+        let link = self.pairing.link(&offer, &self.desktop, &addresses, port, &identity.fingerprint_b64());
+        Some((offer, link))
+    }
 }
 
 impl StudioWindow {
@@ -125,6 +164,8 @@ impl StudioWindow {
         // asking the person happens on the main thread, as a native alert; the phone's connection
         // waits for the answer (a minute at most)
         let (asks, mut queue) = futures_channel::mpsc::unbounded::<(DeviceRequest, std::sync::mpsc::Sender<bool>)>();
+        let cameras = super::phone_camera::Cameras::default();
+        let host = cameras.host.clone();
         cx.spawn_in(window, async move |_, cx| {
             use futures_util::StreamExt;
             while let Some((request, reply)) = queue.next().await {
@@ -132,7 +173,11 @@ impl StudioWindow {
                     Scope::Watch => "watch your show (it can't change anything)",
                     _ => "control Lightair",
                 };
-                let message = format!("Allow {} to {scope}?", request.name);
+                let message = if request.scope == Scope::Camera {
+                    super::phone_camera::consent_question(&host, &request.name, request.source.as_deref())
+                } else {
+                    format!("Allow {} to {scope}?", request.name)
+                };
                 let detail = format!(
                     "{} · {} · from {}. You can remove it any time in Settings › Remote API.",
                     if request.model.is_empty() { "A phone" } else { request.model.as_str() },
@@ -182,23 +227,27 @@ impl StudioWindow {
             sent: Default::default(),
             told_issues: vec![],
             told_health: std::time::Instant::now(),
+            cameras,
         }
     }
 
     /// Runs the phones' port while the remote API is on and a phone is paired or the pairing code
     /// shows; stops it otherwise.
     pub(super) fn sync_phones(&mut self, cx: &mut Context<Self>) {
+        // Phone camera layers want the port too
+        self.sync_phone_cameras(cx);
         let running = self.remote.running().is_some();
         let p = &mut self.remote.phones;
         if p.offer.as_ref().is_some_and(|(o, _)| !p.pairing.open() && o.expires_at > 0) {
             // the code expired
             p.offer = None;
         }
-        let wanted = running && (!p.pairing.devices().is_empty() || p.offer.is_some());
+        let wanted = running && (!p.pairing.devices().is_empty() || p.offer.is_some() || p.cameras.wanted());
         if !wanted {
             p.listener = None;
             p.mdns = None;
             p.meters = None;
+            self.sync_srt(cx);
             return;
         }
         let Some(identity) = p.identity.clone() else {
@@ -234,6 +283,8 @@ impl StudioWindow {
             let p = &mut self.remote.phones;
             match started {
                 Some(Ok(l)) => {
+                    // phone cameras' control channel (lightair-live's docs/05 §6)
+                    l.cameras(p.cameras.host.clone());
                     p.listener = Some(l);
                     p.error = None;
                 }
@@ -271,6 +322,7 @@ impl StudioWindow {
                 }
             }));
         }
+        self.sync_srt(cx);
     }
 
     /// `audio.levels` to the phones that asked (lightair-live's docs/05 §4.2): dBFS per channel,
@@ -401,7 +453,7 @@ impl StudioWindow {
         if let Some((offer, link)) = &p.offer
             && (offer.expires_at == 0 || p.pairing.open())
         {
-            group = group.child(pairing_code(link, offer));
+            group = group.child(pairing_code(link, offer, false));
         }
         for d in devices {
             let id = d.id.clone();
@@ -437,8 +489,9 @@ fn seen_ago(unix: u64) -> String {
     }
 }
 
-/// The QR code the phone scans, with where to find it in Lightair Live.
-fn pairing_code(link: &str, offer: &Offer) -> Div {
+/// The QR code the phone scans, with where to find it in Lightair Live (`camera`: for a Phone
+/// camera layer).
+pub(super) fn pairing_code(link: &str, offer: &Offer, camera: bool) -> Div {
     let body = div().flex().items_center().gap_4().px_3().py_3().rounded(px(8.)).bg(tok::bg_raised());
     if link.is_empty() {
         return body.child(
@@ -484,9 +537,11 @@ fn pairing_code(link: &str, offer: &Offer) -> Div {
             .gap_2()
             .flex_1()
             .child(div().text_size(px(13.)).child("Scan this with Lightair Live"))
-            .child(div().text_size(px(12.)).text_color(tok::text_secondary()).child(
-                "On the phone: Home › Pair a computer. Lightair asks you to allow the phone before it can do anything.",
-            ))
+            .child(div().text_size(px(12.)).text_color(tok::text_secondary()).child(if camera {
+                "On the phone: Camera, then scan this. Lightair asks you to allow the phone before it sends anything."
+            } else {
+                "On the phone: Home › Pair a computer. Lightair asks you to allow the phone before it can do anything."
+            }))
             .child(
                 div()
                     .text_size(px(11.))

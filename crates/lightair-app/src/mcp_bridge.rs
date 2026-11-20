@@ -2,6 +2,10 @@
 //! as programs (`claude mcp add lightair -- …/lightair mcp`). Each message goes to the running
 //! app's `/mcp` with the password from the Keychain; a tool call while Lightair is closed opens
 //! it first.
+//!
+//! `lightair call <method> [params]`: one remote API call (docs/remote-api.md) to the running app,
+//! with the Keychain's password, its result printed as JSON (for scripts: `lightair call
+//! scene.switch '{"scene": "Main"}'`). Exits 1 with the error on stderr.
 
 use std::io::{self, BufRead, Read, Write};
 use std::net::TcpStream;
@@ -9,12 +13,83 @@ use std::time::{Duration, Instant};
 
 /// Runs the bridge if that's what was asked for (the exit code).
 pub fn main_if_asked() -> Option<i32> {
-    (std::env::args().nth(1).as_deref() == Some("mcp")).then(run)
+    match std::env::args().nth(1).as_deref() {
+        Some("mcp") => Some(run()),
+        Some("call") => Some(call_once()),
+        _ => None,
+    }
+}
+
+/// `lightair call <method> [params]`.
+fn call_once() -> i32 {
+    let args: Vec<String> = std::env::args().skip(2).collect();
+    let Some(method) = args.first() else {
+        eprintln!("usage: lightair call <method> [params as JSON]");
+        return 2;
+    };
+    let params: serde_json::Value = match args.get(1).map(|p| serde_json::from_str(p)) {
+        None => serde_json::json!({}),
+        Some(Ok(p)) => p,
+        Some(Err(e)) => {
+            eprintln!("the params aren't JSON: {e}");
+            return 2;
+        }
+    };
+    let prefs = crate::prefs::load_from(&crate::prefs::path());
+    let port: u16 =
+        std::env::var("LIGHTAIR_REMOTE_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(prefs.remote.port);
+    let password = (prefs.remote.require_password || prefs.remote.lan).then(crate::secrets::remote_password).flatten();
+    match rpc(port, password.as_deref(), method, params) {
+        Ok(result) => {
+            println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
+            0
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            1
+        }
+    }
+}
+
+/// One JSON-RPC call over `/rpc` (a WebSocket): its result, or the error's message.
+fn rpc(
+    port: u16,
+    password: Option<&str>,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use tungstenite::client::IntoClientRequest;
+    let mut req = format!("ws://127.0.0.1:{port}/rpc").into_client_request().map_err(|e| e.to_string())?;
+    if let Some(p) = password
+        && let Ok(v) = format!("Bearer {p}").parse()
+    {
+        req.headers_mut().insert("Authorization", v);
+    }
+    let stream = TcpStream::connect(("127.0.0.1", port)).map_err(|e| format!("Lightair isn't running ({e})"))?;
+    stream.set_read_timeout(Some(Duration::from_secs(60))).map_err(|e| e.to_string())?;
+    let (mut ws, _) = tungstenite::client(req, stream).map_err(|e| e.to_string())?;
+    let msg = serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params});
+    ws.send(tungstenite::Message::text(msg.to_string())).map_err(|e| e.to_string())?;
+    loop {
+        let m = ws.read().map_err(|e| e.to_string())?;
+        let Ok(text) = m.to_text() else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { continue };
+        // (events may come first)
+        if v.get("id") != Some(&serde_json::json!(1)) {
+            continue;
+        }
+        let _ = ws.close(None);
+        if let Some(e) = v.get("error") {
+            return Err(e.get("message").and_then(|m| m.as_str()).unwrap_or("failed").to_string());
+        }
+        return Ok(v.get("result").cloned().unwrap_or(serde_json::Value::Null));
+    }
 }
 
 fn run() -> i32 {
     let prefs = crate::prefs::load_from(&crate::prefs::path());
-    let port: u16 = std::env::var("LIGHTAIR_REMOTE_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(prefs.remote.port);
+    let port: u16 =
+        std::env::var("LIGHTAIR_REMOTE_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(prefs.remote.port);
     let password = (prefs.remote.require_password || prefs.remote.lan).then(crate::secrets::remote_password).flatten();
     let stdin = io::stdin();
     let mut out = io::stdout();
@@ -26,11 +101,11 @@ fn run() -> i32 {
         let answer = match post(port, line.as_bytes(), password.as_deref()) {
             Ok(a) => a,
             Err(e) if refused(&e) => {
-                let is_call = serde_json::from_str::<serde_json::Value>(&line)
-                    .ok()
-                    .is_some_and(|m| m["method"] == "tools/call");
+                let is_call =
+                    serde_json::from_str::<serde_json::Value>(&line).ok().is_some_and(|m| m["method"] == "tools/call");
                 if is_call && prefs.remote.enabled && open_app(port) {
-                    post(port, line.as_bytes(), password.as_deref()).unwrap_or_else(|e| error_for(&line, &e.to_string()))
+                    post(port, line.as_bytes(), password.as_deref())
+                        .unwrap_or_else(|e| error_for(&line, &e.to_string()))
                 } else {
                     lightair_remote::mcp::answer_without_app(line.as_bytes())
                 }
@@ -78,7 +153,9 @@ fn open_app(port: u16) -> bool {
         }
     } else {
         // …/Lightair.app/Contents/MacOS/lightair
-        let Some(bundle) = exe.ancestors().nth(3).filter(|b| b.extension().is_some_and(|e| e == "app")) else { return false };
+        let Some(bundle) = exe.ancestors().nth(3).filter(|b| b.extension().is_some_and(|e| e == "app")) else {
+            return false;
+        };
         if std::process::Command::new("open").arg("-g").arg(bundle).status().is_err() {
             return false;
         }

@@ -23,6 +23,7 @@ lightair-inochi2d = { path = "crates/lightair-inochi2d" }
 lightair-preview = { path = "crates/lightair-preview" }
 lightair-ui = { path = "crates/lightair-ui" }
 lightair-web = { path = "crates/lightair-web" }
+lightair-phone-camera = { path = "crates/lightair-phone-camera" }
 
 # external
 # The crates every Lightair app shares, from lightair-core, pinned to one commit

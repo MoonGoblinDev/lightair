@@ -1,0 +1,18 @@
+[package]
+name = "lightair-phone-camera"
+description = "A phone as a camera layer: Lightair Live's SRT feed received and handed to libobs on this machine, and phones reached over USB (usbmuxd, AOA)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tracing.workspace = true
+parking_lot.workspace = true
+futures = "0.3"
+srt-tokio = "0.4.4"
+srt-protocol = "0.4.4"
+tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "macros", "sync"] }
+
+[dev-dependencies]
+bytes = "1"

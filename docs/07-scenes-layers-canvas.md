@@ -34,7 +34,7 @@ Grouped as they appear in the **Add Layer** popover.
 | Layer | Key settings |
 |---|---|
 | **Camera** | Device, resolution, FPS, pixel format, colour space/range, alternate backend, device controls (exposure, focus, white balance, zoom where supported), Continuity Camera options (Center Stage, Portrait, Studio Light), **Lightair Effect Stack** |
-| **Phone camera** | Pair a phone via QR code (companion app); Wi-Fi or USB; lens selection, resolution, FPS, phone mic as track; low-latency SRT transport |
+| **Phone camera** | Pair a phone via QR code (companion app); Wi-Fi or USB; lens selection, resolution, FPS, phone mic as track; low-latency SRT transport. *As built: see [Phone camera](#phone-camera-as-built) below* |
 | **Capture card** | Same as Camera, plus audio channel mapping and input format detection |
 | **NDI** | Source picker on the LAN, bandwidth (full/low), audio |
 | **Network stream** | SRT (listener/caller), RTMP (local ingest server), RTSP, WHEP; latency and reconnect options |
@@ -204,3 +204,49 @@ Matching layers between two scenes is what makes Move feel magical, so it's dete
 3. Then explicit **match rules** (Inspector → Transition → "Match this layer with…").
 
 In the Inspector's transition preview, matched pairs are shown as lines between the two scene thumbnails. Unmatched layers use the "unmatched" behaviour. Crop, corner radius, opacity and effect parameters interpolate too, so a circle camera can grow into a full-frame camera.
+
+## Phone camera, as built
+
+A phone running Lightair Live's Camera mode is a layer (LY-16; the protocol is lightair-live's
+docs/05 §6). Add Object › Capture › **Phone camera** adds it with a mixer track for the phone's
+microphone and shows its pairing code.
+
+- **Inspector:** what it's doing ("Live from Sam's iPhone · 11.8 Mb/s", "connected, waiting for
+  its picture", "Waiting for Sam's iPhone"), the phone's health once a second (battery,
+  thermal state, its bitrate, round trip, dropped data, screen off; warm or low shows amber), the
+  pairing code (scope `camera`, `c=<source id>`) or the phones paired to the layer with
+  **Forget**, the picture asked for (720p, 1080p, 1080p60, 4K; H.264 or HEVC; 6, 12 or 20 Mb/s;
+  orientation as held, landscape or portrait), the lens (from the phone's `hello`), and while
+  connected zoom (1×, 2×, 3×, 5×), focus, exposure and white balance auto or locked, and the
+  torch. The picture's settings are the source's (undoable); zoom and the rest are sent to the
+  phone, and its `state` shows back.
+- **Control channel:** lightair-remote's `CameraHost` on the phones' TLS port (`shell/phone_camera.rs`).
+  On connecting the phone gets `configure`, `tally` and `media`; a changed setting sends
+  `configure` again, and a changed codec or size also starts a new decoder and asks for a
+  keyframe. The consent alert names the layer: "Allow Sam's iPhone to be the camera for "Desk"?"
+  The phones' port runs while a Phone camera layer exists (as well as while a phone is paired).
+- **Pictures:** phones send MPEG-TS over SRT (srt-tokio, as the phones use) to **UDP 4461**, one
+  port for every phone camera; the stream id (`#!::r=<source id>,m=publish`) says which layer, and
+  each layer has its own AES-128 passphrase (made once per run). libobs's FFmpeg has no SRT, so
+  `lightair-phone-camera` hands each datagram to `127.0.0.1:<port>`, where a private
+  `ffmpeg_source` (UDP, `mpegts`, no buffering, hardware decoding) inside the engine's
+  `lightair_phone_camera` source decodes it. A new stream from the phone gets a new decoder, so
+  nothing of the last one is kept; the phone is asked for a keyframe at once and again 0.6 s
+  later.
+- **Placeholder and recovery:** with nothing from the phone for 0.7 s the layer shows a dark slate
+  with one line ("Waiting for Sam's iPhone"), at the size it had; when the phone comes back
+  (it reconnects by itself) pictures return without anyone touching the desktop.
+- **Rotation:** the phone encodes as the sensor sees and reports `rotation`; the layer turns the
+  picture in quarter turns and takes the turned size.
+- **Sound:** the decoder's audio is the layer's, so the phone's microphone is the layer's track.
+  The phone's clock sync isn't used to place its pictures yet: they play as they arrive, and the
+  track's sync offset lines the microphone up with other sources.
+- **Tally** (MC-10): `program` (shown, visible, in the scene on air), `staged` (in the scene cued
+  in studio mode), `live` (program while streaming or recording); sent to the phone and as the
+  `source.tally` event on change.
+- **Remote API:** `object.add {kind: "phone_camera"}`, `camera.pair`, `camera.status`,
+  `camera.control` (docs/remote-api.md).
+- **Tests:** `cargo test -p lightair-phone-camera` (srt-tokio's caller through the listener to
+  the decoder's port; wrong passphrase and unknown layer refused; a reconnect takes over), and
+  `lightair-engine`'s `phone_camera` test (an MPEG-TS stream from ffmpeg decoded by real libobs,
+  turned, counted gone, decoded again by a new decoder).
