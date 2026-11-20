@@ -1230,8 +1230,14 @@ impl Studio {
 
     /// Starts every enabled destination.
     pub fn go_live(&mut self, cx: &mut Context<Self>) {
+        self.go_live_to(None, cx);
+    }
+
+    /// Starts every enabled destination, or just `only` (a destination that failed, again).
+    pub fn go_live_to(&mut self, only: Option<Id>, cx: &mut Context<Self>) {
         let workspace = self.workspace().clone();
-        let enabled: Vec<_> = workspace.outputs.destinations.iter().filter(|d| d.enabled).cloned().collect();
+        let enabled: Vec<_> =
+            workspace.outputs.destinations.iter().filter(|d| d.enabled && only.is_none_or(|o| o == d.id)).cloned().collect();
         if enabled.is_empty() {
             self.issue = Some("Add a destination in Outputs to go live.".into());
             cx.notify();

@@ -41,13 +41,13 @@ internet MC-17, remote control of a phone's Studio MS-26) are listed last and no
 26. ✅ `panic.*`, event `panic.state`
 27. ✅ `deck.get` / `deck.set`, event `deck.changed`
 28. ✅ `chat.history`, `chat.send`, events `chat.message`, `chat.removed`
-29. ⬜ `chat.moderate` (delete, timeout, ban, unban where the platform allows)
+29. ✅ `chat.moderate` (delete, timeout, ban, as the Chat panel does them; `unban` answers that no platform's path offers it yet; timeouts 600 s unless given)
 30. ✅ `activity.history`, event `activity.item`
-31. ⬜ `activity.replay`
+31. ✅ `activity.replay` (the Alerts widget's replay)
 32. ✅ `stream.info.get` / `set`
-33. ⬜ `stream.categories`
+33. ✅ `stream.categories` (Twitch and Kick by their own search, YouTube's fixed list; lightair-core's `stream_info::categories`; watch scope may call it)
 34. ✅ `issues.list`, events `issue.raised` / `issue.cleared`
-35. ⬜ Fixes for issues (`fixes` offered, `issues.fix` runs them)
+35. ✅ Fixes for issues (`fixes` offered, `issues.fix` runs them): a failed destination offers try again and stop, a reconnecting one stop; other issues offer none (they need the computer)
 36. ✅ Event `source.tally` (MC-10)
 
 ## Phase 2 · Camera (05 §6)
@@ -83,4 +83,4 @@ remote control of a phone's Studio (MS-26).
 
 ## Count
 
-44 of 53 done.
+48 of 53 done.

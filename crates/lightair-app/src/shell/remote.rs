@@ -313,6 +313,13 @@ impl StudioWindow {
             if call.method == "stream.info.get" {
                 return super::phones::stream_info(&chat, &call.params);
             }
+            if call.method == "stream.categories" {
+                return super::phones::stream_categories(&call.params);
+            }
+            // moderating waits on the platform (a hidden signed-in page for Twitch and Kick)
+            if call.method == "chat.moderate" {
+                return super::phones::chat_moderate(&chat, &call.params);
+            }
             // phones' name for `stream.edit`
             let method = if call.method == "stream.info.set" { "stream.edit" } else { call.method.as_str() };
             if let Some(out) = lightair_live::integrations::call(method, &call.params) {

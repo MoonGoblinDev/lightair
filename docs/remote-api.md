@@ -87,3 +87,8 @@ The phones' methods and events are lightair-live's docs/05 §4.2; as built on th
 - `clip.saved` carries `path` and, once the Library has the clip (up to 4 s later), its `id`, `duration_ms`, `formats` and `thumbnail {mime, data}` (a 240 px JPEG).
 - `scene.thumbnail {scene, version}`: a scene's picture may have changed (the scene on air every 5 s, others when their objects change; one per scene per 5 s at most); phones fetch `scene.thumbnails` for those they show.
 
+- `chat.moderate {message, action: delete|timeout|ban|unban, duration_s?, reason?}`: `message` is the chat message's `id` (or its platform id). Done as the account signed in to that platform in Lightair, the same path as the Chat panel's buttons (Twitch and Kick through their own signed-in pages; YouTube where signed in officially). Timeouts last `duration_s` (600 by default, at most two weeks). `unban` answers a state error: no platform's path here offers it yet. Answered on the server's thread.
+- `activity.replay {item}`: plays the activity item's alert again (the Alerts widget's replay), by `id` or platform id.
+- `stream.categories {platform, query}` → `[{id, name, image?}]`, at most 20: Twitch's and Kick's own category search (Kick's through a kick.com page), YouTube's fixed list filtered by name. A watch-scope device may call it.
+- `issues.list` items carry `fixes: [{id, label}]` where there's one to run: a destination that failed offers `retry` (start that destination again) and `stop`; one reconnecting offers `stop`. `issues.fix {issue, fix}` runs it, as the button would.
+- `session.hello`'s features add `chat.moderate`, `activity.replay`, `stream.categories` and `issues.fix`.

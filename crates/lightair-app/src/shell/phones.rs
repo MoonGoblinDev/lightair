@@ -43,6 +43,10 @@ const FEATURES: &[&str] = &[
     "outputs",
     "issues",
     "tally",
+    "chat.moderate",
+    "activity.replay",
+    "stream.categories",
+    "issues.fix",
 ];
 /// How often meters go out while a phone is connected.
 const METERS_EVERY: Duration = Duration::from_millis(50);
@@ -946,6 +950,53 @@ pub(crate) fn stream_info(hub: &lightair_live::Hub, params: &Value) -> lightair_
     Ok(json!(out))
 }
 
+/// `stream.categories {platform, query}`: categories to choose from before `stream.info.set`
+/// (on the server's thread: it waits on the platform).
+pub(crate) fn stream_categories(params: &Value) -> lightair_remote::Reply {
+    use lightair_remote::ApiError;
+    let platform = params.get("platform").and_then(Value::as_str).ok_or_else(|| ApiError::invalid("platform is required"))?;
+    let query = params.get("query").and_then(Value::as_str).unwrap_or("");
+    lightair_live::stream_info::categories(platform, query).map(|c| json!(c)).map_err(ApiError::state)
+}
+
+/// `chat.moderate {message, action, duration_s?, reason?}`: deletes a chat message, or times out
+/// or bans its sender, as the account signed in to that platform in Lightair (as the Chat panel
+/// does). `message` is the message's `id` (or its platform id). Timeouts last `duration_s`,
+/// 600 by default. Unbanning isn't offered by any platform's path here yet: it says so.
+pub(crate) fn chat_moderate(hub: &lightair_live::Hub, params: &Value) -> lightair_remote::Reply {
+    use lightair_live::moderate::{Action, act, can};
+    use lightair_remote::ApiError;
+    let action = params.get("action").and_then(Value::as_str).ok_or_else(|| ApiError::invalid("action is required"))?;
+    let e = find_event(hub, params.get("message")).ok_or_else(|| ApiError::not_found("no such chat message"))?;
+    if !can(&e.platform) {
+        return Err(ApiError::state(format!("moderating {} chat from Lightair isn't supported", e.platform)));
+    }
+    let reason = params.get("reason").and_then(Value::as_str).unwrap_or("");
+    let user = e.user.as_ref();
+    let (user_id, login) = (user.map_or("", |u| u.id.as_str()), user.map_or("", |u| u.login.as_str()));
+    let native = e.native_id.as_deref().unwrap_or("");
+    let a = match action {
+        "delete" if !native.is_empty() => Action::Delete { message_id: native },
+        "delete" => return Err(ApiError::state("this message can't be deleted (the platform gave it no id)")),
+        "timeout" | "ban" if user_id.is_empty() => return Err(ApiError::state("this message has no sender to act on")),
+        "timeout" => {
+            let seconds = params.get("duration_s").and_then(Value::as_u64).unwrap_or(600).clamp(1, 1_209_600);
+            Action::Timeout { user_id, login, seconds, reason }
+        }
+        "ban" => Action::Ban { user_id, login, reason },
+        "unban" => return Err(ApiError::state("unban them on the platform: Lightair can't yet")),
+        other => return Err(ApiError::invalid(format!("unknown action {other:?}"))),
+    };
+    act(&e.platform, &e.channel, a).map(|_| json!({})).map_err(ApiError::state)
+}
+
+/// A chat or activity event by its `id` (a number) or its platform id (a string).
+pub(crate) fn find_event(hub: &lightair_live::Hub, id: Option<&Value>) -> Option<lightair_live::event::ChatEvent> {
+    let id = id?;
+    let (n, native) = (id.as_u64(), id.as_str());
+    hub.history().into_iter().rev().find(|e| Some(e.id) == n || native.is_some_and(|s| e.native_id.as_deref() == Some(s) || s.parse().ok() == Some(e.id)))
+}
+
 impl StudioWindow {
     fn staging_json(&self, cx: &App) -> Value {
         let studio = self.studio.read(cx);
@@ -1090,7 +1141,33 @@ impl StudioWindow {
             }
             "outputs.list" => Ok(self.outputs_json(cx)),
             "issues.list" => Ok(json!({"issues": self.issues_json(cx)})),
-            "issues.fix" => Err(ApiError::state("This issue has no fix to run from a phone; fix it on the computer.")),
+            "issues.fix" => (|| {
+                let issue = p.get("issue").and_then(Value::as_str).unwrap_or("");
+                let fix = p.get("fix").and_then(Value::as_str).unwrap_or("");
+                // a destination's: try again, or stop it
+                let id = issue
+                    .strip_prefix("output-")
+                    .and_then(|i| serde_json::from_value::<lightair_model::Id>(json!(i)).ok())
+                    .ok_or_else(|| ApiError::state("This issue has no fix to run from a phone; fix it on the computer."))?;
+                match fix {
+                    "retry" => {
+                        self.studio.update(cx, |s, cx| s.go_live_to(Some(id), cx));
+                        Ok(json!({"done": true}))
+                    }
+                    "stop" => {
+                        self.studio.read(cx).engine().post(move |s| s.outputs.stop_stream(id));
+                        Ok(json!({"done": true}))
+                    }
+                    other => Err(ApiError::invalid(format!("no fix {other} for this issue"))),
+                }
+            })(),
+            "activity.replay" => (|| {
+                let studio = self.studio.read(cx);
+                let event = find_event(&studio.chat, p.get("item")).ok_or_else(|| ApiError::not_found("no such activity item"))?;
+                let widgets = studio.widgets.clone().ok_or_else(|| ApiError::state("Alerts aren't running."))?;
+                widgets.replay(&event);
+                Ok(json!({"replayed": true}))
+            })(),
             "activity.history" => {
                 let limit = p.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize;
                 let items: Vec<_> = self.studio.read(cx).chat.history().into_iter().filter(|e| is_activity(&e.kind)).collect();
@@ -1192,23 +1269,36 @@ impl StudioWindow {
         let issue = |id: String, severity: &str, title: String, detail: String| {
             json!({"id": id, "severity": severity, "title": title, "detail": detail, "fixes": []})
         };
+        // what a phone may do about a destination's trouble (issues.fix)
+        let fixes = |state: &str| match state {
+            "error" => json!([{"id": "retry", "label": "Try again"}, {"id": "stop", "label": "Stop it"}]),
+            _ => json!([{"id": "stop", "label": "Stop it"}]),
+        };
         let mut out = vec![];
         let outputs = self.outputs_json(cx);
         for d in outputs["destinations"].as_array().into_iter().flatten() {
             let name = d["name"].as_str().unwrap_or("A destination");
             match d["state"].as_str() {
-                Some("error") => out.push(issue(
-                    format!("output-{}", d["id"]),
-                    "error",
-                    format!("{name} stopped"),
-                    d["message"].as_str().unwrap_or("The stream to it ended with an error.").to_owned(),
-                )),
-                Some("reconnecting") => out.push(issue(
-                    format!("output-{}", d["id"]),
-                    "warn",
-                    format!("{name} is reconnecting"),
-                    "The connection dropped; Lightair is trying again.".into(),
-                )),
+                Some("error") => out.push({
+                    let mut i = issue(
+                        format!("output-{}", d["id"].as_str().unwrap_or("")),
+                        "error",
+                        format!("{name} stopped"),
+                        d["message"].as_str().unwrap_or("The stream to it ended with an error.").to_owned(),
+                    );
+                    i["fixes"] = fixes("error");
+                    i
+                }),
+                Some("reconnecting") => out.push({
+                    let mut i = issue(
+                        format!("output-{}", d["id"].as_str().unwrap_or("")),
+                        "warn",
+                        format!("{name} is reconnecting"),
+                        "The connection dropped; Lightair is trying again.".into(),
+                    );
+                    i["fixes"] = fixes("reconnecting");
+                    i
+                }),
                 Some("live") if d["dropped_pct"].as_f64().unwrap_or(0.0) >= 1.0 => out.push(issue(
                     format!("dropped-{}", d["id"]),
                     "warn",
