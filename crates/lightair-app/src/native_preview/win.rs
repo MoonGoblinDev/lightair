@@ -524,6 +524,7 @@ impl Glyphs {
                     background: None,
                     outline: None,
                     width: 64.0 * scale,
+                    font: None,
                 };
                 let r = lightair_render::generate::text(&style);
                 size = (size.0.max(r.size.0 as f32), size.1.max(r.size.1 as f32));
