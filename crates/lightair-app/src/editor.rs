@@ -1007,88 +1007,24 @@ impl Editor {
             Put::At(t) => Some(t),
             Put::End | Put::Keep => None,
         };
+        // a studio_take's look lives in the workspace (the screen recording look)
+        let looks = ws.as_ref().map(|ws| ws.join("recordings").join("edits"));
         self.change(
-            |s| {
-                // made layers (text, colours) last as long as the longest part
-                let len = parts.iter().filter_map(|p| p.media.as_ref()).map(|m| m.duration_ms).max().unwrap_or(5_000);
-                // the parts of one thing (a studio_take's picture, layers and sounds) start together
-                let mut start: Option<u64> = None;
-                let mut pictures = 0;
-                let mut placed_all: Vec<Id> = Vec::new();
-                for mut part in parts {
-                    // a studio_take's look lives in the workspace (the screen recording look)
-                    if let Some(m) = &mut part.media
-                        && m.studio_take.is_some()
-                        && let (Some(ws), Some(item)) = (&ws, m.item)
-                    {
-                        m.look = Some(ws.join("recordings").join("edits").join(format!("{item}.json")));
-                    }
-                    let video = part.media.as_ref().is_some_and(|m| m.kind == MediaKind::Video);
-                    let unplaced = part.place.is_none();
-                    let quiet = part.mute_own_sound;
-                    let placed = match (put, start) {
-                        (Put::Keep, _) => {
-                            if let Some(m) = part.media {
-                                s.add_media(m);
+            |s| match put {
+                // the media kept, nothing placed
+                Put::Keep => {
+                    for mut part in parts {
+                        if let Some(mut m) = part.media.take() {
+                            if let (Some(dir), Some(item)) = (&looks, m.item.filter(|_| m.studio_take.is_some())) {
+                                m.look = Some(dir.join(format!("{item}.json")));
                             }
-                            None
-                        }
-                        (_, Some(t)) => s.place_part(part, t, len, None),
-                        // the first: where it was dropped (or the main track's end)
-                        (_, None) => match (part.media.take(), at) {
-                            (Some(m), at) => {
-                                let id = s.add_media(m);
-                                let c = match at {
-                                    Some(t) => s.place(id, t, track),
-                                    None => s.append(id),
-                                };
-                                if let (Some(c), Some(p)) = (c, part.place) {
-                                    let tr = s.transform_for(s.media(id), None, p);
-                                    if let Some(cl) = s.clip_mut(c) {
-                                        cl.transform = tr;
-                                    }
-                                }
-                                c
-                            }
-                            (None, at) => s.place_part(part, at.unwrap_or(0), len, track),
-                        },
-                    };
-                    let Some(c) = placed else { continue };
-                    if start.is_none() {
-                        start = s.clip(c).map(|c| c.start_ms);
-                    }
-                    placed_all.push(c);
-                    // a video's sound on an audio track of its own, linked (as Premiere has it)
-                    // (one per audio track of its file)
-                    let sounds = s.detach_sounds(c);
-                    if quiet {
-                        for a in &sounds {
-                            if let Some(a) = s.clip_mut(*a) {
-                                a.muted = true;
-                            }
-                        }
-                    }
-                    placed_all.extend(sounds);
-                    // a studio_take without a scene: its second picture (the camera beside the
-                    // screen) small, bottom right
-                    if video && unplaced {
-                        pictures += 1;
-                        if pictures > 1 {
-                            let (w, h) = (s.size.0 as f32, s.size.1 as f32);
-                            if let Some(cl) = s.clip_mut(c) {
-                                cl.transform = Transform { x: w * 0.34, y: h * 0.31, scale: 0.25, ..Transform::default() };
-                            }
+                            s.add_media(m);
                         }
                     }
                 }
-                // the parts of one thing go together (linkage)
-                if placed_all.len() > 1 {
-                    let link = Id::new();
-                    for c in &placed_all {
-                        if let Some(c) = s.clip_mut(*c) {
-                            c.link = Some(link);
-                        }
-                    }
+                // the parts placed together, sounds apart, linked (lightair-render's add_parts)
+                _ => {
+                    s.add_parts(parts, at, track, looks.as_deref());
                 }
             },
             cx,
