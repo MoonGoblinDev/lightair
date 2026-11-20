@@ -7,6 +7,7 @@ mod crop_view;
 mod effects;
 mod face_tracking;
 mod fx;
+mod golden_scene;
 mod green_key;
 mod hierarchy;
 mod key_colour;
