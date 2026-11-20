@@ -11,8 +11,8 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 glam = "0.30"
-mocari.workspace = true
-inox2d.workspace = true
+lightair-moc3.workspace = true
+lightair-inochi2d.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 

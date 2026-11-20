@@ -1,5 +1,5 @@
 //! Live2D models (Cubism 3 to 5: `.model3.json`, `.moc3`, textures, physics, pose, expressions)
-//! on mocari, a pure Rust runtime (third_party/mocari, Lightair's fork): no Cubism Core, no
+//! on lightair-moc3, the built-in pure Rust runtime (crates/lightair-moc3): no Cubism Core, no
 //! Live2D SDK. A [`Face`] sets the model's standard parameters each frame, then its expression,
 //! physics and pose are applied and its meshes rebuilt, ready to draw.
 //!
@@ -12,14 +12,14 @@
 use std::path::Path;
 
 use glam::Vec2;
-use mocari::assets::{DecodedTexture, RuntimeModel, load_model_runtime};
-use mocari::expression::load_expression;
-use mocari::json::Expression3;
-use mocari::json::Motion3;
-use mocari::moc3::Moc3DrawableMesh;
-use mocari::motion::load_motion;
-use mocari::render::common::{DrawableInfo, draw_order_indices};
-use mocari::{ExpressionManager, MotionPlayer};
+use lightair_moc3::assets::{DecodedTexture, RuntimeModel, load_model_runtime};
+use lightair_moc3::expression::load_expression;
+use lightair_moc3::json::Expression3;
+use lightair_moc3::json::Motion3;
+use lightair_moc3::moc3::Moc3DrawableMesh;
+use lightair_moc3::motion::load_motion;
+use lightair_moc3::render::common::{DrawableInfo, draw_order_indices};
+use lightair_moc3::{ExpressionManager, MotionPlayer};
 
 use crate::Error;
 use crate::rig::Face;

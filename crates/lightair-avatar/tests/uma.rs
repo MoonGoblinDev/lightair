@@ -133,10 +133,10 @@ fn save(name: &str, rgba: &[u8], w: usize, h: usize) {
 }
 
 /// LIGHTAIR_UMA_LIVE2D (a .model3.json, the model the .uma came from): the same poses drawn from
-/// the Live2D model by mocari, to compare with.
+/// the Live2D model by lightair-moc3, to compare with.
 fn draw_live2d(faces: &[(&str, Face)], w: usize, h: usize) {
     use lightair_avatar::live2d;
-    use lightair_avatar::mocari::moc3::Moc3DrawableBlendMode;
+    use lightair_avatar::lightair_moc3::moc3::Moc3DrawableBlendMode;
     let Some(path) = std::env::var_os("LIGHTAIR_UMA_LIVE2D").map(PathBuf::from) else { return };
     let mut p = live2d::Puppet::load(&path).unwrap();
     let textures: Vec<Texture> = p

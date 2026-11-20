@@ -1,8 +1,8 @@
 //! Lightair's avatars (docs/plans/avatars.md): character models that move with a face.
 //!
 //! - [`vrm`]: VRM 0.x and 1.0 models.
-//! - [`live2d`]: Live2D models (on mocari, Lightair's fork of a pure Rust runtime).
-//! - [`inochi2d`]: Inochi2D puppets (on Inox2D, Lightair's fork).
+//! - [`live2d`]: Live2D models (on lightair-moc3, the built-in .moc3 runtime).
+//! - [`inochi2d`]: Inochi2D puppets (on lightair-inochi2d, the built-in puppet runtime).
 //! - [`uma`]: Umamo puppets (`.uma`), evaluated the way Umamo's runtime does.
 //! - [`rig`]: from face landmarks to the head's turn, eyes, gaze, brows and mouth.
 //! - [`pose`]: a model posed by a face: bones, expressions, look-at, spring bones, then
@@ -29,8 +29,8 @@ pub enum Error {
 }
 
 pub use body::{BodyFrame, BodyMode, BodyState};
-/// The Live2D runtime (Lightair's fork of mocari), for drawing its meshes.
-pub use mocari;
+/// The built-in .moc3 runtime, for drawing its meshes.
+pub use lightair_moc3;
 pub use pose::{Avatar, Controls, Framing};
 pub use rig::{Calibration, Face, Landmarks, Measures, Smoother};
 pub use vrm::Model;

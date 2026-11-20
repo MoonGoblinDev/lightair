@@ -1,7 +1,7 @@
 fn main() {
     let path = std::env::args().nth(1).expect("path");
     let data = std::fs::read(&path).unwrap();
-    let model = inox2d::formats::inp::parse_inp(data.as_slice()).unwrap();
+    let model = lightair_inochi2d::formats::inp::parse_inp(data.as_slice()).unwrap();
     println!("{}", model.puppet.meta);
     let mut ps: Vec<_> = model.puppet.params().values().collect();
     ps.sort_by_key(|p| p.name.clone());

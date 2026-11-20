@@ -1,5 +1,5 @@
-//! Inochi2D puppets (`.inp`, `.inx`) on Inox2D (third_party/inox2d, Lightair's fork), and
-//! nijilive's (nijigenerate's; PathDeformers, DynamicComposites, Masks). A [`Face`] sets the
+//! Inochi2D puppets (`.inp`, `.inx`) on lightair-inochi2d (crates/lightair-inochi2d, built in
+//! from Inox2D), and nijilive's (nijigenerate's; PathDeformers, DynamicComposites, Masks). A [`Face`] sets the
 //! puppet's parameters each frame, then its physics run and its parts are posed; the result is a
 //! list of draw operations ([`Op`]) in Inochi2D's order (masks, composites, blend modes), with
 //! each part's vertices ready to draw (model units, y up).
@@ -15,11 +15,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
 use glam::{Mat4, Vec2, Vec3};
-use inox2d::model::Model;
-use inox2d::node::InoxNodeUuid;
-use inox2d::node::components::{BlendMode, Mask, MaskMode, Masks};
-use inox2d::node::drawables::{CompositeComponents, DynamicCompositeComponents, TexturedMeshComponents};
-use inox2d::render::{
+use lightair_inochi2d::model::Model;
+use lightair_inochi2d::node::InoxNodeUuid;
+use lightair_inochi2d::node::components::{BlendMode, Mask, MaskMode, Masks};
+use lightair_inochi2d::node::drawables::{CompositeComponents, DynamicCompositeComponents, TexturedMeshComponents};
+use lightair_inochi2d::render::{
     CompositeRenderCtx, InoxRenderer, InoxRendererExt, MeshTexture, TexturedMeshRenderCtx, VertexBuffers,
 };
 
@@ -521,7 +521,7 @@ pub struct Puppet {
     pub mapping: Mapping,
     time: f32,
     first: bool,
-    /// Set when Inox2D failed on this puppet: it stays as it was.
+    /// Set when the puppet runtime failed on this puppet: it stays as it was.
     broken: bool,
     /// The puppet at rest: its lowest and highest corner (model units, y up).
     pub bounds: (Vec2, Vec2),
@@ -529,7 +529,7 @@ pub struct Puppet {
     pub centre_x: f32,
 }
 
-/// Reads Inox2D's draw calls into [`Op`]s and the parts' posed vertices.
+/// Reads the puppet runtime's draw calls into [`Op`]s and the parts' posed vertices.
 struct Recorder<'a> {
     buffers: &'a VertexBuffers,
     part_of: &'a HashMap<u32, usize>,
@@ -563,7 +563,7 @@ impl Recorder<'_> {
     }
 }
 
-fn look(b: &inox2d::node::components::Blending) -> Look {
+fn look(b: &lightair_inochi2d::node::components::Blending) -> Look {
     let c = |v: Vec3| -> [f32; 3] { v.clamp(Vec3::ZERO, Vec3::ONE).to_array() };
     Look { blend: b.mode.into(), opacity: b.opacity.clamp(0.0, 1.0), tint: c(b.tint), screen: c(b.screen_tint) }
 }
@@ -683,7 +683,7 @@ fn failed(e: Box<dyn std::any::Any + Send>) -> String {
     e.downcast_ref::<&str>()
         .map(|s| s.to_string())
         .or_else(|| e.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "Inox2D failed".into())
+        .unwrap_or_else(|| "the puppet runtime failed".into())
 }
 
 impl Puppet {
@@ -694,9 +694,9 @@ impl Puppet {
     }
 
     fn from_bytes(data: &[u8]) -> Result<Puppet, Error> {
-        let mut model = inox2d::formats::inp::parse_inp(data)
+        let mut model = lightair_inochi2d::formats::inp::parse_inp(data)
             .map_err(|e| Error::Other(e.to_string().lines().map(str::trim).collect::<Vec<_>>().join(" ")))?;
-        let mut textures: Vec<Texture> = inox2d::texture::decode_model_textures(model.textures.iter())
+        let mut textures: Vec<Texture> = lightair_inochi2d::texture::decode_model_textures(model.textures.iter())
             .into_iter()
             // (Inochi2D keeps its textures premultiplied already: every semi-transparent pixel of
             // its sample puppets has its colour at most its alpha)
@@ -711,7 +711,7 @@ impl Puppet {
         puppet.init_rendering();
         puppet.init_params();
         puppet.init_physics();
-        // the parts, from Inox2D's shared buffers
+        // the parts, from the puppet runtime's shared buffers
         let mut parts = Vec::new();
         let mut part_of = HashMap::new();
         {

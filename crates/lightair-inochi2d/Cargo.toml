@@ -1,0 +1,24 @@
+[package]
+name = "lightair-inochi2d"
+description = "Lightair's built-in runtime for Inochi2D and nijilive puppets (from Inox2D, BSD-2-Clause; see NOTICE.md)"
+authors = ["Speykious"]
+version = "0.3.0"
+edition = "2021"
+publish = false
+license = "BSD-2-Clause"
+
+[dependencies]
+glam = "0.30"
+image = { version = "0.25.2", default-features = false, features = [
+	"png",
+	"jpeg",
+] }
+indextree = "4.6.0"
+json = "0.12.4"
+owo-colors = { version = "4.0.0", optional = true }
+simple-tga-reader = "0.1.0"
+thiserror = "1.0.39"
+tracing = "0.1.37"
+
+[features]
+owo = ["dep:owo-colors"]

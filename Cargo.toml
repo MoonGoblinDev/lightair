@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]
+# Built-in third-party code: kept close to upstream, so it builds like a dependency (optimised, not
+# linted or tested with the workspace).
+exclude = ["crates/lightair-moc3", "crates/lightair-inochi2d"]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,10 +16,10 @@ publish = false
 libobs-sys = { path = "crates/libobs-sys" }
 lightair-engine = { path = "crates/lightair-engine" }
 lightair-avatar = { path = "crates/lightair-avatar" }
-# Live2D models: mocari, a pure Rust runtime (Lightair's fork, third_party/mocari).
-mocari = { path = "third_party/mocari" }
-# Inochi2D puppets: Inox2D (Lightair's fork, third_party/inox2d).
-inox2d = { path = "third_party/inox2d/inox2d" }
+# The avatar runtimes, built in from upstream projects (each crate's NOTICE.md): .moc3 models,
+# and Inochi2D and nijilive puppets.
+lightair-moc3 = { path = "crates/lightair-moc3" }
+lightair-inochi2d = { path = "crates/lightair-inochi2d" }
 lightair-preview = { path = "crates/lightair-preview" }
 lightair-ui = { path = "crates/lightair-ui" }
 lightair-web = { path = "crates/lightair-web" }

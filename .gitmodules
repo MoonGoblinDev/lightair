@@ -6,9 +6,3 @@
 	path = third_party/simde
 	url = https://github.com/simd-everywhere/simde.git
 	shallow = true
-[submodule "third_party/mocari"]
-	path = third_party/mocari
-	url = https://github.com/MoonGoblinDev/Mocari.git
-[submodule "third_party/inox2d"]
-	path = third_party/inox2d
-	url = https://github.com/MoonGoblinDev/inox2d.git

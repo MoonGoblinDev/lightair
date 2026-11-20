@@ -8,7 +8,7 @@ use std::ffi::{CStr, CString, c_char, c_void};
 
 use lightair_avatar::Framing;
 use lightair_avatar::live2d::Puppet;
-use lightair_avatar::mocari::moc3::Moc3DrawableBlendMode;
+use lightair_avatar::lightair_moc3::moc3::Moc3DrawableBlendMode;
 
 use crate::sys;
 
