@@ -1486,7 +1486,7 @@ impl StudioWindow {
             (true, None) => "This copy of Lightair has no plugin to install (it's packed into the app when built).".to_string(),
             (true, Some(_)) => format!("Keys for scenes, going live, recording, clips, automations and mute, lit with what's on. Its key settings take this port ({port}){}.", if asks { " and the password" } else { "" }),
         };
-        page.child(
+        page.child(self.phones_group(cx)).child(
             group("Connect")
                 .child(row(
                     "Stream Deck",
@@ -1610,7 +1610,7 @@ fn pages() -> Div {
 }
 
 /// A titled card of rows.
-fn group(title: &str) -> Div {
+pub(super) fn group(title: &str) -> Div {
     div().flex().flex_col().gap_1p5().child(
         div()
             .text_size(px(11.))
@@ -1621,7 +1621,7 @@ fn group(title: &str) -> Div {
 }
 
 /// A setting: its name (and what it does) on the left, its control on the right.
-fn row(label: &str, detail: Option<&str>, control: impl IntoElement) -> Div {
+pub(super) fn row(label: &str, detail: Option<&str>, control: impl IntoElement) -> Div {
     div()
         .flex()
         .items_center()

@@ -43,6 +43,8 @@ pub(crate) struct Remote {
     /// saved it), which mustn't freeze the window.
     pub password: Option<Option<String>>,
     reading_password: bool,
+    /// Lightair Live on phones: the TLS port, pairing and mDNS (phones.rs).
+    pub(super) phones: super::phones::Phones,
 }
 
 struct Shot {
@@ -207,7 +209,8 @@ impl StudioWindow {
         })
         .detach();
         let cpu = Some((Instant::now(), process_usage().0));
-        Remote { server: None, error: None, jobs, told: None, shot: None, cpu, show_password: false, password: None, reading_password: false }
+        let phones = Self::new_phones(window, cx);
+        Remote { server: None, error: None, jobs, told: None, shot: None, cpu, show_password: false, password: None, reading_password: false, phones }
     }
 
     /// Starts, restarts or stops the server to match the preferences.
@@ -293,10 +296,13 @@ impl StudioWindow {
             }
             rx.recv_timeout(ANSWER_WITHIN).unwrap_or_else(|_| Err(ApiError::failed("Lightair didn't answer in time")))
         });
+        // the phones' port belongs to the server it shares a handler with
+        self.remote.phones.stop_listening();
         match Server::start(config, handler) {
             Ok(s) => {
                 self.remote.server = Some(s);
                 self.remote.error = None;
+                self.sync_phones(cx);
             }
             Err(e) => {
                 tracing::warn!(%e, port, "remote API couldn't start");
@@ -312,6 +318,8 @@ impl StudioWindow {
 
     /// Tells clients what changed in the Studio since they were last told.
     pub(super) fn tell_remote(&mut self, cx: &mut Context<Self>) {
+        // mDNS says whether this desktop is live
+        self.sync_phones(cx);
         let Some(server) = &self.remote.server else { return };
         if server.clients().is_empty() {
             self.remote.told = None;

@@ -21,6 +21,7 @@ use serde_json::json;
 pub(crate) mod app_menu;
 mod add_object;
 mod avatar_props;
+mod phones;
 mod remote;
 mod screen_pick;
 mod assets;
