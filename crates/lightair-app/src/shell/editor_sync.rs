@@ -385,12 +385,15 @@ impl EditorSync {
         let item = self.item(&ws, key)?;
         let proxies_only = p.get("proxies_only").and_then(Value::as_bool) == Some(true);
         let mut files: Vec<(String, PathBuf)> = vec![];
+        // a proxy's entry also names what it stands in for (its in-folder name and path)
+        let mut stands_for: HashMap<String, Value> = HashMap::new();
         if let Some(folder) = take_folder(&item) {
             for f in files_in(&folder) {
                 let proxy = is_video(&f).then(|| proxy_of(&f)).flatten();
                 if let Some(px) = &proxy {
                     let name = px.file_name().unwrap_or_default().to_string_lossy().into_owned();
                     if !files.iter().any(|(n, _)| *n == name) {
+                        stands_for.insert(name.clone(), json!({"proxy_for": in_folder(&folder, &f), "proxy_for_path": f}));
                         files.push((name, px.clone()));
                     }
                 }
@@ -415,7 +418,16 @@ impl EditorSync {
             return Err(ApiError::not_found("Its files aren't on this computer any more."));
         }
         // each file's desktop path, for the phone's path map
-        let about: HashMap<String, Value> = files.iter().map(|(n, p)| (n.clone(), json!({"path": p}))).collect();
+        let about: HashMap<String, Value> = files
+            .iter()
+            .map(|(n, p)| {
+                let mut e = json!({"path": p});
+                if let (Some(e), Some(Value::Object(x))) = (e.as_object_mut(), stands_for.get(n)) {
+                    e.extend(x.clone());
+                }
+                (n.clone(), e)
+            })
+            .collect();
         let t = self.transfers()?.offer_download(device, files).map_err(failed)?;
         let mut out = t.to_json();
         annotate(&mut out, &about);
@@ -591,6 +603,10 @@ impl EditorSync {
             .ok_or_else(|| invalid("`project` (the project document) is needed"))?;
         let project: lightair_render::sequence::Project =
             serde_json::from_value(doc.clone()).map_err(|e| invalid(format!("not a project: {e}")))?;
+        // media sent ahead (transfer.upload kind "media"), named media/<name> in the document
+        let mut doc = doc.clone();
+        point_media(&mut doc, &media_dir(&ws, project.id));
+        let doc = &doc;
         let dir = lightair_render::sequence::Project::dir(&ws);
         let path = dir.join(format!("{}.json", project.id));
         let current = revision(&path);
@@ -649,8 +665,11 @@ impl EditorSync {
     fn upload(&self, device: &str, p: &Value) -> Reply {
         let ws = self.workspace()?;
         let kind = need(p, "kind")?;
-        if !matches!(kind, "export" | "project") {
-            return Err(invalid("`kind` is export or project"));
+        if !matches!(kind, "export" | "project" | "media") {
+            return Err(invalid("`kind` is export, project or media"));
+        }
+        if kind == "media" && p.get("project").and_then(|i| serde_json::from_value::<Id>(i.clone()).ok()).is_none() {
+            return Err(invalid("media is sent for a project: `project` (its id) is needed"));
         }
         let files: Vec<FileSpec> = p
             .get("files")
@@ -690,6 +709,7 @@ impl EditorSync {
             let result = match (kind, ws) {
                 ("export", Some(ws)) => self.take_export(&ws, &f),
                 ("project", Some(ws)) => self.take_project(&ws, &f),
+                ("media", Some(ws)) => take_media(&ws, &f),
                 _ => Err("an upload of an unknown kind".to_string()),
             };
             let item = match result {
@@ -726,28 +746,9 @@ impl EditorSync {
         let project: lightair_render::sequence::Project =
             serde_json::from_value(doc.clone()).map_err(|e| e.to_string())?;
         // its media beside the projects, and the document pointed at them
-        let media = lightair_render::sequence::Project::dir(ws).join("media").join(project.id.to_string());
-        std::fs::create_dir_all(&media).map_err(|e| e.to_string())?;
-        for spec in f.transfer.manifest.iter().filter(|s| s.name != "project.json") {
-            let rel = spec.name.strip_prefix("media/").unwrap_or(&spec.name);
-            let to = media.join(rel);
-            if let Some(parent) = to.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            }
-            std::fs::rename(f.dir.join(&spec.name), &to).map_err(|e| e.to_string())?;
-        }
-        let point = |v: &mut Value| {
-            if let Some(s) = v.as_str().and_then(|s| s.strip_prefix("media/")) {
-                *v = json!(media.join(s));
-            }
-        };
-        if let Some(ms) = doc["sequence"]["media"].as_array_mut() {
-            for m in ms {
-                for key in ["path", "studio_take", "look"] {
-                    point(&mut m[key]);
-                }
-            }
-        }
+        let media = media_dir(ws, project.id);
+        move_media(f, &media)?;
+        point_media(&mut doc, &media);
         let dir = lightair_render::sequence::Project::dir(ws);
         let mut id = project.id;
         if dir.join(format!("{id}.json")).exists() {
@@ -759,6 +760,56 @@ impl EditorSync {
         let revision = write_doc(&dir.join(format!("{id}.json")), &doc).map_err(|e| e.to_string())?;
         let _ = std::fs::remove_dir_all(&f.dir);
         Ok(json!({"project": id, "revision": revision}))
+    }
+}
+
+/// Where a project's media sent from a device is kept: `edits/media/<project>/`.
+fn media_dir(ws: &Path, project: Id) -> PathBuf {
+    lightair_render::sequence::Project::dir(ws).join("media").join(project.to_string())
+}
+
+/// An upload's files (but the document) into `media`, without their `media/` prefix.
+fn move_media(f: &lightair_remote::Finished, media: &Path) -> Result<Vec<PathBuf>, String> {
+    std::fs::create_dir_all(media).map_err(|e| e.to_string())?;
+    let mut out = vec![];
+    for spec in f.transfer.manifest.iter().filter(|s| s.name != "project.json") {
+        let rel = spec.name.strip_prefix("media/").unwrap_or(&spec.name);
+        let to = media.join(rel);
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(f.dir.join(&spec.name), &to).map_err(|e| e.to_string())?;
+        out.push(to);
+    }
+    Ok(out)
+}
+
+/// Media a device sent for a project (`transfer.upload` kind "media"): into the project's media
+/// folder, where `edits.put` points its `media/…` names.
+fn take_media(ws: &Path, f: &lightair_remote::Finished) -> Result<Value, String> {
+    let project: Id = serde_json::from_value(f.meta["project"].clone()).map_err(|_| "no project")?;
+    let files = move_media(f, &media_dir(ws, project))?;
+    let _ = std::fs::remove_dir_all(&f.dir);
+    Ok(json!({"project": project, "files": files}))
+}
+
+/// A project document's `media/…` names (each medium's file, take folder, look and audio
+/// stems) made paths in `media`.
+fn point_media(doc: &mut Value, media: &Path) {
+    let point = |v: &mut Value| {
+        if let Some(s) = v.as_str().and_then(|s| s.strip_prefix("media/")) {
+            *v = json!(media.join(s));
+        }
+    };
+    if let Some(ms) = doc["sequence"]["media"].as_array_mut() {
+        for m in ms {
+            for key in ["path", "studio_take", "look"] {
+                point(&mut m[key]);
+            }
+            if let Some(stems) = m["audio"].as_array_mut() {
+                stems.iter_mut().for_each(point);
+            }
+        }
     }
 }
 
@@ -862,6 +913,27 @@ mod round_trip {
         sync.connect(transfers.clone(), pairing);
         sync.set_workspace(Some(ws.to_path_buf()));
         (sync, transfers)
+    }
+
+    #[test]
+    fn a_takes_proxy_says_what_it_stands_in_for() {
+        let (ws, take, _, _) = workspace();
+        let (sync, _) = sync_for(&ws);
+        let screen = ws.join("recordings/Studio take 10.32.lightair-take/screen.mp4");
+        // (unique content: this test's own proxy in the shared cache)
+        std::fs::write(&screen, format!("screen {}", Id::new()).repeat(200)).unwrap();
+        let name = lightair_render::sequence::content_name(&screen).unwrap();
+        let proxy = lightair_render::sound::cache().join(format!("proxy-{name}.mp4"));
+        std::fs::create_dir_all(proxy.parent().unwrap()).unwrap();
+        std::fs::write(&proxy, b"small").unwrap();
+        let f = call(&sync, "takes.fetch", json!({"take": take, "proxies_only": true})).unwrap();
+        let _ = std::fs::remove_file(&proxy);
+        let manifest = f["transfer"]["manifest"].as_array().unwrap();
+        let p = manifest.iter().find(|e| e["name"] == format!("proxy-{name}.mp4")).expect("the proxy");
+        assert_eq!(p["proxy_for"], "Studio take 10.32.lightair-take/screen.mp4");
+        assert_eq!(p["proxy_for_path"], json!(screen));
+        assert!(!manifest.iter().any(|e| e["name"] == "Studio take 10.32.lightair-take/screen.mp4"), "proxies only");
+        let _ = std::fs::remove_dir_all(&ws);
     }
 
     #[test]
@@ -1049,6 +1121,32 @@ mod round_trip {
         let walk = Project::dir(&ws).join("media").join(new.id.to_string()).join("walk.mp4");
         assert_eq!(landed.sequence.media[0].path, walk);
         assert!(walk.is_file() && !up.exists());
+
+        // footage added on the phone to the desktop's project: sent ahead (kind "media"), then
+        // the edit names it media/…
+        let up = ws.join("recordings/from phones/2");
+        std::fs::create_dir_all(up.join("media")).unwrap();
+        std::fs::write(up.join("media/beach.mp4"), vec![7u8; 50]).unwrap();
+        let finished = Finished {
+            transfer: Transfer { token: "m".into(), manifest: vec![spec("media/beach.mp4")] },
+            device: "ipad-1".into(),
+            dir: up.clone(),
+            meta: json!({"kind": "media", "project": project, "workspace": ws}),
+        };
+        let r = super::take_media(&ws, &finished).unwrap();
+        let beach = Project::dir(&ws).join("media").join(project.to_string()).join("beach.mp4");
+        assert!(beach.is_file() && !up.exists(), "{r}");
+        let mut doc: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let mut m = serde_json::to_value(medium(Path::new("media/beach.mp4"))).unwrap();
+        m["audio"] = json!(["media/beach-voice.wav"]);
+        doc["sequence"]["media"].as_array_mut().unwrap().push(m);
+        let r = call(&sync, "edits.put", json!({"project": doc, "base_revision": revision(&path)})).unwrap();
+        assert!(r.get("conflict").is_none(), "{r}");
+        let saved = Project::load(&ws, project).unwrap();
+        let added = saved.sequence.media.last().unwrap();
+        assert_eq!(added.path, beach);
+        assert_eq!(added.audio[0], Project::dir(&ws).join("media").join(project.to_string()).join("beach-voice.wav"));
+        assert!(call(&sync, "transfer.upload", json!({"kind": "media", "files": [{"name": "media/a.mp4", "size": 1, "sha256": "00"}]})).is_err(), "media needs its project");
         drop(transfers);
         let _ = std::fs::remove_dir_all(ws);
     }

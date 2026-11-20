@@ -83,6 +83,8 @@ pub(crate) struct Phones {
     pub cameras: super::phone_camera::Cameras,
     /// Each scene's last told thumbnail: (content hash, when, version).
     thumbs: std::collections::HashMap<lightair_model::Id, (u64, std::time::Instant, u64)>,
+    /// Debug builds with `LIGHTAIR_DEV_PAIRING=1`: keeps a fresh control link written out.
+    dev_link: Option<Task<()>>,
     /// Lightair Editor's round trip (`editor_sync`).
     pub editor_sync: Arc<super::editor_sync::EditorSync>,
 }
@@ -171,6 +173,19 @@ impl Phones {
     }
 }
 
+/// Debug builds only, with `LIGHTAIR_DEV_PAIRING=1`: phones pair with no one at the computer
+/// (a simulator testing the round trip). Release builds never do.
+fn dev_pairing() -> bool {
+    cfg!(debug_assertions) && std::env::var("LIGHTAIR_DEV_PAIRING").is_ok_and(|v| v == "1")
+}
+
+/// Whether `peer` is this computer (a simulator runs on it).
+fn from_this_computer(peer: std::net::IpAddr) -> bool {
+    peer.is_loopback()
+        || peer.to_canonical().is_loopback()
+        || lightair_platform::net::local_ip().is_some_and(|ip| ip == peer.to_canonical().to_string())
+}
+
 impl StudioWindow {
     pub(super) fn new_phones(window: &mut Window, cx: &mut Context<Self>) -> Phones {
         // asking the person happens on the main thread, as a native alert; the phone's connection
@@ -208,6 +223,10 @@ impl StudioWindow {
         })
         .detach();
         let confirm = move |request: &DeviceRequest| {
+            if dev_pairing() && request.scope != Scope::Camera && from_this_computer(request.peer) {
+                tracing::warn!(name = %request.name, "phones: paired without asking (LIGHTAIR_DEV_PAIRING)");
+                return true;
+            }
             let (tx, rx) = std::sync::mpsc::channel();
             if asks.unbounded_send((request.clone(), tx)).is_err() {
                 return false;
@@ -246,6 +265,7 @@ impl StudioWindow {
             cameras,
             editor_sync: Default::default(),
             thumbs: Default::default(),
+            dev_link: None,
         }
     }
 
@@ -262,7 +282,8 @@ impl StudioWindow {
             // the code expired
             p.offer = None;
         }
-        let wanted = running && (!p.pairing.devices().is_empty() || p.offer.is_some() || p.cameras.wanted());
+        let wanted =
+            running && (!p.pairing.devices().is_empty() || p.offer.is_some() || p.cameras.wanted() || dev_pairing());
         if !wanted {
             p.cameras.host.set_phones_port(0);
             p.listener = None;
@@ -338,6 +359,16 @@ impl StudioWindow {
         if let Some(m) = &p.mdns {
             m.update(p.pairing.open(), live);
         }
+        if dev_pairing() && p.dev_link.is_none() {
+            p.dev_link = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    if this.update(cx, |this, cx| this.write_dev_link(cx)).is_err() {
+                        break;
+                    }
+                    cx.background_executor().timer(Duration::from_secs(5)).await;
+                }
+            }));
+        }
         if p.meters.is_none() {
             p.meters = Some(cx.spawn(async move |this, cx| {
                 loop {
@@ -349,6 +380,23 @@ impl StudioWindow {
             }));
         }
         self.sync_srt(cx);
+    }
+
+    /// `LIGHTAIR_DEV_PAIRING`: a control link to `<workspace>/dev-pairing-link.txt` (and
+    /// stdout) whenever none is open, for a simulator to pair with no one at the computer.
+    fn write_dev_link(&mut self, cx: &mut Context<Self>) {
+        let p = &self.remote.phones;
+        if p.pairing.open() {
+            return;
+        }
+        let (Some(identity), Some(listener)) = (p.identity.as_ref(), p.listener.as_ref()) else { return };
+        let offer = p.pairing.offer(Scope::Control);
+        let addresses: Vec<String> = lightair_platform::net::local_ip().into_iter().chain(["127.0.0.1".to_string()]).collect();
+        let link = p.pairing.link(&offer, &p.desktop, &addresses, listener.addr().port(), &identity.fingerprint_b64());
+        println!("LIGHTAIR_DEV_PAIRING {link}");
+        if let Some(dir) = self.studio.read(cx).workspace_dir() {
+            let _ = std::fs::write(dir.join("dev-pairing-link.txt"), format!("{link}\n"));
+        }
     }
 
     /// `audio.levels` to the phones that asked (lightair-live's docs/05 §4.2): dBFS per channel,
@@ -657,6 +705,8 @@ pub(super) fn pairing_code(link: &str, offer: &Offer, camera: bool) -> Div {
 pub(crate) struct PhonePreview {
     preview: lightair_preview::Preview,
     scene: Option<lightair_model::Id>,
+    /// The canvas whose program it shows (`None`: the primary one).
+    canvas: Option<lightair_model::Id>,
     used: std::time::Instant,
 }
 
@@ -699,7 +749,10 @@ impl StudioWindow {
         match call.method.as_str() {
             "preview.frame" => {
                 let width = p.get("max_width").and_then(Value::as_u64).unwrap_or(720).clamp(64, 1920) as usize;
-                let (w, h, rgba) = Self::phone_frame(this, true, None, width, cx).await?;
+                // another format's program (MR-05): a canvas id from state.get's canvases
+                let canvas: Option<lightair_model::Id> =
+                    p.get("canvas").filter(|c| c.is_string()).and_then(|c| serde_json::from_value(c.clone()).ok());
+                let (w, h, rgba) = Self::phone_frame(this, true, None, canvas, width, cx).await?;
                 let data = cx
                     .background_executor()
                     .spawn(async move { jpeg(w, h, rgba, 70) })
@@ -726,7 +779,7 @@ impl StudioWindow {
                     if wanted.as_ref().is_some_and(|w| !w.iter().any(|x| *x == key || *x == name)) {
                         continue;
                     }
-                    let Ok((w, h, rgba)) = Self::phone_frame(this.clone(), false, Some(id), width, cx).await else {
+                    let Ok((w, h, rgba)) = Self::phone_frame(this.clone(), false, Some(id), None, width, cx).await else {
                         continue;
                     };
                     let Ok(data) = cx.background_executor().spawn(async move { jpeg(w, h, rgba, 65) }).await else {
@@ -740,11 +793,13 @@ impl StudioWindow {
         }
     }
 
-    /// The latest picture of the program (`program`) or of `scene`, at most `width` wide.
+    /// The latest picture of the program (`program`; of `canvas`, else the primary canvas) or of
+    /// `scene`, at most `width` wide.
     async fn phone_frame(
         this: WeakEntity<Self>,
         program: bool,
         scene: Option<lightair_model::Id>,
+        canvas: Option<lightair_model::Id>,
         width: usize,
         cx: &mut AsyncWindowContext,
     ) -> Result<(usize, usize, Vec<u8>), lightair_remote::ApiError> {
@@ -753,15 +808,30 @@ impl StudioWindow {
             .update(cx, |view, cx| {
                 let studio = view.studio.read(cx);
                 let w = studio.workspace().clone();
-                let canvas = w.primary_canvas().id;
+                let primary = w.primary_canvas().id;
+                // (an unknown or the primary canvas: the primary one, as before)
+                let other = canvas.filter(|c| *c != primary && w.canvas(*c).is_some());
+                let canvas = primary;
                 let engine = studio.engine().clone();
                 let p = &mut view.remote.phones;
                 let slot = if program { &mut p.program_preview } else { &mut p.scene_preview };
-                let shot = slot.get_or_insert_with(|| PhonePreview {
-                    preview: lightair_preview::Preview::attach(),
-                    scene: None,
-                    used: std::time::Instant::now(),
+                if program && slot.as_ref().is_some_and(|s| s.canvas != other) {
+                    *slot = None;
+                }
+                let made = slot.is_none();
+                let shot = slot.get_or_insert_with(|| {
+                    let preview = match other {
+                        Some(c) => engine
+                            .call(move |e| e.reconciler.canvas_ref(c).map(|p| p as usize))
+                            .map(|p| lightair_preview::Preview::attach_canvas(p as *mut _))
+                            .unwrap_or_else(lightair_preview::Preview::attach),
+                        None => lightair_preview::Preview::attach(),
+                    };
+                    PhonePreview { preview, scene: None, canvas: other, used: std::time::Instant::now() }
                 });
+                if made {
+                    return shot.preview.frames() + 3;
+                }
                 shot.used = std::time::Instant::now();
                 // the program scene is the program's own picture
                 let scene = scene.filter(|s| Some(*s) != w.program);
@@ -959,10 +1029,10 @@ pub(crate) fn stream_categories(params: &Value) -> lightair_remote::Reply {
     lightair_live::stream_info::categories(platform, query).map(|c| json!(c)).map_err(ApiError::state)
 }
 
-/// `chat.moderate {message, action, duration_s?, reason?}`: deletes a chat message, or times out
+/// `chat.moderate {message, action, seconds?, reason?}`: deletes a chat message, or times out
 /// or bans its sender, as the account signed in to that platform in Lightair (as the Chat panel
-/// does). `message` is the message's `id` (or its platform id). Timeouts last `duration_s`,
-/// 600 by default. Unbanning isn't offered by any platform's path here yet: it says so.
+/// does), answering `{done: true}`. `message` is the message's `id` (or its platform id).
+/// Timeouts last `seconds` (`duration_s` too), 600 by default. Unbanning isn't offered by any platform's path here yet: it says so.
 pub(crate) fn chat_moderate(hub: &lightair_live::Hub, params: &Value) -> lightair_remote::Reply {
     use lightair_live::moderate::{Action, act, can};
     use lightair_remote::ApiError;
@@ -980,14 +1050,15 @@ pub(crate) fn chat_moderate(hub: &lightair_live::Hub, params: &Value) -> lightai
         "delete" => return Err(ApiError::state("this message can't be deleted (the platform gave it no id)")),
         "timeout" | "ban" if user_id.is_empty() => return Err(ApiError::state("this message has no sender to act on")),
         "timeout" => {
-            let seconds = params.get("duration_s").and_then(Value::as_u64).unwrap_or(600).clamp(1, 1_209_600);
+            let given = params.get("seconds").or_else(|| params.get("duration_s")).and_then(Value::as_u64);
+            let seconds = given.unwrap_or(600).clamp(1, 1_209_600);
             Action::Timeout { user_id, login, seconds, reason }
         }
         "ban" => Action::Ban { user_id, login, reason },
         "unban" => return Err(ApiError::state("unban them on the platform: Lightair can't yet")),
         other => return Err(ApiError::invalid(format!("unknown action {other:?}"))),
     };
-    act(&e.platform, &e.channel, a).map(|_| json!({})).map_err(ApiError::state)
+    act(&e.platform, &e.channel, a).map(|_| json!({"done": true})).map_err(ApiError::state)
 }
 
 /// A chat or activity event by its `id` (a number) or its platform id (a string).
