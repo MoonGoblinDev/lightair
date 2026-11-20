@@ -8,7 +8,7 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 
 use lightair_avatar::Framing;
-use lightair_avatar::inochi2d::{Blend, Look, Op, Puppet};
+use lightair_avatar::inochi2d::{Blend, Look, Op, Puppet, TextureFrame};
 
 use crate::sys;
 
@@ -35,6 +35,11 @@ uniform float4 tint;
 uniform float4 screen;
 uniform float4 frame;
 uniform float4 mask_mode;
+// a DynamicComposite's texture frame, already in its layer's coordinates: origin.xy, x axis.zw;
+// y axis.xy (libobs's Metal shaders read `frame` as zero in this technique, so it has its own copy)
+uniform float4 dyn_a;
+uniform float4 dyn_b;
+uniform float4 dyn_frame;
 
 sampler_state tex_sampler {
     Filter = Linear;
@@ -78,6 +83,16 @@ float4 PSMain(VertOut v) : TARGET
     return look(image.Sample(tex_sampler, v.uv), v.muv);
 }
 
+// a DynamicComposite's mesh: its UVs say where on the frame (so on its layer) each point shows
+VertOut VSDynamic(VertIn v)
+{
+    VertOut o;
+    o.pos = mul(float4(v.pos.xy, 0.0, 1.0), ViewProj);
+    o.uv = dyn_a.xy + v.uv.x * dyn_a.zw + v.uv.y * dyn_b.xy;
+    o.muv = float2((v.pos.x - dyn_frame.x) * dyn_frame.z, (dyn_frame.y - v.pos.y) * dyn_frame.w);
+    return o;
+}
+
 // a layer the frame's size, sampled where it lies
 float4 PSLayer(VertOut v) : TARGET
 {
@@ -107,6 +122,15 @@ technique Layer
     {
         vertex_shader = VSMain(v);
         pixel_shader = PSLayer(v);
+    }
+}
+
+technique Dynamic
+{
+    pass
+    {
+        vertex_shader = VSDynamic(v);
+        pixel_shader = PSMain(v);
     }
 }
 
@@ -212,7 +236,12 @@ pub struct GpuInochi {
     effect: *mut sys::gs_effect_t,
     mask: *mut sys::gs_texrender_t,
     layer: *mut sys::gs_texrender_t,
+    /// DynamicComposites' layers, one for each level they nest to.
+    dynamic: Vec<*mut sys::gs_texrender_t>,
 }
+
+/// How deep DynamicComposites nest that get a layer (deeper ones draw nothing).
+const DYNAMIC_LEVELS: usize = 4;
 
 impl GpuInochi {
     /// (Graphics context held.)
@@ -245,7 +274,9 @@ impl GpuInochi {
         }
         let mask = unsafe { sys::gs_texrender_create(sys::GS_RGBA, sys::GS_ZS_NONE) };
         let layer = unsafe { sys::gs_texrender_create(sys::GS_RGBA, sys::GS_ZS_NONE) };
-        GpuInochi { path: path.to_string(), parts, quad, textures, effect, mask, layer }
+        let dynamic =
+            (0..DYNAMIC_LEVELS).map(|_| unsafe { sys::gs_texrender_create(sys::GS_RGBA, sys::GS_ZS_NONE) }).collect();
+        GpuInochi { path: path.to_string(), parts, quad, textures, effect, mask, layer, dynamic }
     }
 
     /// The posed parts' vertices. (Graphics context held.)
@@ -311,6 +342,8 @@ impl GpuInochi {
             // drawing into a composite's layer
             let (mut masking, mut masked, mut dodge, mut threshold, mut composite) =
                 (false, false, false, 0.0f32, false);
+            // DynamicComposites open: each with whether it got a layer
+            let mut dynamics: Vec<bool> = Vec::new();
             for op in p.ops() {
                 match op {
                     Op::BeginMasks { threshold: th, clear: c } => {
@@ -357,6 +390,39 @@ impl GpuInochi {
                     }
                     // a composite as a mask: its children go straight into the mask
                     Op::BeginComposite { as_mask: true } | Op::EndComposite { as_mask: true, .. } => {}
+                    Op::BeginDynamic { as_mask: false } => {
+                        let layer = self.dynamic.get(dynamics.len()).copied().unwrap_or(std::ptr::null_mut());
+                        let begun = !layer.is_null() && {
+                            sys::gs_texrender_reset(layer);
+                            sys::gs_texrender_begin(layer, w, h)
+                        };
+                        if begun {
+                            sys::gs_clear(sys::GS_CLEAR_COLOR, &clear(0.0), 1.0, 0);
+                            sys::gs_ortho(left, right, top, bottom, -100.0, 100.0);
+                        }
+                        dynamics.push(begun);
+                    }
+                    Op::EndDynamic { as_mask: false, part, look, texture } => {
+                        let level = dynamics.len().saturating_sub(1);
+                        if dynamics.pop() == Some(true) {
+                            let layer = self.dynamic[level];
+                            sys::gs_texrender_end(layer);
+                            // the texture frame on the layer (u right, v down, 0..1 across the frame)
+                            let TextureFrame { origin, x_axis, y_axis } = *texture;
+                            let (sx, sy) = (1.0 / (right - left), 1.0 / (top - bottom));
+                            let o = [(origin[0] - left) * sx, (top - origin[1]) * sy];
+                            let (xa, ya) = ([x_axis[0] * sx, -x_axis[1] * sy], [y_axis[0] * sx, -y_axis[1] * sy]);
+                            sys::gs_effect_set_vec4(param(c"dyn_a"), &v4([o[0], o[1], xa[0], xa[1]]));
+                            sys::gs_effect_set_vec4(param(c"dyn_b"), &v4([ya[0], ya[1], 0.0, 0.0]));
+                            sys::gs_effect_set_vec4(param(c"dyn_frame"), &v4([left, top, sx, sy]));
+                            if let Some(g) = self.parts.get(*part) {
+                                set_look(look, masked && !composite, threshold);
+                                set_blend(look.blend);
+                                draw(g, sys::gs_texrender_get_texture(layer), c"Dynamic");
+                            }
+                        }
+                    }
+                    Op::BeginDynamic { as_mask: true } | Op::EndDynamic { as_mask: true, .. } => {}
                     Op::Part { part, as_mask, look } => {
                         let Some(g) = self.parts.get(*part) else { continue };
                         let tex = p
@@ -396,6 +462,11 @@ impl GpuInochi {
             if composite {
                 sys::gs_texrender_end(self.layer);
             }
+            for (level, begun) in dynamics.into_iter().enumerate().rev() {
+                if begun {
+                    sys::gs_texrender_end(self.dynamic[level]);
+                }
+            }
             sys::gs_blend_op(sys::GS_BLEND_OP_ADD);
             sys::gs_load_indexbuffer(std::ptr::null_mut());
             sys::gs_load_vertexbuffer(std::ptr::null_mut());
@@ -428,7 +499,7 @@ impl GpuInochi {
                 sys::gs_effect_destroy(self.effect);
                 self.effect = std::ptr::null_mut();
             }
-            for r in [&mut self.mask, &mut self.layer] {
+            for r in [&mut self.mask, &mut self.layer].into_iter().chain(self.dynamic.iter_mut()) {
                 if !r.is_null() {
                     sys::gs_texrender_destroy(*r);
                     *r = std::ptr::null_mut();

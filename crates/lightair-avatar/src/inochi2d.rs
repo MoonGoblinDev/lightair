@@ -1,7 +1,8 @@
-//! Inochi2D puppets (`.inp`, `.inx`) on Inox2D (third_party/inox2d, Lightair's fork). A [`Face`]
-//! sets the puppet's parameters each frame, then its physics run and its parts are posed; the
-//! result is a list of draw operations ([`Op`]) in Inochi2D's order (masks, composites, blend
-//! modes), with each part's vertices ready to draw (model units, y up).
+//! Inochi2D puppets (`.inp`, `.inx`) on Inox2D (third_party/inox2d, Lightair's fork), and
+//! nijilive's (nijigenerate's; PathDeformers, DynamicComposites, Masks). A [`Face`] sets the
+//! puppet's parameters each frame, then its physics run and its parts are posed; the result is a
+//! list of draw operations ([`Op`]) in Inochi2D's order (masks, composites, blend modes), with
+//! each part's vertices ready to draw (model units, y up).
 //!
 //! Inochi2D parameters have free names, 1D or 2D. Those a face drives are found by their names'
 //! words, the way riggers name them in Inochi Creator ("Head:: Yaw-Pitch", "Head:: Roll",
@@ -17,8 +18,10 @@ use glam::{Mat4, Vec2, Vec3};
 use inox2d::model::Model;
 use inox2d::node::InoxNodeUuid;
 use inox2d::node::components::{BlendMode, Mask, MaskMode, Masks};
-use inox2d::node::drawables::{CompositeComponents, TexturedMeshComponents};
-use inox2d::render::{CompositeRenderCtx, InoxRenderer, InoxRendererExt, TexturedMeshRenderCtx, VertexBuffers};
+use inox2d::node::drawables::{CompositeComponents, DynamicCompositeComponents, TexturedMeshComponents};
+use inox2d::render::{
+    CompositeRenderCtx, InoxRenderer, InoxRendererExt, MeshTexture, TexturedMeshRenderCtx, VertexBuffers,
+};
 
 use crate::Error;
 use crate::rig::Face;
@@ -35,8 +38,35 @@ pub struct Part {
     pub name: String,
     pub uvs: Vec<[f32; 2]>,
     pub indices: Vec<u32>,
+    /// Its texture in [`Puppet::textures`]. A nijilive Mask (a mesh only drawn into masks, whole)
+    /// has a 1×1 opaque white one. A nijilive DynamicComposite's mesh has [`DYNAMIC`]: it's only
+    /// drawn by [`Op::EndDynamic`], with the layer its children were drawn into.
     pub texture: usize,
     vert_offset: usize,
+}
+
+/// [`Part::texture`] of a DynamicComposite's mesh: no texture of the puppet's.
+pub const DYNAMIC: usize = usize::MAX;
+
+/// Where a DynamicComposite's texture lies on the puppet: its texture coordinate (u, v) (u to
+/// the right, v down, 0..1 across the texture, as a [`Part`]'s `uvs`) shows what's drawn at
+/// `origin + u · x_axis + v · y_axis` (model units, y up). The DynamicComposite's own transform
+/// is in it, so it changes from frame to frame; at rest it's the rectangle its mesh's UVs span.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TextureFrame {
+    pub origin: [f32; 2],
+    pub x_axis: [f32; 2],
+    pub y_axis: [f32; 2],
+}
+
+impl TextureFrame {
+    /// The point (model units, y up) a texture coordinate shows.
+    pub fn at(&self, uv: [f32; 2]) -> [f32; 2] {
+        [
+            self.origin[0] + uv[0] * self.x_axis[0] + uv[1] * self.y_axis[0],
+            self.origin[1] + uv[0] * self.x_axis[1] + uv[1] * self.y_axis[1],
+        ]
+    }
 }
 
 /// How a part or composite is laid over what's under it (Inochi2D's blend modes).
@@ -96,6 +126,25 @@ pub enum Op {
     BeginComposite { as_mask: bool },
     /// …which is then laid down with this look.
     EndComposite { as_mask: bool, look: Look },
+    /// A nijilive DynamicComposite begins. Not `as_mask`: the ops up to its matching
+    /// [`Op::EndDynamic`] draw into a new layer: a transparent target of its own (premultiplied
+    /// RGBA cleared to 0), drawn into exactly as the frame is (same projection, same blending),
+    /// pushed on a stack of targets; they nest (a DynamicComposite inside another, or inside a
+    /// composite) and may contain masks of their own (`BeginMasks`…`EndMasks`, which use the mask
+    /// as usual, also inside the layer). `as_mask`: its children are drawn into the mask like any
+    /// mask part (no layer); nothing to do.
+    BeginDynamic { as_mask: bool },
+    /// Its layer is finished: pop it (drawing goes back to the target below), then draw the
+    /// DynamicComposite's mesh `part` (its posed vertices in [`Puppet::positions`], its triangles
+    /// and UVs in [`Puppet::parts`]) into the target below, with `look` (tint, screen, opacity,
+    /// blend mode) exactly as an [`Op::Part`] is drawn, the texel being the popped layer's:
+    /// for a pixel whose interpolated UV is (u, v), sample the layer (bilinear, clamped to its
+    /// edge) where `texture.at([u, v])` lands on it (the same projection as the frame). Masked when
+    /// a `MaskedContent` is in force: its own masks (`BeginMasks`…`MaskedContent`) come just
+    /// before this op, after its children, and their `EndMasks` right after it. (A renderer may
+    /// equally draw the children into a texture of its own that `texture` maps onto [0,1]².)
+    /// `as_mask`: nothing to draw.
+    EndDynamic { part: usize, as_mask: bool, look: Look, texture: TextureFrame },
 }
 
 /// What a parameter's axis follows.
@@ -142,6 +191,9 @@ struct Drive {
     inverse: bool,
     min: f32,
     max: f32,
+    /// Where a share (`Source::centred` false) starts: the minimum (for a nijilive puppet's blink,
+    /// the parameter's default).
+    rest: f32,
 }
 
 /// The parameters a face drives, by name.
@@ -265,6 +317,10 @@ fn by_name(name: &str, is_vec2: bool) -> [Option<Source>; 2] {
         return [None, None];
     }
     if any(&["brow", "brows", "eyebrow", "eyebrows"]) {
+        // ("Eyebrow:: Emotion-UpDown": x its emotion, y how high)
+        if is_vec2 && any(&["updown", "up", "down", "height", "y"]) {
+            return [None, Some(Source::Brow(side))];
+        }
         return [Some(Source::Brow(side)), None];
     }
     if any(&["eye", "eyes", "pupil", "pupils", "iris", "gaze", "look"]) {
@@ -286,6 +342,10 @@ fn by_name(name: &str, is_vec2: bool) -> [Option<Source>; 2] {
         return [None, None];
     }
     if any(&["mouth", "lip", "lips", "jaw"]) {
+        // (a mouth's "blink": a shape of its own, not how open or wide)
+        if any(&["blink", "close", "closed"]) {
+            return [None, None];
+        }
         if is_vec2 {
             // Inochi Creator's "Mouth:: Shape": x its form, y how open
             return [Some(Source::MouthForm), Some(Source::MouthOpen)];
@@ -348,6 +408,7 @@ const ROLL_SIGN: f32 = -1.0;
 impl Mapping {
     fn new(model: &Model) -> Mapping {
         let mut drives = Vec::new();
+        let nijilive = model.puppet.is_nijilive();
         let params = model.puppet.params();
         let mut names: Vec<&String> = params.keys().collect();
         names.sort();
@@ -365,7 +426,13 @@ impl Mapping {
                 if (max - min).abs() < 1e-6 {
                     continue;
                 }
-                drives.push(Drive { param: name.clone(), axis, source, range, inverse: false, min, max });
+                // (a nijilive rig's eyes rest at the blink's default: below it they open wide)
+                let rest = if nijilive && matches!(source, Source::Blink(_)) {
+                    p.defaults[axis].clamp(min.min(max), min.max(max))
+                } else {
+                    min
+                };
+                drives.push(Drive { param: name.clone(), axis, source, range, inverse: false, min, max, rest });
             }
         }
         // Inochi Session's bindings in the puppet, where it has them: which source, how far
@@ -435,7 +502,7 @@ impl Mapping {
                 let v = if d.source.centred() {
                     (d.min + d.max) * 0.5 + n.clamp(-1.0, 1.0) * (d.max - d.min) * 0.5
                 } else {
-                    d.min + n.clamp(0.0, 1.0) * (d.max - d.min)
+                    d.rest + n.clamp(0.0, 1.0) * (d.max - d.rest)
                 };
                 (d.param.as_str(), d.axis, v)
             })
@@ -469,6 +536,31 @@ struct Recorder<'a> {
     parts: &'a [Part],
     ops: std::cell::RefCell<Vec<Op>>,
     positions: std::cell::RefCell<&'a mut Vec<Vec<[f32; 2]>>>,
+    /// The mask sets being drawn, innermost last.
+    masks: std::cell::RefCell<Vec<MaskPhase>>,
+}
+
+/// Where drawing is in a mask set. A mask source with masks of its own (nijilive puppets have
+/// them) is drawn into the mask whole: its own set is skipped, so sets never nest in the ops.
+#[derive(Clone, Copy, PartialEq)]
+enum MaskPhase {
+    Sources,
+    Content,
+    /// A set inside another's sources: left out; `true` while at its own sources.
+    Skipped(bool),
+}
+
+impl Recorder<'_> {
+    /// Whether what's drawn now is a skipped set's mask source.
+    fn skipping(&self) -> bool {
+        self.masks.borrow().last() == Some(&MaskPhase::Skipped(true))
+    }
+
+    fn push(&self, op: Op) {
+        if !self.skipping() {
+            self.ops.borrow_mut().push(op);
+        }
+    }
 }
 
 fn look(b: &inox2d::node::components::Blending) -> Look {
@@ -478,19 +570,38 @@ fn look(b: &inox2d::node::components::Blending) -> Look {
 
 impl InoxRenderer for Recorder<'_> {
     fn on_begin_masks(&self, masks: &Masks) {
+        let mut phases = self.masks.borrow_mut();
+        if matches!(phases.last(), Some(MaskPhase::Sources | MaskPhase::Skipped(true))) {
+            phases.push(MaskPhase::Skipped(true));
+            return;
+        }
+        phases.push(MaskPhase::Sources);
         self.ops.borrow_mut().push(Op::BeginMasks {
             threshold: masks.threshold.clamp(0.0, 1.0),
             clear: if masks.has_masks() { 0.0 } else { 1.0 },
         });
     }
     fn on_begin_mask(&self, mask: &Mask) {
-        self.ops.borrow_mut().push(Op::Mask { dodge: mask.mode == MaskMode::Dodge });
+        if !matches!(self.masks.borrow().last(), Some(MaskPhase::Skipped(_))) {
+            self.ops.borrow_mut().push(Op::Mask { dodge: mask.mode == MaskMode::Dodge });
+        }
     }
     fn on_begin_masked_content(&self) {
-        self.ops.borrow_mut().push(Op::MaskedContent);
+        let mut phases = self.masks.borrow_mut();
+        match phases.last_mut() {
+            Some(p @ MaskPhase::Skipped(_)) => *p = MaskPhase::Skipped(false),
+            Some(p) => {
+                *p = MaskPhase::Content;
+                self.ops.borrow_mut().push(Op::MaskedContent);
+            }
+            None => {}
+        }
     }
     fn on_end_mask(&self) {
-        self.ops.borrow_mut().push(Op::EndMasks);
+        let phase = self.masks.borrow_mut().pop();
+        if !matches!(phase, Some(MaskPhase::Skipped(_))) {
+            self.ops.borrow_mut().push(Op::EndMasks);
+        }
     }
     fn draw_textured_mesh_content(
         &self,
@@ -500,23 +611,11 @@ impl InoxRenderer for Recorder<'_> {
         id: InoxNodeUuid,
     ) {
         let Some(&part) = self.part_of.get(&uuid(id)) else { return };
-        let m: &Mat4 = components.transform;
-        let off = render_ctx.vert_offset as usize;
-        debug_assert_eq!(off, self.parts[part].vert_offset);
-        {
-            let mut positions = self.positions.borrow_mut();
-            let out = &mut positions[part];
-            out.clear();
-            for k in 0..render_ctx.vert_len {
-                let v = self.buffers.verts[off + k] + self.buffers.deforms[off + k];
-                let p = m.transform_point3(v.extend(0.0));
-                out.push([p.x, -p.y]);
-            }
-        }
-        self.ops.borrow_mut().push(Op::Part { part, as_mask, look: look(&components.drawable.blending) });
+        self.pose(part, components.transform, render_ctx);
+        self.push(Op::Part { part, as_mask, look: look(&components.drawable.blending) });
     }
     fn begin_composite_content(&self, as_mask: bool, _: &CompositeComponents, _: &CompositeRenderCtx, _: InoxNodeUuid) {
-        self.ops.borrow_mut().push(Op::BeginComposite { as_mask });
+        self.push(Op::BeginComposite { as_mask });
     }
     fn finish_composite_content(
         &self,
@@ -525,7 +624,54 @@ impl InoxRenderer for Recorder<'_> {
         _: &CompositeRenderCtx,
         _: InoxNodeUuid,
     ) {
-        self.ops.borrow_mut().push(Op::EndComposite { as_mask, look: look(&components.drawable.blending) });
+        self.push(Op::EndComposite { as_mask, look: look(&components.drawable.blending) });
+    }
+    fn begin_dynamic_composite(
+        &self,
+        as_mask: bool,
+        _: &DynamicCompositeComponents,
+        _: &TexturedMeshRenderCtx,
+        _: InoxNodeUuid,
+    ) {
+        self.push(Op::BeginDynamic { as_mask });
+    }
+    fn finish_dynamic_composite(
+        &self,
+        as_mask: bool,
+        components: &DynamicCompositeComponents,
+        render_ctx: &TexturedMeshRenderCtx,
+        id: InoxNodeUuid,
+    ) {
+        let Some(&part) = self.part_of.get(&uuid(id)) else { return };
+        let m: &Mat4 = components.transform;
+        self.pose(part, m, render_ctx);
+        // the texture's corner and sides, from its centre and size in the composite's space
+        let (centre, size) = (components.data.texture_offset, components.data.texture_size);
+        let corner = m.transform_point3((centre - size * 0.5).extend(0.0));
+        let x_axis = m.transform_vector3(Vec3::new(size.x, 0.0, 0.0));
+        let y_axis = m.transform_vector3(Vec3::new(0.0, size.y, 0.0));
+        let texture = TextureFrame {
+            origin: [corner.x, -corner.y],
+            x_axis: [x_axis.x, -x_axis.y],
+            y_axis: [y_axis.x, -y_axis.y],
+        };
+        self.push(Op::EndDynamic { part, as_mask, look: look(&components.drawable.blending), texture });
+    }
+}
+
+impl Recorder<'_> {
+    /// A mesh's vertices, posed (model units, y up).
+    fn pose(&self, part: usize, m: &Mat4, render_ctx: &TexturedMeshRenderCtx) {
+        let off = render_ctx.vert_offset as usize;
+        debug_assert_eq!(off, self.parts[part].vert_offset);
+        let mut positions = self.positions.borrow_mut();
+        let out = &mut positions[part];
+        out.clear();
+        for k in 0..render_ctx.vert_len {
+            let v = self.buffers.verts[off + k] + self.buffers.deforms[off + k];
+            let p = m.transform_point3(v.extend(0.0));
+            out.push([p.x, -p.y]);
+        }
     }
 }
 
@@ -550,12 +696,15 @@ impl Puppet {
     fn from_bytes(data: &[u8]) -> Result<Puppet, Error> {
         let mut model = inox2d::formats::inp::parse_inp(data)
             .map_err(|e| Error::Other(e.to_string().lines().map(str::trim).collect::<Vec<_>>().join(" ")))?;
-        let textures = inox2d::texture::decode_model_textures(model.textures.iter())
+        let mut textures: Vec<Texture> = inox2d::texture::decode_model_textures(model.textures.iter())
             .into_iter()
             // (Inochi2D keeps its textures premultiplied already: every semi-transparent pixel of
             // its sample puppets has its colour at most its alpha)
             .map(|t| Texture { width: t.width(), height: t.height(), rgba: t.pixels().to_vec() })
             .collect();
+        // nijilive's Masks: drawn whole
+        let white = textures.len();
+        let mut white_used = false;
         let mapping = Mapping::new(&model);
         let puppet = &mut model.puppet;
         puppet.init_transforms();
@@ -568,7 +717,15 @@ impl Puppet {
         {
             let rc = puppet.render_ctx.as_ref().ok_or(Error::Invalid("no render context"))?;
             let b = &rc.vertex_buffers;
-            for (node, ctx, tex) in puppet.textured_meshes() {
+            for (node, ctx, source) in puppet.textured_meshes() {
+                let tex = match source {
+                    MeshTexture::Albedo(t) => t,
+                    MeshTexture::Mask => {
+                        white_used = true;
+                        white
+                    }
+                    MeshTexture::DynamicComposite => DYNAMIC,
+                };
                 let off = ctx.vert_offset as usize;
                 let uvs = b.uvs[off..off + ctx.vert_len].iter().map(|v| v.to_array()).collect();
                 let indices = b.indices[ctx.index_offset as usize..ctx.index_offset as usize + ctx.index_len]
@@ -584,6 +741,9 @@ impl Puppet {
                     vert_offset: off,
                 });
             }
+        }
+        if white_used {
+            textures.push(Texture { width: 1, height: 1, rgba: vec![255; 4] });
         }
         let n = parts.len();
         let mut p = Puppet {
@@ -660,6 +820,7 @@ impl Puppet {
             parts: &self.parts,
             ops: Default::default(),
             positions: std::cell::RefCell::new(&mut self.positions),
+            masks: Default::default(),
         };
         rec.draw(&self.model.puppet);
         self.ops = rec.ops.into_inner();

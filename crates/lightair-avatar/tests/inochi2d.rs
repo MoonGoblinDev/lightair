@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use glam::{Quat, Vec2};
-use lightair_avatar::inochi2d::{Blend, Look, Op, Puppet};
+use lightair_avatar::inochi2d::{Blend, Look, Op, Puppet, TextureFrame};
 use lightair_avatar::{Face, Framing};
 
 fn assert_send<T: Send>() {}
@@ -14,8 +14,6 @@ fn assert_send<T: Send>() {}
 type Px = [f32; 4];
 
 struct Canvas {
-    w: usize,
-    h: usize,
     layers: Vec<Vec<Px>>,
     mask: Vec<f32>,
 }
@@ -49,6 +47,45 @@ fn shade(t: Px, look: &Look) -> Px {
     o
 }
 
+/// A layer's texel at a pixel position (bilinear, clamped to its edge).
+fn sample(layer: &[Px], w: usize, h: usize, p: Vec2) -> Px {
+    let x = (p.x - 0.5).clamp(0.0, (w - 1) as f32);
+    let y = (p.y - 0.5).clamp(0.0, (h - 1) as f32);
+    let (x0, y0) = (x.floor() as usize, y.floor() as usize);
+    let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+    let (fx, fy) = (x - x0 as f32, y - y0 as f32);
+    std::array::from_fn(|k| {
+        let top = layer[y0 * w + x0][k] * (1.0 - fx) + layer[y0 * w + x1][k] * fx;
+        let bottom = layer[y1 * w + x0][k] * (1.0 - fx) + layer[y1 * w + x1][k] * fx;
+        top * (1.0 - fy) + bottom * fy
+    })
+}
+
+/// Fills a triangle (pixel positions `p`, texture coordinates `uv`): `f(pixel index, uv)`.
+fn fill(w: usize, h: usize, p: [Vec2; 3], uv: [Vec2; 3], mut f: impl FnMut(usize, usize, Vec2)) {
+    let [pa, pb, pc] = p;
+    let area = (pb - pa).perp_dot(pc - pa);
+    if area.abs() < 1e-9 {
+        return;
+    }
+    let x0 = pa.x.min(pb.x).min(pc.x).floor().max(0.0) as usize;
+    let x1 = (pa.x.max(pb.x).max(pc.x).ceil() as isize).clamp(0, w as isize) as usize;
+    let y0 = pa.y.min(pb.y).min(pc.y).floor().max(0.0) as usize;
+    let y1 = (pa.y.max(pb.y).max(pc.y).ceil() as isize).clamp(0, h as isize) as usize;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let q = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+            let wa = (pb - q).perp_dot(pc - q) / area;
+            let wb = (pc - q).perp_dot(pa - q) / area;
+            let wc = 1.0 - wa - wb;
+            if wa < 0.0 || wb < 0.0 || wc < 0.0 {
+                continue;
+            }
+            f(x, y, uv[0] * wa + uv[1] * wb + uv[2] * wc);
+        }
+    }
+}
+
 /// LIGHTAIR_INOCHI2D_PROBE=x,y: which parts draw that pixel of the pictures.
 fn probe() -> Option<(usize, usize)> {
     let v = std::env::var("LIGHTAIR_INOCHI2D_PROBE").ok()?;
@@ -59,14 +96,46 @@ fn probe() -> Option<(usize, usize)> {
 fn draw(p: &Puppet, w: usize, h: usize, framing: Framing) -> Vec<u8> {
     let (l, r, t, b) = p.frame(framing, w as f32 / h as f32, 1.0);
     let to_px = |v: [f32; 2]| Vec2::new((v[0] - l) / (r - l) * w as f32, (t - v[1]) / (t - b) * h as f32);
-    let mut c = Canvas { w, h, layers: vec![vec![[0.0; 4]; w * h]], mask: vec![1.0; w * h] };
+    let mut c = Canvas { layers: vec![vec![[0.0; 4]; w * h]], mask: vec![1.0; w * h] };
     let mut masking = false; // drawing into the mask
     let mut masked = false; // content limited by it
     let mut dodge = false;
     let mut threshold = 0.0;
     let mut in_composite = false;
+    // what each layer above the frame is: a DynamicComposite's (true) or a composite's
+    let mut dynamic_layers: Vec<bool> = Vec::new();
     for op in p.ops() {
         match op {
+            Op::BeginDynamic { as_mask } => {
+                if !as_mask {
+                    c.layers.push(vec![[0.0; 4]; w * h]);
+                    dynamic_layers.push(true);
+                }
+            }
+            Op::EndDynamic { part, as_mask, look, texture } => {
+                if *as_mask || dynamic_layers.pop() != Some(true) {
+                    continue;
+                }
+                let layer = c.layers.pop().unwrap();
+                let part_data = &p.parts()[*part];
+                let pos = &p.positions()[*part];
+                let use_mask = masked && !in_composite;
+                let frame: &TextureFrame = texture;
+                for tri in part_data.indices.chunks_exact(3) {
+                    let i = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
+                    let px = i.map(|k| to_px(pos[k]));
+                    let uv = i.map(|k| Vec2::from(part_data.uvs[k]));
+                    let below = c.layers.last_mut().unwrap();
+                    fill(w, h, px, uv, |x, y, uv| {
+                        let t = sample(&layer, w, h, to_px(frame.at(uv.to_array())));
+                        let mut s = shade(t, look);
+                        if use_mask {
+                            s.iter_mut().for_each(|v| *v *= c.mask[y * w + x]);
+                        }
+                        below[y * w + x] = blend(look.blend, s, below[y * w + x]);
+                    });
+                }
+            }
             Op::BeginMasks { threshold: th, clear } => {
                 c.mask.iter_mut().for_each(|m| *m = *clear);
                 threshold = *th;
@@ -85,6 +154,7 @@ fn draw(p: &Puppet, w: usize, h: usize, framing: Framing) -> Vec<u8> {
             Op::BeginComposite { as_mask } => {
                 if !as_mask {
                     c.layers.push(vec![[0.0; 4]; w * h]);
+                    dynamic_layers.push(false);
                     in_composite = true;
                 }
             }
@@ -93,6 +163,7 @@ fn draw(p: &Puppet, w: usize, h: usize, framing: Framing) -> Vec<u8> {
                     continue;
                 }
                 in_composite = false;
+                dynamic_layers.pop();
                 let layer = c.layers.pop().unwrap();
                 let below = c.layers.last_mut().unwrap();
                 for i in 0..w * h {
