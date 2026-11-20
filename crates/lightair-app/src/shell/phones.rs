@@ -463,6 +463,17 @@ fn pairing_code(link: &str, offer: &Offer) -> Div {
                     .text_size(px(11.))
                     .text_color(tok::text_tertiary())
                     .child(format!("The code works once, for {} more seconds.", minutes)),
-            ),
+            )
+            .child({
+                // for a phone or tablet that can't scan this screen: send it the link
+                let link = link.to_owned();
+                div().child(
+                    Button::new("phones-copy-link")
+                        .label("Copy link")
+                        .xsmall()
+                        .ghost()
+                        .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(link.clone()))),
+                )
+            }),
     )
 }
