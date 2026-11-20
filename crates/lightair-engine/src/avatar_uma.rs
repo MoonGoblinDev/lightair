@@ -231,7 +231,8 @@ impl GpuUma {
             sys::gs_set_cull_mode(sys::GS_NEITHER);
             sys::gs_blend_state_push();
             sys::gs_enable_blending(true);
-            sys::gs_effect_set_vec4(param(c"frame"), &v4([left, top, 1.0 / (right - left), 1.0 / (top - bottom)]));
+            // (set before every draw: libobs clears an effect's values when a technique ends)
+            let frame = v4([left, top, 1.0 / (right - left), 1.0 / (top - bottom)]);
             let draw_mesh = |i: usize, technique: &CStr| {
                 let (Some(g), Some(d)) = (self.meshes.get(i), drawables.get(i)) else { return };
                 if g.vb.is_null() || g.ib.is_null() || g.indices == 0 || !d.posed {
@@ -242,6 +243,7 @@ impl GpuUma {
                     return;
                 }
                 sys::gs_effect_set_texture(param(c"image"), tex);
+                sys::gs_effect_set_vec4(param(c"frame"), &frame);
                 sys::gs_load_vertexbuffer(g.vb);
                 sys::gs_load_indexbuffer(g.ib);
                 while sys::gs_effect_loop(e, technique.as_ptr()) {

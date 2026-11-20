@@ -35,11 +35,9 @@ uniform float4 tint;
 uniform float4 screen;
 uniform float4 frame;
 uniform float4 mask_mode;
-// a DynamicComposite's texture frame, already in its layer's coordinates: origin.xy, x axis.zw;
-// y axis.xy (libobs's Metal shaders read `frame` as zero in this technique, so it has its own copy)
+// a DynamicComposite's texture frame, in its layer's coordinates: origin.xy, x axis.zw; y axis.xy
 uniform float4 dyn_a;
 uniform float4 dyn_b;
-uniform float4 dyn_frame;
 
 sampler_state tex_sampler {
     Filter = Linear;
@@ -89,7 +87,7 @@ VertOut VSDynamic(VertIn v)
     VertOut o;
     o.pos = mul(float4(v.pos.xy, 0.0, 1.0), ViewProj);
     o.uv = dyn_a.xy + v.uv.x * dyn_a.zw + v.uv.y * dyn_b.xy;
-    o.muv = float2((v.pos.x - dyn_frame.x) * dyn_frame.z, (dyn_frame.y - v.pos.y) * dyn_frame.w);
+    o.muv = float2((v.pos.x - frame.x) * frame.z, (frame.y - v.pos.y) * frame.w);
     return o;
 }
 
@@ -315,12 +313,14 @@ impl GpuInochi {
             sys::gs_set_cull_mode(sys::GS_NEITHER);
             sys::gs_blend_state_push();
             sys::gs_enable_blending(true);
-            sys::gs_effect_set_vec4(param(c"frame"), &v4([left, top, 1.0 / (right - left), 1.0 / (top - bottom)]));
+            // (set before every draw: libobs clears an effect's values when a technique ends)
+            let frame = v4([left, top, 1.0 / (right - left), 1.0 / (top - bottom)]);
             let draw = |g: &GpuMesh, tex: *mut sys::gs_texture_t, technique: &CStr| {
                 if g.vb.is_null() || g.ib.is_null() || g.indices == 0 || tex.is_null() {
                     return;
                 }
                 sys::gs_effect_set_texture(param(c"image"), tex);
+                sys::gs_effect_set_vec4(param(c"frame"), &frame);
                 sys::gs_load_vertexbuffer(g.vb);
                 sys::gs_load_indexbuffer(g.ib);
                 while sys::gs_effect_loop(e, technique.as_ptr()) {
@@ -414,7 +414,6 @@ impl GpuInochi {
                             let (xa, ya) = ([x_axis[0] * sx, -x_axis[1] * sy], [y_axis[0] * sx, -y_axis[1] * sy]);
                             sys::gs_effect_set_vec4(param(c"dyn_a"), &v4([o[0], o[1], xa[0], xa[1]]));
                             sys::gs_effect_set_vec4(param(c"dyn_b"), &v4([ya[0], ya[1], 0.0, 0.0]));
-                            sys::gs_effect_set_vec4(param(c"dyn_frame"), &v4([left, top, sx, sy]));
                             if let Some(g) = self.parts.get(*part) {
                                 set_look(look, masked && !composite, threshold);
                                 set_blend(look.blend);

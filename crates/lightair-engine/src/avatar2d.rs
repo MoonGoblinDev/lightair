@@ -7,8 +7,8 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 
 use lightair_avatar::Framing;
-use lightair_avatar::live2d::Puppet;
 use lightair_avatar::lightair_moc3::moc3::Moc3DrawableBlendMode;
+use lightair_avatar::live2d::Puppet;
 
 use crate::sys;
 
@@ -238,7 +238,8 @@ impl Gpu2d {
             sys::gs_set_cull_mode(sys::GS_NEITHER);
             sys::gs_blend_state_push();
             sys::gs_enable_blending(true);
-            sys::gs_effect_set_vec4(param(c"frame"), &v4([left, top, 1.0 / (right - left), 1.0 / (top - bottom)]));
+            // (set before every draw: libobs clears an effect's values when a technique ends)
+            let frame = v4([left, top, 1.0 / (right - left), 1.0 / (top - bottom)]);
             let mut masked: Option<&[i32]> = None;
             let draw_mesh = |i: usize, technique: &CStr| {
                 let (Some(g), Some(m)) = (self.meshes.get(i), meshes.get(i)) else { return };
@@ -250,6 +251,7 @@ impl Gpu2d {
                     return;
                 }
                 sys::gs_effect_set_texture(param(c"image"), tex);
+                sys::gs_effect_set_vec4(param(c"frame"), &frame);
                 sys::gs_load_vertexbuffer(g.vb);
                 sys::gs_load_indexbuffer(g.ib);
                 while sys::gs_effect_loop(e, technique.as_ptr()) {
