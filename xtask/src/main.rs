@@ -28,6 +28,7 @@ use std::process::Command;
 
 #[cfg(target_os = "macos")]
 mod dist;
+mod fonts;
 mod rules;
 mod update;
 
@@ -522,6 +523,12 @@ fn chromium_runtime(dir: &Path) -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     match std::env::args().nth(1).as_deref() {
         Some("modules") => modules(),
+        Some("fonts-catalog") => {
+            let args: Vec<String> = std::env::args().collect();
+            let commit = args.iter().position(|a| a == "--commit").and_then(|i| args.get(i + 1)).cloned();
+            fonts::catalog(commit)
+        }
+        Some("fonts-bundle") => fonts::bundle(std::env::args().nth(2).map(std::path::PathBuf::from)),
         Some("bundle") => bundle(std::env::args().any(|a| a == "--release")),
         Some("dev") => dev(std::env::args().any(|a| a == "--release")),
         Some("virtual-camera") => virtual_camera(std::env::args().any(|a| a == "--uninstall")),

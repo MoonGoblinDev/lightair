@@ -14,6 +14,7 @@ libobs-sys = { path = "crates/libobs-sys" }
 lightair-audio = { path = "crates/lightair-audio" }
 lightair-core = { path = "crates/lightair-core" }
 lightair-engine = { path = "crates/lightair-engine" }
+lightair-fonts = { path = "crates/lightair-fonts" }
 lightair-automation = { path = "crates/lightair-automation" }
 lightair-live = { path = "crates/lightair-live" }
 lightair-platform = { path = "crates/lightair-platform" }

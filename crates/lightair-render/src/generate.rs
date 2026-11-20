@@ -1,10 +1,11 @@
-//! Pictures made rather than read: text (shaped with the system's fonts, cosmic-text) and shapes
-//! (tiny-skia), as premultiplied RGBA just big enough for what they hold.
+//! Pictures made rather than read: text (shaped with cosmic-text, in the fonts the caller gave
+//! [`set_fonts`]; the system's own on desktops when none were given) and shapes (tiny-skia), as
+//! premultiplied RGBA just big enough for what they hold.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use cosmic_text::{Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
+use cosmic_text::{Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Style as Slant, SwashCache, Weight};
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 use crate::sequence::{Content, ShapeKind, ShapeStyle, TextStyle};
@@ -19,10 +20,72 @@ pub struct Raster {
 struct Fonts {
     system: FontSystem,
     cache: SwashCache,
+    /// The family plain text uses, when the caller chose the fonts ([`set_fonts`]); then emoji
+    /// and other scripts get their fallback families explicitly ([`spans`]).
+    sans: Option<String>,
 }
 
-/// The system's fonts, loaded once (it takes a moment).
+/// The fonts text draws with: the caller's ([`set_fonts`]), else, on desktops, the system's,
+/// loaded once (it takes a moment).
 static FONTS: Mutex<Option<Fonts>> = Mutex::new(None);
+
+/// Draws text with these fonts from now on (docs/plans/fonts.md §5): the bundled set, cached
+/// downloads and imported fonts, with no system fonts, so the same project draws the same pixels
+/// on every machine. Phones must call it before drawing text; desktops fall back to the system's
+/// fonts until it's called.
+pub fn set_fonts(set: lightair_fonts::FontSet) {
+    let sans = set.sans().to_string();
+    let db = set.into_db();
+    let system = FontSystem::new_with_locale_and_db("en-US".into(), db);
+    *FONTS.lock().unwrap() = Some(Fonts { system, cache: SwashCache::new(), sans: Some(sans) });
+}
+
+/// The fonts to draw with, loading the system's on a desktop when none were given. `None` (a
+/// phone that hasn't called [`set_fonts`], or no faces at all) draws no text instead of panicking.
+fn fonts(guard: &mut Option<Fonts>) -> Option<&mut Fonts> {
+    if guard.is_none() && cfg!(any(target_os = "macos", target_os = "windows", target_os = "linux")) {
+        *guard = Some(Fonts { system: FontSystem::new(), cache: SwashCache::new(), sans: None });
+    }
+    match guard {
+        Some(f) if !f.system.db().is_empty() => Some(f),
+        _ => {
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| tracing::warn!("no fonts to draw text with: call generate::set_fonts"));
+            None
+        }
+    }
+}
+
+/// Splits text into runs drawn in one family each: `None` is the chosen family; emoji go to the
+/// emoji font, and characters the chosen family lacks to their script's Noto family, when those
+/// are loaded (cosmic-text's own fallback only knows the system's font names).
+fn spans<'t>(text: &'t str, chosen: &str, db: &lightair_fonts::fontdb::Database) -> Vec<(&'t str, Option<&'static str>)> {
+    use lightair_fonts::{bundled, fallback, set};
+    let emoji_loaded = set::has_family(db, bundled::EMOJI);
+    let mut out: Vec<(usize, usize, Option<&'static str>)> = Vec::new();
+    let mut prev: Option<&'static str> = None;
+    for (i, c) in text.char_indices() {
+        let u = c as u32;
+        // joiners, variation selectors, skin tones and tags stay with what they follow
+        let joins = matches!(u, 0x200D | 0xFE0E | 0xFE0F | 0x1F3FB..=0x1F3FF | 0xE0020..=0xE007F | 0x20E3);
+        let family = if joins {
+            prev
+        } else if fallback::is_emoji(c) {
+            emoji_loaded.then_some(bundled::EMOJI)
+        } else {
+            match fallback::noto_for(c) {
+                Some(f) if f != bundled::EMOJI && !set::covers(db, chosen, c) && set::has_family(db, f) => Some(f),
+                _ => None,
+            }
+        };
+        match out.last_mut() {
+            Some(last) if last.2 == family => last.1 = i + c.len_utf8(),
+            _ => out.push((i, i + c.len_utf8(), family)),
+        }
+        prev = family;
+    }
+    out.into_iter().map(|(a, b, f)| (&text[a..b], f)).collect()
+}
 
 fn paint(rgb: u32, alpha: f32) -> Paint<'static> {
     let mut p = Paint::default();
@@ -57,17 +120,37 @@ const PLAIN: (u8, u8, u8) = (1, 2, 3);
 /// text's own top-left; the colour of colour glyphs, emoji) and returns its size.
 fn layout(style: &TextStyle, mut each: impl FnMut(i32, i32, u8, Option<u32>)) -> (f32, f32) {
     let mut guard = FONTS.lock().unwrap();
-    let fonts = guard.get_or_insert_with(|| Fonts { system: FontSystem::new(), cache: SwashCache::new() });
+    let Some(fonts) = fonts(&mut guard) else { return (0.0, 0.0) };
     let metrics = Metrics::new(style.size.max(4.0), style.size.max(4.0) * 1.2);
     let mut buf = Buffer::new(&mut fonts.system, metrics);
     buf.set_size(Some(style.width.max(style.size)), None);
-    let attrs = Attrs::new().family(Family::SansSerif).weight(if style.bold { Weight::BOLD } else { Weight::NORMAL });
+    let family = style.font.as_ref().map(|f| Family::Name(f.family.as_str())).unwrap_or(Family::SansSerif);
+    let weight = match &style.font {
+        Some(f) if style.bold => f.weight.max(600),
+        Some(f) => f.weight,
+        None if style.bold => 700,
+        None => 400,
+    };
+    let italic = style.font.as_ref().is_some_and(|f| f.style == lightair_fonts::Style::Italic);
+    let attrs = Attrs::new().family(family).weight(Weight(weight)).style(if italic { Slant::Italic } else { Slant::Normal });
     let align = match style.align {
         0 => Align::Left,
         2 => Align::Right,
         _ => Align::Center,
     };
-    buf.set_text(&style.text, &attrs, Shaping::Advanced, Some(align));
+    match fonts.sans.clone() {
+        // the caller's fonts: emoji and other scripts in their families explicitly
+        Some(sans) => {
+            let chosen = style.font.as_ref().map(|f| f.family.clone()).unwrap_or(sans);
+            let runs = spans(&style.text, &chosen, fonts.system.db());
+            let rich = runs.iter().map(|(t, f)| match f {
+                Some(name) => (*t, attrs.clone().family(Family::Name(name))),
+                None => (*t, attrs.clone()),
+            });
+            buf.set_rich_text(rich, &attrs, Shaping::Advanced, Some(align));
+        }
+        None => buf.set_text(&style.text, &attrs, Shaping::Advanced, Some(align)),
+    }
     buf.shape_until_scroll(&mut fonts.system, false);
     // what the lines cover (alignment moves them inside the wrapping width)
     let (mut left, mut right, mut bottom) = (f32::MAX, 0.0f32, 0.0f32);

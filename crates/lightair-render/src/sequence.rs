@@ -153,6 +153,7 @@ impl Media {
                         background: None,
                         outline: None,
                         width: (layer.w * canvas_w).max(*size),
+                        font: None,
                     })),
                     place,
                 },
@@ -273,11 +274,15 @@ pub struct TextStyle {
     pub outline: Option<u32>,
     /// The widest a line goes before wrapping (result pixels).
     pub width: f32,
+    /// The font, by name (docs/plans/fonts.md): none is the renderer's sans-serif (Inter where
+    /// the caller gave it the bundled fonts). `bold` makes it at least semibold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<lightair_fonts::FontRef>,
 }
 
 impl TextStyle {
     pub fn title(text: &str) -> TextStyle {
-        TextStyle { text: text.into(), size: 96.0, color: 0xFFFFFF, bold: true, align: 1, background: None, outline: None, width: 1600.0 }
+        TextStyle { text: text.into(), size: 96.0, color: 0xFFFFFF, bold: true, align: 1, background: None, outline: None, width: 1600.0, font: None }
     }
 }
 
@@ -895,6 +900,23 @@ fn yes() -> bool {
     true
 }
 
+impl Sequence {
+    /// The fonts its text clips name, each face once (what a device must have, or download,
+    /// before it draws the project; docs/plans/fonts.md §6).
+    pub fn fonts_used(&self) -> Vec<lightair_fonts::FontRef> {
+        let mut out: Vec<lightair_fonts::FontRef> = Vec::new();
+        for clip in self.tracks.iter().flat_map(|t| &t.clips) {
+            if let Some(Content::Text(style)) = &clip.content
+                && let Some(font) = &style.font
+                && !out.iter().any(|f| f.same_face(font) && f.weight == font.weight)
+            {
+                out.push(font.clone());
+            }
+        }
+        out
+    }
+}
+
 impl Media {
     /// Whether it's worth editing through a proxy: a video larger than 1080p (a studio_take's: its
     /// screen recording).
@@ -1272,6 +1294,7 @@ impl Sequence {
             background: Some((0x000000, 0.6)),
             outline: None,
             width: self.size.0 as f32 * 0.8,
+            font: None,
         };
         (style, Transform { y: h * 0.38, ..Transform::default() })
     }

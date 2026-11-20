@@ -4440,6 +4440,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lightair-fonts"
+version = "0.1.0"
+dependencies = [
+ "fontdb",
+ "serde",
+ "serde_json",
+ "sha1_smol",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "ttf-parser",
+]
+
+[[package]]
 name = "lightair-live"
 version = "0.1.0"
 dependencies = [
@@ -4511,6 +4526,7 @@ dependencies = [
  "cosmic-text",
  "lightair-audio",
  "lightair-core",
+ "lightair-fonts",
  "lightair-store",
  "objc2 0.6.5",
  "objc2-core-foundation",
@@ -10037,6 +10053,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "ed25519-dalek",
+ "lightair-fonts",
  "serde_json",
  "sha2 0.10.9",
 ]

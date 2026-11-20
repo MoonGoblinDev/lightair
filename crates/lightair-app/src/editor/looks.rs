@@ -23,7 +23,7 @@ pub(super) fn model() -> PathBuf {
 pub(super) fn text_presets(size: (u32, u32)) -> Vec<(&'static str, TextStyle, Transform)> {
     let (w, h) = (size.0 as f32, size.1 as f32);
     let k = h / 1080.0;
-    let base = |text: &str, px: f32| TextStyle { text: text.into(), size: px * k, color: 0xFFFFFF, bold: false, align: 1, background: None, outline: None, width: w * 0.8 };
+    let base = |text: &str, px: f32| TextStyle { text: text.into(), size: px * k, color: 0xFFFFFF, bold: false, align: 1, background: None, outline: None, width: w * 0.8, font: None };
     let at = |x: f32, y: f32| Transform { x: x * w, y: y * h, ..Transform::default() };
     vec![
         ("Title", TextStyle { bold: true, ..base("Title", 110.0) }, Transform::default()),

@@ -1,6 +1,7 @@
 # Fonts: the whole Google Fonts library, on every Lightair app
 
-Status (20 November 2026): **planned, nothing built.** The desktop docs already promise "system
+Status (20 November 2026): **phase 1 built** on branch `mobile/fonts` (see §9 for what it settled;
+publishing the catalogue and the iOS check remain). The desktop docs already promise "system
 and Google Fonts" for text layers, the chat box and widgets (docs/02 LY-10, docs/07, docs/12),
 but today `lightair-render` only loads the machine's own fonts (`FontSystem::new()` in
 `generate.rs`), the desktop's text layer is libobs's `text_ft2_source_v2`, which picks fonts by
@@ -75,7 +76,9 @@ people's videos and exists only on Apple devices.
 | **Catalogue** | Every other Google Fonts family, downloaded on first use: picked in the font picker, or needed by a project being opened | The shared cache (§5) |
 | **Imported** | The person's own `.ttf` / `.otf` / `.ttc` files, with a one-line note: "You're responsible for this font's licence" | The project (copied into it, so it travels with exports and sync) |
 
-**The bundled set** (decided; adjusted after measuring, within a 25 MB budget including emoji):
+**The bundled set** (measured: 18.9 MB of text fonts, plus 10.7 MB of emoji; 29.6 MB in all).
+Static families ship their regular and bold, upright and italic; variable families their variable
+files; other weights download when used (`bundled::files_to_bundle`):
 
 | Kind | Families |
 |---|---|
@@ -83,14 +86,18 @@ people's videos and exists only on Apple devices.
 | Sans | Roboto, Open Sans, Montserrat, Poppins, Lato, Nunito, Raleway, Work Sans, DM Sans, Manrope, Space Grotesk, Rubik |
 | Bold and condensed display | Oswald, Bebas Neue, Anton, Barlow Condensed, Archivo Black, Bungee, Righteous, Bangers, Alfa Slab One, Russo One |
 | Rounded | Fredoka, Baloo 2, Quicksand, Comfortaa |
-| Serif | Playfair Display, Merriweather, Lora, DM Serif Display, Abril Fatface |
+| Serif | Playfair Display, Lora, DM Serif Display, Abril Fatface (Merriweather, 9 MB as a three-axis variable font, downloads on use) |
 | Handwriting and script | Pacifico, Caveat, Permanent Marker, Dancing Script, Lobster, Satisfy |
 | Pixel and retro | Press Start 2P, VT323, Silkscreen |
 | Mono | Space Mono, Roboto Mono |
 | Emoji | Noto Color Emoji |
 
-The emoji font's format (CBDT bitmaps or COLRv1) is the one `lightair-render`'s rasteriser
-(swash, through cosmic-text) draws correctly at overlay sizes; checked in phase 1.
+**Emoji format (settled).** `google/fonts` carries Noto Color Emoji's COLRv1 build (25 MB), whose
+gradients swash (`lightair-render`'s rasteriser, through cosmic-text) doesn't draw: emoji came out
+blank. Apps bundle its **CBDT bitmap build** instead, from Google's `googlefonts/noto-emoji`
+repository at tag v2.051 (OFL, the same family name, 10.7 MB), checked by SHA-256; the catalogue
+points the family at it. cosmic-text's own fallback only knows system font names, so the renderer
+gives emoji, and characters the chosen family lacks, their family explicitly (`generate::spans`).
 
 **Other scripts.** The bundled families cover Latin, Greek and Cyrillic between them. Every other
 script falls back to the matching **Noto** family from the catalogue (Noto Sans JP, KR, SC, TC,
@@ -113,7 +120,10 @@ from `google/fonts` at a pinned commit:
 | `mirror` per file: `cdn.jsdelivr.net/gh/google/fonts@<commit>/<licence>/<family>/<file>` | Derived from the pinned commit |
 | `popularity` rank | The Developer API |
 
-Compressed, it is expected to be a few hundred kilobytes; measured in phase 1.
+Measured: 2,042 families, 3,783 files (2.4 GB of fonts), a 1.2 MB JSON file (uncompressed), at
+`crates/lightair-fonts/catalog/fonts-catalog.json`. The generator never downloads the fonts: a
+shallow, blob-less clone checks out only `METADATA.pb` files and gives each file's git hash, and
+GitHub's tree API gives sizes in one request per licence folder.
 
 **Where it lives.**
 
@@ -123,15 +133,17 @@ Compressed, it is expected to be a few hundred kilobytes; measured in phase 1.
   public repo), regenerated when the pin moves. Apps check it at most once a week and when a file
   link fails, with an `ETag` so an unchanged catalogue costs one small request.
 
-**Where files come from.**
+**Where files come from** (as built; it changed from "Google first"):
 
-1. **Google's font server**, through the `url` in the catalogue: fast, and Google's to keep
-   running. A link can go stale when Google updates a font; then:
-2. **jsDelivr**, serving the same file from `google/fonts` at the pinned commit (`mirror`).
-   jsDelivr limits the size of what it serves from GitHub, so phase 1 checks it against this
-   repository's largest families; families it can't serve rely on Google's link alone.
-3. Every download is **checked against the catalogue's SHA-256** before it enters the cache; a
-   mismatch is discarded and the next source tried.
+1. **jsDelivr**, serving the file from `google/fonts` at the pinned commit.
+2. **GitHub** (`raw.githubusercontent.com`) at the same commit. jsDelivr refuses files over about
+   20 MB (it failed on the 25 MB COLRv1 emoji font); GitHub served it.
+3. **Google's font server**, only for files whose SHA-256 the catalogue recorded: its files
+   aren't byte-identical to the repository's, so they can't be checked against the git hash.
+   The generator doesn't record them yet, so this source is unused for now.
+
+Every download is **checked before it enters the cache**: repository files against their size and
+git blob hash, others against SHA-256; a mismatch is discarded and the next source tried.
 
 **Privacy.** A download is a request from the device to Google (or jsDelivr), which sees its IP
 address. The privacy policy and Settings say so; **Settings › Fonts › Download fonts** can be
@@ -201,7 +213,8 @@ The same picker on every app (a popover on the desktop, a sheet on phones, a pop
 
 ## 9. Phases
 
-1. **The crate and the catalogue:**
+1. **The crate and the catalogue** (built on `mobile/fonts`; remaining: publishing the catalogue on
+   GitHub Pages, and the iOS simulator half of the check, which Lightair Editor runs):
    - `lightair-fonts` (catalogue, `FontRef`, resolver, fallback, cache, `Fetcher` trait);
    - `cargo xtask fonts-catalog` and the published catalogue;
    - the bundled set measured and packed; the emoji format checked;
