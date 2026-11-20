@@ -925,7 +925,7 @@ impl StudioWindow {
         self.section("Phone camera", None, cx)
             .child(status)
             .children(health_line)
-            .children(live.then(|| latency_line(&feed.latency())).flatten().map(|l| {
+            .children(live.then(|| latency_line(&feed.latency(), &health)).flatten().map(|l| {
                 div().pl(px(15.)).text_size(px(11.)).text_color(tok::text_tertiary()).child(l)
             }))
             .child(pairing)
@@ -985,8 +985,16 @@ fn latency_json(l: &lightair_engine::phone_camera::Latency) -> Value {
 }
 
 /// The Inspector's line: how long frames take from the phone's camera to each stage here.
-fn latency_line(l: &lightair_engine::phone_camera::Latency) -> Option<String> {
+/// `health` is the phone's last: its own stages, `encode_ms` (camera to encoded) and `send_ms`
+/// (muxed to written out).
+fn latency_line(l: &lightair_engine::phone_camera::Latency, health: &Value) -> Option<String> {
     let mut parts = vec![];
+    if let Some(e) = health["encode_ms"].as_f64() {
+        parts.push(format!("encoded {e:.0} ms"));
+    }
+    if let Some(s) = health["send_ms"].as_f64() {
+        parts.push(format!("sending {s:.0} ms"));
+    }
     for (name, s) in [("here", l.arrived), ("decoded", l.decoded), ("on screen", l.drawn)] {
         if let Some(s) = s {
             parts.push(format!("{name} {:.0} ms", s.median_ms));

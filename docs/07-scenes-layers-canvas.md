@@ -243,9 +243,12 @@ microphone and shows its pairing code.
   differences is the offset. Each frame is then timed from capture to arriving whole, decoded,
   and drawn in the output; the Inspector shows the medians ("From the camera: here 90 ms ·
   decoded 92 ms · on screen 104 ms") and `camera.status` gives median, min and max per stage.
-  An iPhone 15 by cable: 90 / 92 / 104 ms, where the media player before it took 1.65 s (also
-  read off a filmed millisecond clock: 100–105 ms). A frame's arrival is known when the next one
-  starts (the phone leaves a video PES's length open), one frame (33 ms) of the 90.
+  The phone reports its own stages in `health` (`encode_ms`: camera to encoded; `send_ms`: muxed
+  to written out), shown first in the line. An iPhone 15 by cable at 1080p60: encoded 44 ms,
+  sending 0.1 ms, here 45 ms, decoded 47 ms, on screen 57 ms (median). Read off a filmed
+  millisecond clock: 35–65 ms, where Continuity Camera on the same phone, Mac and spot read
+  70–75 ms. The media player before the direct decoder took 1.65 s, and at 30 fps before the
+  phone marked where frames end it was 104 ms.
 - **Placeholder and recovery:** with nothing from the phone for 0.7 s the layer shows a dark slate
   with one line ("Waiting for Sam's iPhone"), at the size it had; when the phone comes back
   (it reconnects by itself) pictures return without anyone touching the desktop.
