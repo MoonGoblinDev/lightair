@@ -145,7 +145,19 @@ impl OutputsRuntime {
     }
 
     /// Earliest start among running streams (for the Go Live timer).
-    pub fn stream_since(&self) -> Option<Instant> {
+    /// Each stream destination's status, by its id.
+    pub fn streams(&self) -> Vec<(Id, OutputStatus)> {
+        self.status
+            .lock()
+            .iter()
+            .filter_map(|(k, s)| match k {
+                OutputKey::Stream(id) => Some((*id, s.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+        pub fn stream_since(&self) -> Option<Instant> {
         self.status
             .lock()
             .iter()

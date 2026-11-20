@@ -48,6 +48,7 @@ Scenes, objects, sources and tracks are named by id or by name. Positions are ca
 | `clip.save`, `clip.status` | | |
 | `history.undo`, `history.redo` | | |
 | `screenshot` | `scene?`, `width?` | `mime`, `data` (base64 PNG) |
+| `chat.send` | `text`, `platform?` (every connected chat when absent) | sends a message to the stream's chat as the signed-in account |
 | `commands.execute` | `commands` (Lightair commands, as in the journal), `label?` | |
 | `ui.select` | `scene?`, `object?` | selects it in the window |
 | `camera.pair` | `source` (a Phone camera layer) | `link` (the pairing code's link, for Lightair Live), `expires_at`; the person still allows the phone in Lightair |
@@ -76,3 +77,13 @@ Speaks protocol 5 (JSON, authentication, batches, event subscriptions). In OBS's
 ## MCP tools
 
 `get_state`, `screenshot`, `switch_scene`, `create_scene`, `rename_scene`, `remove_scene`, `add_object`, `update_object`, `remove_object`, `move_object`, `get_source`, `list_capture_targets`, `set_audio`, `recording`, `streaming`, `virtual_camera`, `save_clip`, `undo`, `redo`, `get_stats`, `get_workspace`, `run_commands`: each one of the methods above.
+
+## For phones (Lightair Live), on the TLS port
+
+The phones' methods and events are lightair-live's docs/05 §4.2; as built on the desktop:
+
+- `staging.get` (and the `staging.state` event) carry `transition: {kind, duration_ms}`, the one a take would use (the staged scene's own, else the workspace's); `staging.take {transition?: {kind, duration_ms?}}` uses the given one for that take only (kind: cut, fade, move, slide, wipe, dip, stinger).
+- `record.state` carries `started_at` (Unix ms) and `elapsed_ms` (paused time left out); `stream.state` carries `started_at` and `destinations` (the ids streaming).
+- `clip.saved` carries `path` and, once the Library has the clip (up to 4 s later), its `id`, `duration_ms`, `formats` and `thumbnail {mime, data}` (a 240 px JPEG).
+- `scene.thumbnail {scene, version}`: a scene's picture may have changed (the scene on air every 5 s, others when their objects change; one per scene per 5 s at most); phones fetch `scene.thumbnails` for those they show.
+

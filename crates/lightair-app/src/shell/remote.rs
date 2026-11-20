@@ -86,6 +86,21 @@ struct Told {
     workspace: usize,
 }
 
+/// A still as a small JPEG (`width` px wide at most): `{mime, data}` (base64).
+fn small_jpeg(path: &std::path::Path, width: u32) -> Option<Value> {
+    let img = image::open(path).ok()?;
+    let img = if img.width() > width { img.resize(width, u32::MAX, image::imageops::FilterType::Triangle) } else { img };
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80).encode_image(&image::DynamicImage::ImageRgb8(img.to_rgb8())).ok()?;
+    Some(json!({"mime": "image/jpeg", "data": base64::engine::general_purpose::STANDARD.encode(out.into_inner())}))
+}
+
+/// When something that started `since` (a monotonic instant) started, Unix ms.
+fn started_ms(since: Instant) -> i64 {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    now - since.elapsed().as_millis() as i64
+}
+
 fn err(kind: ErrorKind, m: impl Into<String>) -> ApiError {
     ApiError::new(kind, m)
 }
@@ -377,18 +392,33 @@ impl StudioWindow {
         }
         if before.recording != now.recording {
             let path = rec.path.as_ref().map(|p| p.to_string_lossy().into_owned());
-            server.emit("record.state", json!({"active": now.recording.0, "paused": now.recording.1, "path": path}));
+            let since = match rec.state {
+                OutputState::Active { since } | OutputState::Reconnecting { since } => Some(since),
+                _ => None,
+            };
+            server.emit(
+                "record.state",
+                json!({"active": now.recording.0, "paused": now.recording.1, "path": path,
+                    "started_at": since.map(started_ms), "elapsed_ms": since.map(|s| rec.recorded(s).as_millis() as u64)}),
+            );
         }
         if before.streaming != now.streaming {
-            server.emit("stream.state", json!({"active": now.streaming}));
+            let since = runtime().stream_since();
+            let destinations: Vec<Value> = runtime()
+                .streams()
+                .into_iter()
+                .filter(|(_, st)| st.state.is_running())
+                .map(|(id, _)| json!(id))
+                .collect();
+            server.emit(
+                "stream.state",
+                json!({"active": now.streaming, "started_at": since.map(started_ms), "destinations": destinations}),
+            );
         }
         if before.vcam != now.vcam {
             server.emit("vcam.state", json!({"active": now.vcam}));
         }
-        if now.clips_saved > before.clips_saved {
-            let path = runtime().get(OutputKey::Clips).path.map(|p| p.to_string_lossy().into_owned());
-            server.emit("clip.saved", json!({"path": path}));
-        }
+        let clip_saved = now.clips_saved > before.clips_saved;
         for (track, (source, volume, muted)) in &now.tracks {
             let Some((_, v0, m0)) = before.tracks.get(track) else { continue };
             let source_name = w.sources.get(source).map(|s| s.name.clone());
@@ -410,6 +440,57 @@ impl StudioWindow {
         if before.workspace != now.workspace {
             server.emit("workspace.changed", json!({}));
         }
+        if clip_saved {
+            // with its id, length, formats and a 240 px picture once the Library has it (MR-08)
+            let path = runtime().get(OutputKey::Clips).path;
+            let workspace = self.studio.read(cx).workspace_dir();
+            self.tell_clip_saved(path, workspace, cx);
+        }
+    }
+
+    /// `clip.saved` for a clip just saved: its path at once is all a phone strictly needs, but
+    /// it also gets the clip's Library id, length, formats and a 240 px picture, so it waits
+    /// (up to 4 s, off this thread) for the Library to index the clip and make its still.
+    fn tell_clip_saved(&mut self, path: Option<std::path::PathBuf>, workspace: Option<std::path::PathBuf>, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let mut found: Option<lightair_store::recordings::Item> = None;
+            for _ in 0..16 {
+                let (p, w) = (path.clone(), workspace.clone());
+                found = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let (p, w) = (p?, w?);
+                        let index = lightair_store::recordings::Index::load(&w);
+                        index.items.iter().find(|i| i.files.iter().any(|f| f.path == p)).cloned()
+                    })
+                    .await;
+                if found.as_ref().is_some_and(|i| i.thumbnail.as_ref().is_some_and(|t| t.exists())) {
+                    break;
+                }
+                cx.background_executor().timer(Duration::from_millis(250)).await;
+            }
+            let thumbnail = found.as_ref().and_then(|i| i.thumbnail.clone()).and_then(|t| small_jpeg(&t, 240));
+            let duration = match (&found, &path) {
+                (Some(i), _) if i.duration_ms.is_some() => i.duration_ms,
+                (_, Some(p)) => lightair_store::recordings::mp4_duration_ms(p),
+                _ => None,
+            };
+            let mut data = json!({
+                "path": path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                "id": found.as_ref().map(|i| i.id),
+                "duration_ms": duration,
+                "formats": found.as_ref().map(|i| i.files.iter().filter_map(|f| f.canvas.clone()).collect::<Vec<_>>()).unwrap_or_default(),
+            });
+            if let Some(t) = thumbnail {
+                data["thumbnail"] = t;
+            }
+            let _ = this.update(cx, |this, _| {
+                if let Some(server) = this.remote.running() {
+                    server.emit("clip.saved", data);
+                }
+            });
+        })
+        .detach();
     }
 
     /// Runs commands as one undoable change named for who asked.

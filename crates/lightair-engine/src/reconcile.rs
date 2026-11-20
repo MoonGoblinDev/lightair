@@ -28,6 +28,9 @@ use std::sync::Arc;
 /// all sharing the same source sources (docs/07-scenes-objects-canvas.md, "Formats").
 #[derive(Default)]
 pub struct Reconciler {
+    /// The transition the next program change uses instead of its scene's or the workspace's
+    /// (a phone's `staging.take` with a transition), used once.
+    pub next_transition: Option<lightair_model::TransitionSettings>,
     sources: HashMap<Id, ObsSource>,
     /// Source effect chains (Lightair Effect Stack, colour correction, …).
     source_effects: HashMap<Id, Chain>,
@@ -859,7 +862,7 @@ impl Reconciler {
         self.finish_move();
         // the incoming scene's own transition (and stinger video), else the workspace's
         let incoming = program.and_then(|b| workspace.scene(b));
-        let settings = incoming.and_then(|s| s.transition).unwrap_or(self.transition_settings);
+        let settings = self.next_transition.take().or_else(|| incoming.and_then(|s| s.transition)).unwrap_or(self.transition_settings);
         let stinger = incoming.filter(|s| s.transition.is_some()).and_then(|s| s.stinger.clone()).or_else(|| self.stinger.clone());
         let kind = match (previous, program) {
             (Some(a), Some(b)) if a != b => settings.kind,

@@ -56,6 +56,8 @@ fn configure(settings: &Value) -> Value {
         "codec": settings["codec"].as_str().unwrap_or("h264"),
         "bitrate_kbps": int("bitrate_kbps", 12000),
         "orientation": settings["orientation"].as_str().unwrap_or("follow"),
+        // exposure capped at half a frame, gain making up (more noise in dim light)
+        "low_latency": settings["low_latency"].as_bool().unwrap_or(false),
     })
 }
 
@@ -938,6 +940,34 @@ impl StudioWindow {
                 "As held: the picture turns with the phone. Landscape or Portrait: it stays that way however the phone is held.",
             )))
             .child(self.segmented("phone-camera-orientation", orientations, cx))
+            .child({
+                let on = s["low_latency"].as_bool().unwrap_or(false);
+                let cmd = set("low_latency", json!(!on));
+                // the phone says whether it took it
+                let took = state["low_latency"].as_bool();
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(div().text_size(px(12.)).child(if on && took == Some(false) {
+                                "Lowest latency (this phone can't)"
+                            } else {
+                                "Lowest latency (needs good light)"
+                            }))
+                            .child(ui::info(
+                                "phone-camera-low-latency-info",
+                                "The phone's camera exposes for at most half a frame and turns up its gain instead: pictures come a few milliseconds sooner, but get noisier in dim light.",
+                            )),
+                    )
+                    .child(super::settings::switch("phone-camera-low-latency", on).on_click(cx.listener(move |this, _, _, cx| this.exec(cmd.clone(), cx))))
+            })
             .when(!lenses.is_empty(), |d| d.child(row("Lens", lens_menu.into_any_element())))
             .when(channel, |d| d.child(label("Zoom")).child(zooms).child(label("Camera")).child(locks))
             .into_any_element()

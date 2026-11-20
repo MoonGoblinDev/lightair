@@ -74,6 +74,8 @@ pub(crate) struct Phones {
     told_health: std::time::Instant,
     /// Phone camera layers (`phone_camera`).
     pub cameras: super::phone_camera::Cameras,
+    /// Each scene's last told thumbnail: (content hash, when, version).
+    thumbs: std::collections::HashMap<lightair_model::Id, (u64, std::time::Instant, u64)>,
     /// Lightair Editor's round trip (`editor_sync`).
     pub editor_sync: Arc<super::editor_sync::EditorSync>,
 }
@@ -235,6 +237,7 @@ impl StudioWindow {
             told_health: std::time::Instant::now(),
             cameras,
             editor_sync: Default::default(),
+            thumbs: Default::default(),
         }
     }
 
@@ -480,6 +483,9 @@ impl StudioWindow {
                 .collect::<Vec<_>>()
                 .join(" · ");
             let line = format!("{}{}{} · {}", what, if what.is_empty() { "" } else { " · " }, d.scope.as_str(), seen);
+            // unseen for 180 days: suggest removing it (05 §2)
+            let unseen = d.last_seen.or(Some(d.paired_at)).is_some_and(|t| unix_now().saturating_sub(t) > 180 * 86_400);
+            let line = if unseen { format!("{line} · Not seen for 6 months: remove it?") } else { line };
             group = group.child(super::settings::row(
                 &d.name,
                 Some(&line),
@@ -492,6 +498,38 @@ impl StudioWindow {
         }
         group
     }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// A transition kind as phones write it.
+fn transition_name(k: lightair_model::TransitionKind) -> &'static str {
+    use lightair_model::TransitionKind as T;
+    match k {
+        T::Cut => "cut",
+        T::Fade => "fade",
+        T::Move => "move",
+        T::Slide => "slide",
+        T::Wipe => "wipe",
+        T::Dip => "dip",
+        T::Stinger => "stinger",
+    }
+}
+
+fn transition_kind(s: &str) -> Option<lightair_model::TransitionKind> {
+    use lightair_model::TransitionKind as T;
+    Some(match s.to_ascii_lowercase().as_str() {
+        "cut" => T::Cut,
+        "fade" => T::Fade,
+        "move" => T::Move,
+        "slide" => T::Slide,
+        "wipe" => T::Wipe,
+        "dip" => T::Dip,
+        "stinger" => T::Stinger,
+        _ => return None,
+    })
 }
 
 fn seen_ago(unix: u64) -> String {
@@ -881,7 +919,10 @@ impl StudioWindow {
         let studio = self.studio.read(cx);
         let w = studio.workspace();
         let staged = studio.selected_scene.filter(|s| self.cue_scenes && Some(*s) != w.program);
-        json!({"enabled": self.cue_scenes, "staged": staged, "program": w.program})
+        // the transition a take would use: the staged scene's own, else the workspace's
+        let t = staged.and_then(|s| w.scene(s)).and_then(|s| s.transition).unwrap_or(w.transition);
+        json!({"enabled": self.cue_scenes, "staged": staged, "program": w.program,
+            "transition": {"kind": transition_name(t.kind), "duration_ms": t.duration_ms}})
     }
 
     /// New chat, activity and staging, to phones (lightair-live's docs/05 §4.2).
@@ -932,11 +973,39 @@ impl StudioWindow {
             }
             p.told_issues = issues;
         }
+        out.extend(self.scene_thumbnail_events(cx));
         if let Some(server) = self.remote.running() {
             for (event, data) in out {
                 server.emit(event, data);
             }
         }
+    }
+
+    /// `scene.thumbnail {scene, version}` when a scene's picture may have changed: the scene on
+    /// air every 5 s (its sources move), another when its objects change; one per scene per 5 s
+    /// at most (05 §4.2). Phones fetch `scene.thumbnails` for the ones they show.
+    fn scene_thumbnail_events(&mut self, cx: &mut Context<Self>) -> Vec<(&'static str, Value)> {
+        let w = self.studio.read(cx).workspace().clone();
+        let now = std::time::Instant::now();
+        let p = &mut self.remote.phones;
+        let mut out = vec![];
+        p.thumbs.retain(|id, _| w.scene(*id).is_some());
+        for scene in &w.scenes {
+            let hash = {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                serde_json::to_string(&**scene).unwrap_or_default().hash(&mut h);
+                h.finish()
+            };
+            let on_air = w.program == Some(scene.id);
+            let t = p.thumbs.entry(scene.id).or_insert((hash, now, 0));
+            let due = now.duration_since(t.1) >= Duration::from_secs(5);
+            if due && (on_air || t.0 != hash) {
+                *t = (hash, now, t.2 + 1);
+                out.push(("scene.thumbnail", json!({"scene": scene.id, "version": t.2})));
+            }
+        }
+        out
     }
 
     /// Staging, activity and the deck for phones (lightair-live's docs/05 §4.2).
@@ -974,6 +1043,16 @@ impl StudioWindow {
                     return Some(Err(ApiError::state("Nothing is staged.")));
                 };
                 let name = w.scene(staged).map(|s| s.name.clone()).unwrap_or_default();
+                // a transition for this take only: {kind, duration_ms?}
+                if let Some(t) = p.get("transition").filter(|t| t.is_object()) {
+                    let Some(kind) = t["kind"].as_str().and_then(transition_kind) else {
+                        return Some(Err(ApiError::invalid("transition.kind: cut, fade, move, slide, wipe, dip or stinger")));
+                    };
+                    let base = w.scene(staged).and_then(|s| s.transition).unwrap_or(w.transition);
+                    let duration_ms = t["duration_ms"].as_u64().map_or(base.duration_ms, |d| d.min(10_000) as u32);
+                    let settings = lightair_model::TransitionSettings { kind, duration_ms, direction: base.direction };
+                    self.studio.read(cx).engine().call(move |s| s.reconciler.next_transition = Some(settings));
+                }
                 self.remote_exec(call.client, &format!("Take {name}"), vec![Command::SetProgram { scene: Some(staged) }], cx)
                     .map(|_| self.staging_json(cx))
             }
