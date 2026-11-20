@@ -486,6 +486,100 @@ impl Encoder {
     }
 }
 
+/// Whether this FFmpeg encodes with `encoder` here (a hardware one: tried once).
+pub fn can_encode(encoder: &str) -> bool {
+    let listed = encoders().iter().any(|x| x == encoder);
+    let hardware = ["videotoolbox", "nvenc", "amf", "qsv"].iter().any(|h| encoder.contains(h));
+    listed && (!hardware || encodes(encoder))
+}
+
+impl Encoder {
+    /// Starts an export made with `settings` into `out` (PNG frames: a folder beside it): frames
+    /// come `source` big at `fps` (none for a sound-only export); the sound is `mix` (an FFmpeg
+    /// filter over inputs 1.., ending in `[aout]`) over `audio`.
+    pub fn start_export(
+        out: &Path,
+        source: (u32, u32),
+        fps: f64,
+        settings: &crate::exporter::ExportSettings,
+        audio: &[PathBuf],
+        mix: Option<&str>,
+    ) -> Result<Encoder, MediaError> {
+        let target = settings.target(out);
+        if let Some(d) = target.parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        let video = settings.container.has_video();
+        let sound = settings.container.has_audio() && settings.audio.is_some() && mix.is_some();
+        let mut cmd = command(ffmpeg()?);
+        cmd.args(["-v", "error", "-y"]);
+        if video {
+            cmd.args(["-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{}x{}", source.0, source.1)])
+                .args(["-r", &format!("{fps}"), "-i", "-"]);
+        }
+        if sound {
+            for a in audio {
+                cmd.arg("-i").arg(a);
+            }
+        }
+        let has = |e: &str| can_encode(e);
+        let (vfilter, vargs) = if video { settings.video_args(source, fps, &has) } else { (None, Vec::new()) };
+        // the inputs are numbered from 1 when frames come first, from 0 when they don't
+        let mix = mix.filter(|_| sound).map(|m| if video { m.to_string() } else { shift_inputs(m) });
+        let mut graph = Vec::new();
+        if let Some(f) = &vfilter {
+            graph.push(format!("[0:v]{f}[vout]"));
+        }
+        if let Some(m) = &mix {
+            graph.push(m.clone());
+        }
+        if !graph.is_empty() {
+            cmd.args(["-filter_complex", &graph.join(";")]);
+        }
+        if video {
+            cmd.args(["-map", if vfilter.is_some() { "[vout]" } else { "0:v" }]);
+        }
+        if mix.is_some() {
+            cmd.args(["-map", "[aout]"]);
+        }
+        cmd.args(&vargs);
+        cmd.args(if sound { settings.audio_args(&has) } else { vec!["-an".to_string()] });
+        if matches!(settings.container, crate::exporter::Container::Mp4 | crate::exporter::Container::Mov | crate::exporter::Container::M4a) {
+            cmd.args(["-movflags", "+faststart"]);
+        }
+        let mut child = cmd
+            .arg(&target)
+            .stdin(if video { Stdio::piped() } else { Stdio::null() })
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let input = child.stdin.take();
+        Ok(Encoder { child, input })
+    }
+}
+
+/// A filter over inputs 1.. made to read inputs 0.. (`[3:a]` → `[2:a]`).
+fn shift_inputs(filter: &str) -> String {
+    let mut out = String::with_capacity(filter.len());
+    let mut rest = filter;
+    while let Some(i) = rest.find('[') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        let Some(j) = after.find(']') else {
+            out.push_str(&rest[i..]);
+            return out;
+        };
+        let label = &after[..j];
+        match label.split_once(':').and_then(|(n, t)| n.parse::<usize>().ok().map(|n| (n, t))) {
+            Some((n, t)) if n > 0 => out.push_str(&format!("[{}:{t}]", n - 1)),
+            _ => out.push_str(&format!("[{label}]")),
+        }
+        rest = &after[j + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// A smaller copy of a video for editing (no sound): fitted in 1920×1080, a keyframe every half
 /// second (quick to jump around in), written to `out` once it's whole. `progress(fraction)`
 /// returns false to stop.
@@ -579,6 +673,11 @@ fn thumbnails(path: &Path, every_ms: u64, size: (u32, u32), keyframes: bool) -> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mixes_read_from_input_zero_without_frames() {
+        assert_eq!(super::shift_inputs("[1:a]atrim=start=0[s0];[2:a:0]volume=1[s1];[s0][s1]amix[aout]"), "[0:a]atrim=start=0[s0];[1:a:0]volume=1[s1];[s0][s1]amix[aout]");
+    }
+
     use super::*;
 
     #[test]

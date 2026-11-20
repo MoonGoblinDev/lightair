@@ -585,6 +585,30 @@ impl StudioWindow {
                     self.show_place(super::Place::Library, cx);
                 }
             }
+            // the Editor with the newest recording, then its export panel ("editor-export:4": on
+            // the fifth preset)
+            Ok(hook) if hook.starts_with("editor-export") => {
+                if let Some(dir) = self.studio.read(cx).workspace_dir() {
+                    let index = lightair_store::recordings::Index::load(&dir);
+                    if let Some(item) = index.newest_first().first() {
+                        let id = item.id;
+                        self.show_place(super::Place::Editor, cx);
+                        self.editor.update(cx, |e, cx| e.add_item(id, cx));
+                    }
+                }
+                let preset = hook.split_once(':').and_then(|(_, n)| n.parse().ok());
+                let editor = self.editor.clone();
+                cx.spawn_in(window, async move |_, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_secs(4)).await;
+                    // in front, as when it's opened by hand (a window behind others isn't drawn)
+                    let _ = cx.update(|window, cx| {
+                        cx.activate(true);
+                        window.activate_window();
+                        editor.update(cx, |e, cx| e.hook_export(preset, cx));
+                    });
+                })
+                .detach();
+            }
             Ok("editor-latest") => {
                 // the Editor with the workspace's newest recording added to a workspace
                 if let Some(dir) = self.studio.read(cx).workspace_dir() {

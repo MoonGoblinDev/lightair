@@ -876,7 +876,8 @@ impl Track {
 pub struct Sequence {
     pub version: u32,
     pub size: (u32, u32),
-    pub fps: u32,
+    /// Frames a second (23.976, 29.97… too; projects from before wrote a whole number).
+    pub fps: f64,
     pub media: Vec<Media>,
     pub tracks: Vec<Track>,
     /// Large videos edited through smaller copies (the export reads the originals).
@@ -885,6 +886,9 @@ pub struct Sequence {
     /// Markers on the timeline (ms, in order).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub markers: Vec<u64>,
+    /// How it was last exported (the export panel opens with it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export: Option<crate::exporter::ExportSettings>,
 }
 
 fn yes() -> bool {
@@ -928,7 +932,7 @@ impl Sequence {
 
     /// Empty: one video track and one audio track.
     pub fn new(size: (u32, u32), fps: u32) -> Sequence {
-        Sequence { version: 1, size, fps, media: Vec::new(), tracks: vec![Track::new(TrackKind::Video), Track::new(TrackKind::Audio)], proxies: true, markers: Vec::new() }
+        Sequence { version: 1, size, fps: fps as f64, media: Vec::new(), tracks: vec![Track::new(TrackKind::Video), Track::new(TrackKind::Audio)], proxies: true, markers: Vec::new(), export: None }
     }
 
     pub fn load(path: &Path) -> std::io::Result<Sequence> {

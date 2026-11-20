@@ -375,7 +375,7 @@ impl Editor {
 
     /// Moves the playhead by frames (or to the previous or next cut, or an end).
     pub(super) fn step(&mut self, frames: i64, cx: &mut Context<Self>) {
-        let frame = 1000.0 / self.seq().map_or(30, |s| s.fps.max(1)) as f64;
+        let frame = 1000.0 / self.seq().map_or(30.0, |s| s.fps.max(1.0));
         let t = (self.playhead as f64 + frames as f64 * frame).max(0.0) as u64;
         let end = self.seq().map_or(0, |s| s.duration_ms());
         self.seek(t.min(end), cx);

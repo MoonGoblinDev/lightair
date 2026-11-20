@@ -260,6 +260,8 @@ pub struct Compositor {
     visual: Option<wgpu::Surface<'static>>,
     #[cfg(windows)]
     bgra_out: bool,
+    /// Frames start transparent instead of black (an export that keeps transparency).
+    transparent: bool,
 }
 
 /// Windows: set when a visual's swap chain was (re)made: DirectComposition shows it once the
@@ -430,6 +432,7 @@ impl Compositor {
             visual: None,
             #[cfg(windows)]
             bgra_out: bgra,
+            transparent: false,
         };
         let pointer = rgb(0x0090FF);
         let col = [pointer[0], pointer[1], pointer[2]];
@@ -560,6 +563,12 @@ impl Compositor {
     }
 
     /// A frame of picture layers on black, back to front.
+    /// Frames start transparent (`true`) or black: where nothing covers the frame, it's see-
+    /// through. Pixels come premultiplied either way (over black, the same picture).
+    pub fn set_transparent(&mut self, transparent: bool) {
+        self.transparent = transparent;
+    }
+
     pub fn layers(&mut self, layers: &[Layer]) -> Vec<u8> {
         let (ow, oh) = (self.size.0 as f32, self.size.1 as f32);
         for (i, l) in layers.iter().enumerate() {
@@ -732,7 +741,10 @@ impl Compositor {
                     view: &view,
                     depth_slice: None,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(if self.transparent { wgpu::Color::TRANSPARENT } else { wgpu::Color::BLACK }),
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,

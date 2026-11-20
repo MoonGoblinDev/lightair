@@ -125,7 +125,7 @@ impl SequenceRenderer {
         Ok(SequenceRenderer {
             seq: seq.clone(),
             compositor,
-            fps: seq.fps.max(1) as f64,
+            fps: seq.fps.max(1.0),
             streams: HashMap::new(),
             stills: HashMap::new(),
             takes: HashMap::new(),
@@ -276,7 +276,7 @@ impl SequenceRenderer {
             self.takes.clear();
             self.attach();
         }
-        self.fps = seq.fps.max(1) as f64;
+        self.fps = seq.fps.max(1.0);
         // a studio_take whose zooms changed: its camera made again
         for m in &seq.media {
             if self.seq.media(m.id).is_some_and(|old| old.zooms != m.zooms) {
@@ -593,6 +593,82 @@ impl SequenceRenderer {
         }
         progress(1.0);
         enc.finish()
+    }
+}
+
+impl SequenceRenderer {
+    /// Renders `from_ms..to_ms` of the sequence into `out` as `settings` say. `progress(fraction)`
+    /// returns false to stop. Where it went (PNG frames: their folder).
+    pub fn export_with(
+        &mut self,
+        out: &Path,
+        settings: &crate::exporter::ExportSettings,
+        (from_ms, to_ms): (u64, u64),
+        mut progress: impl FnMut(f32) -> bool,
+    ) -> Result<std::path::PathBuf, MediaError> {
+        let end = to_ms.min(self.seq.duration_ms());
+        let start = from_ms.min(end);
+        let total = (end - start).max(1);
+        crate::sound::prepare(&self.seq)?;
+        self.zero_copy = false;
+        self.set_preview(None);
+        // where nothing covers the frame: see-through, or black
+        self.compositor.set_transparent(settings.keeps_alpha());
+        let project_fps = self.fps;
+        let fps = settings.fps_for(project_fps);
+        self.fps = fps;
+        let (inputs, mix) = self.mix();
+        // the sound of the same stretch of time
+        // (the mix ends in `[aout]`: that becomes `[amix]`, trimmed into `[aout]`)
+        let mix = mix.map(|m| {
+            let body = m.strip_suffix("[aout]").unwrap_or(&m);
+            format!("{body}[amix];[amix]atrim=start={:.3}:end={:.3},asetpts=PTS-STARTPTS[aout]", start as f64 / 1000.0, end as f64 / 1000.0)
+        });
+        let result = (|| {
+            let mut enc = Encoder::start_export(out, self.seq.size, fps, settings, &inputs, mix.as_deref())?;
+            let mut failed = None;
+            let mut stopped = false;
+            if settings.container.has_video() {
+                let step = 1000.0 / fps;
+                self.play(start, |t, rgba| {
+                    if t >= end {
+                        return false;
+                    }
+                    if let Err(e) = enc.write(&rgba) {
+                        failed = Some(e);
+                        return false;
+                    }
+                    stopped = !progress(((t - start) as f64 + step).min(total as f64) as f32 / total as f32);
+                    !stopped
+                });
+            }
+            if let Some(e) = failed {
+                return Err(e);
+            }
+            if stopped {
+                drop(enc);
+                return Err(MediaError::Failed("stopped".into()));
+            }
+            enc.finish()?;
+            progress(1.0);
+            Ok(())
+        })();
+        self.fps = project_fps;
+        self.compositor.set_transparent(false);
+        let target = settings.target(out);
+        let written = if settings.container == crate::exporter::Container::Png { target.parent().map(Path::to_path_buf).unwrap_or(target) } else { target };
+        match result {
+            Ok(()) => Ok(written),
+            Err(e) => {
+                // nothing half made stays
+                if written.is_dir() {
+                    let _ = std::fs::remove_dir_all(&written);
+                } else {
+                    let _ = std::fs::remove_file(&written);
+                }
+                Err(e)
+            }
+        }
     }
 }
 

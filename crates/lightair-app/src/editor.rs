@@ -17,7 +17,6 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use lightair_core::Id;
 use lightair_render::edit::Edit;
-use lightair_render::media::Codec;
 use lightair_render::seqrender::SequenceRenderer;
 use lightair_render::sequence::{Project, Media, MediaKind, Sequence, Part, TrackKind, Transform};
 use lightair_render::zoom;
@@ -28,6 +27,7 @@ use crate::ui::{self, tok};
 
 mod audio;
 mod effects;
+mod export;
 pub(crate) mod kit;
 mod ghost;
 mod grids;
@@ -311,6 +311,9 @@ pub struct Editor {
     /// The player's sound, while it plays.
     speaker: Option<speaker::Speaker>,
     exporting: Option<f32>,
+    /// The export panel, when open; and the text fields of it and of the project's settings.
+    export_panel: Option<export::ExportPanel>,
+    fields: export::Fields,
     note: Option<SharedString>,
     playhead: u64,
     selected: Option<Id>,
@@ -562,6 +565,8 @@ impl Editor {
             playing: None,
             speaker: None,
             exporting: None,
+            export_panel: None,
+            fields: Default::default(),
             note: None,
             playhead: 0,
             selected: None,
@@ -684,10 +689,7 @@ impl Editor {
                             Done::Progress(p) => this.exporting = Some(p),
                             Done::Exported(r) => {
                                 this.exporting = None;
-                                this.note = Some(match r {
-                                    Ok(p) => format!("Exported {} into the Library", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()).into(),
-                                    Err(e) => format!("The export stopped: {e}").into(),
-                                });
+                                this.export_ended(r);
                                 this.studio.update(cx, |s, _| s.library_version += 1);
                             }
                             Done::Media(media, put, track) => this.take_media(media, put, track, cx),
@@ -1176,7 +1178,7 @@ impl Editor {
         self.playing = Some(stop);
         self.speaker = if sound { self.seq().and_then(|s| speaker::Speaker::start(s, from)) } else { None };
         let clock = self.speaker.as_ref().map(|s| s.clock());
-        let step = 1000 / self.seq().map_or(30, |s| s.fps.max(1)) as u64;
+        let step = (1000.0 / self.seq().map_or(30.0, |s| s.fps.max(1.0))).round() as u64;
         // frames are made ahead on one thread and shown in time on another
         let (made, ready) = std::sync::mpsc::sync_channel::<(u64, Option<Picture>)>(4);
         let render_flag = flag.clone();
@@ -1281,50 +1283,6 @@ impl Editor {
         self.stop(cx);
         self.playhead = t;
         self.request(t);
-        cx.notify();
-    }
-
-    fn export(&mut self, codec: Codec, cx: &mut Context<Self>) {
-        if self.exporting.is_some() {
-            return;
-        }
-        self.stop(cx);
-        let (Some(p), Some(ws)) = (&self.project, self.workspace.clone()) else { return };
-        if p.sequence.duration_ms() == 0 {
-            self.note = Some("Put something on the timeline first.".into());
-            cx.notify();
-            return;
-        }
-        let folder = self.studio.read(cx).recording_folder();
-        let ext = match codec {
-            Codec::ProRes => "mov",
-            Codec::Gif => "gif",
-            Codec::H264 => "mp4",
-        };
-        let base = lightair_core::file_safe(&p.name);
-        let out = (1..)
-            .map(|n| if n == 1 { folder.join(format!("{base}.{ext}")) } else { folder.join(format!("{base} {n}.{ext}")) })
-            .find(|p| !p.exists())
-            .unwrap_or_else(|| folder.join(format!("{base}.{ext}")));
-        let (seq, tx, title, duration) = (p.sequence.clone(), self.tx.clone(), p.name.clone(), p.sequence.duration_ms());
-        self.exporting = Some(0.0);
-        std::thread::spawn(move || {
-            let result = (|| {
-                let _ = std::fs::create_dir_all(out.parent().unwrap_or(Path::new(".")));
-                let mut r = SequenceRenderer::new(&seq).map_err(|e| e.to_string())?;
-                let progress = tx.clone();
-                r.export(&out, codec, |p| {
-                    let _ = progress.send(Done::Progress(p));
-                    true
-                })
-                .map_err(|e| e.to_string())?;
-                let mut item = Item::new(Kind::Export, title, vec![ItemFile::new(out.clone())], chrono::Utc::now().timestamp_millis());
-                item.duration_ms = Some(duration);
-                let _ = Index::add_to(&ws, item);
-                Ok(out.clone())
-            })();
-            let _ = tx.send(Done::Exported(result));
-        });
         cx.notify();
     }
 
@@ -1480,7 +1438,7 @@ impl Editor {
         }
         // only when the playhead reached another frame (holding still is silent), and not
         // more often than a snippet lasts
-        let frame = 1000 / self.seq().map_or(30, |s| s.fps.max(1)) as u64;
+        let frame = (1000.0 / self.seq().map_or(30.0, |s| s.fps.max(1.0))).round() as u64;
         if self.scrub_at.is_some_and(|a| a.abs_diff(t) < frame) || self.scrub.as_ref().is_some_and(|(_, at)| at.elapsed() < std::time::Duration::from_millis(80)) {
             return;
         }
@@ -1659,29 +1617,20 @@ impl Editor {
                 }))
         });
         let export = match self.exporting {
-            Some(p) => Button::new("ed-export").label(format!("Exporting {:.0}%", p * 100.0)).small().outline().loading(true).into_any_element(),
-            None => {
-                let me = cx.entity().downgrade();
-                Button::new("ed-export")
-                    .label("Export")
-                    .icon(ui::icon("upload"))
-                    .small()
-                    .primary()
-                    .dropdown_menu(move |menu, _, _| {
-                        let go = |codec: Codec| {
-                            let me = me.clone();
-                            move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                                if let Some(me) = me.upgrade() {
-                                    me.update(cx, |this, cx| this.export(codec, cx));
-                                }
-                            }
-                        };
-                        menu.item(PopupMenuItem::new("Video (MP4)").on_click(go(Codec::H264)))
-                            .item(PopupMenuItem::new("ProRes (MOV)").on_click(go(Codec::ProRes)))
-                            .item(PopupMenuItem::new("GIF").on_click(go(Codec::Gif)))
-                    })
-                    .into_any_element()
-            }
+            Some(p) => Button::new("ed-export")
+                .label(format!("Exporting {:.0}%", p * 100.0))
+                .small()
+                .outline()
+                .loading(true)
+                .on_click(cx.listener(|this, _, _, cx| this.open_export(cx)))
+                .into_any_element(),
+            None => Button::new("ed-export")
+                .label("Export…")
+                .icon(ui::icon("upload"))
+                .small()
+                .primary()
+                .on_click(cx.listener(|this, _, _, cx| this.open_export(cx)))
+                .into_any_element(),
         };
         (picker.into_any_element(), export)
     }
@@ -1984,7 +1933,7 @@ impl Editor {
                             .child(div().flex().gap_1().child(div().text_color(tok::accent_primary()).child(clock(self.playhead))).child(div().text_color(tok::text_tertiary()).child(format!("/ {}", clock(duration))))),
                     )
                     .child(ui::icon_button("ed-play", if self.playing.is_some() { "pause" } else { "play" }, tok::text()).on_click(cx.listener(|this, _, _, cx| this.play(cx))))
-                    .child(div().flex_1().flex().justify_end().text_size(px(11.)).text_color(tok::text_tertiary()).child(format!("{}×{} · {} fps", size.0, size.1, self.seq().map_or(30, |s| s.fps)))),
+                    .child(div().flex_1().flex().justify_end().text_size(px(11.)).text_color(tok::text_tertiary()).child(format!("{}×{} · {} fps", size.0, size.1, fps_label(self.seq().map_or(30.0, |s| s.fps))))),
             )
     }
 
@@ -2139,14 +2088,7 @@ impl Editor {
                 }
             }
             _ => {
-                let seq_size = self.seq().map_or((1920, 1080), |s| s.size);
-                let fps = self.seq().map_or(30, |s| s.fps);
-                body = body
-
-                    .child(label("SIZE"))
-                    .child(self.chips("ed-size", &[("1080p", (1920u32, 1080u32)), ("4K", (3840, 2160)), ("Vertical", (1080, 1920)), ("Square", (1080, 1080))], seq_size, |this, v, cx| this.change(|s| s.size = v, cx), cx))
-                    .child(label("FRAME RATE"))
-                    .child(self.chips("ed-fps", &[("24", 24u32), ("30", 30), ("60", 60)], fps, |this, v, cx| this.change(|s| s.fps = v, cx), cx));
+                body = self.project_section(body, cx);
                 body = self.proxies_section(body, cx).child(div().pt_2().text_size(px(12.)).text_color(tok::text_tertiary()).child("Select a clip to change it."));
             }
         }
@@ -2631,6 +2573,7 @@ impl Render for Editor {
             self.drag_hidden.set(false);
         }
         self.sync_text_input(window, cx);
+        self.sync_fields(window, cx);
         self.want_peaks();
         self.want_strips();
         self.fit_preview();
@@ -2652,10 +2595,22 @@ impl Render for Editor {
             .size_full()
             .child(self.tools(cx))
             .child(div().id("ed-timeline-wrap").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().child(self.timeline(cx)));
-        div().flex().flex_col().size_full().child(
-            v_resizable("ed-rows")
-                .child(resizable_panel().size(px(470.)).size_range(px(220.)..Pixels::MAX).child(top))
-                .child(resizable_panel().size_range(px(160.)..Pixels::MAX).child(bottom)),
-        )
+        div()
+            .relative()
+            .flex()
+            .flex_col()
+            .size_full()
+            .child(
+                v_resizable("ed-rows")
+                    .child(resizable_panel().size(px(470.)).size_range(px(220.)..Pixels::MAX).child(top))
+                    .child(resizable_panel().size_range(px(160.)..Pixels::MAX).child(bottom)),
+            )
+            .children(self.export_overlay(cx))
     }
+}
+
+/// A frame rate as people write it: "30", "29.97", "23.976".
+pub(crate) fn fps_label(fps: f64) -> String {
+    let s = format!("{fps:.3}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
 }

@@ -13,6 +13,7 @@
 pub mod compose;
 pub mod edit;
 pub mod export;
+pub mod exporter;
 pub mod fx;
 pub mod generate;
 pub mod keys;
