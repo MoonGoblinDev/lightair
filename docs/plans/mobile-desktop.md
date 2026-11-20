@@ -68,8 +68,8 @@ internet MC-17, remote control of a phone's Studio MS-26) are listed last and no
 47. ✅ `Call.device`, transfers on the TLS port: ranged GET, resumable PUT, HEAD, tokens (lightair-core `68ac576`, `a49496c`)
 48. ✅ `takes.*`, `clips.*`, `edits.*`, `transfer.upload` / `status` (desktop `9b140ea`, `fc3a0c3`)
 49. ✅ The Library's "Being edited on …" (desktop `4d14da7`)
-50. ⬜ A sequence's background fill behind fitted pictures: colour, blur, backdrop (ED-18)
-51. ⬜ The first clip effect missing in the player-layer path until the playhead moves
+50. ✅ A sequence's background fill behind fitted pictures: colour, blur, backdrop (ED-18; lightair-core `407423a`): `Sequence::background`, `{kind: color, color}`, `{kind: blur, amount 0.6, dim 0.2}` (the main track's picture under the playhead, covering the frame), `{kind: backdrop, name}` (seven built-in two-colour gradients, `Background::BACKDROPS`)
+51. ✅ The first clip effect missing in the player-layer path until the playhead moves (lightair-core `80caae1`): a frame the layer gave no drawable for was drawn off-screen and lost; now asked for again (after a timeout; reconfigured when outdated), the frame drawn once more, and `SequenceRenderer::missed()` says if it still wasn't shown. Not reproduced on macOS; the Editor confirms on iOS
 
 ## Phase 4 · Studio
 
@@ -83,4 +83,4 @@ remote control of a phone's Studio (MS-26).
 
 ## Count
 
-49 of 53 done.
+51 of 53 done.
