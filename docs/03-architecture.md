@@ -67,8 +67,11 @@ The crates every Lightair app shares (`lightair-model`, `-store`, `-audio`, `-re
 **lightair-core** (`MoonGoblinDev/lightair-core`, public, GPL-3.0-or-later), checked out beside this
 one. This repository holds the desktop app: the GPUI shell, the libobs engine adapter, the preview
 bridge, the browser, the native modules. Lightair Live and Lightair Editor, the mobile apps, use
-lightair-core the same way. During development this repository depends on lightair-core by path
-(`../lightair-core`); a release pins it to a commit.
+lightair-core the same way: every repository pins it to one commit on GitHub. Here,
+`cargo xtask core-pin [<rev>]` moves the pin (the commit must be pushed first);
+`cargo xtask core-link` builds against a checkout beside this repo (`../lightair-core`) for
+changing both at once, and `cargo xtask core-unlink` undoes it (`cargo xtask check` refuses while
+it's linked).
 
 ## Crate graph
 

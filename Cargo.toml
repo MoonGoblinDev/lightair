@@ -20,19 +20,20 @@ lightair-ui = { path = "crates/lightair-ui" }
 lightair-web = { path = "crates/lightair-web" }
 
 # external
-# The crates every Lightair app shares, from lightair-core (MoonGoblinDev/lightair-core), checked
-# out beside this repo in the same folder. Before a release builds from GitHub, these become git
-# dependencies pinned to a lightair-core commit (docs/15).
-lightair-model = { path = "../lightair-core/crates/lightair-model" }
-lightair-store = { path = "../lightair-core/crates/lightair-store" }
-lightair-audio = { path = "../lightair-core/crates/lightair-audio" }
-lightair-render = { path = "../lightair-core/crates/lightair-render" }
-lightair-fonts = { path = "../lightair-core/crates/lightair-fonts" }
-lightair-live = { path = "../lightair-core/crates/lightair-live" }
-lightair-widgets = { path = "../lightair-core/crates/lightair-widgets" }
-lightair-automation = { path = "../lightair-core/crates/lightair-automation" }
-lightair-remote = { path = "../lightair-core/crates/lightair-remote" }
-lightair-platform = { path = "../lightair-core/crates/lightair-platform" }
+# The crates every Lightair app shares, from lightair-core, pinned to one commit
+# (`cargo xtask core-pin <rev>` moves it). To work on lightair-core and the desktop together,
+# `cargo xtask core-link` builds against the checkout beside this repo (`../lightair-core`) until
+# `cargo xtask core-unlink`; `cargo xtask check` refuses while it's linked.
+lightair-model = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-store = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-audio = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-render = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-fonts = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-live = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-widgets = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-automation = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-remote = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
+lightair-platform = { git = "https://github.com/MoonGoblinDev/lightair-core", rev = "0af3ec6434533423186e6adcb4276de1329b673d" }
 
 anyhow = "1"
 thiserror = "2"

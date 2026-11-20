@@ -522,6 +522,9 @@ fn chromium_runtime(dir: &Path) -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     match std::env::args().nth(1).as_deref() {
         Some("modules") => modules(),
+        Some("core-pin") => core_pin(std::env::args().nth(2)),
+        Some("core-link") => core_link(),
+        Some("core-unlink") => core_unlink(),
         Some("bundle") => bundle(std::env::args().any(|a| a == "--release")),
         Some("dev") => dev(std::env::args().any(|a| a == "--release")),
         Some("virtual-camera") => virtual_camera(std::env::args().any(|a| a == "--uninstall")),
@@ -634,10 +637,95 @@ fn changed_packages() -> anyhow::Result<Option<Vec<String>>> {
     Ok(Some(changed))
 }
 
-/// The inner loop: `cargo check` (all targets, so tests too) for this Mac; clippy and Windows
-/// are for `precommit`. The whole workspace by default: crates that didn't change cost almost
-/// nothing to check, while checking a subset (`--changed`) unifies dependencies' features over
-/// that subset only, so each new subset first rebuilds some dependencies (docs/build-speed.md).
+// ── lightair-core: the shared crates, pinned to a commit ────────────────────────────────────
+
+const CORE_URL: &str = "https://github.com/MoonGoblinDev/lightair-core";
+const CORE_LINK_BEGIN: &str = "# >>> cargo xtask core-link (local; `cargo xtask core-unlink` before committing)";
+const CORE_LINK_END: &str = "# <<< cargo xtask core-link";
+
+fn core_checkout() -> PathBuf {
+    root().join("../lightair-core")
+}
+
+/// The shared crates the workspace takes from lightair-core (every `git = CORE_URL` dependency).
+fn core_crates() -> anyhow::Result<Vec<String>> {
+    let text = std::fs::read_to_string(root().join("Cargo.toml"))?;
+    Ok(text
+        .lines()
+        .filter(|l| l.contains(CORE_URL))
+        .filter_map(|l| l.split_once(" = ").map(|(name, _)| name.trim().to_string()))
+        .collect())
+}
+
+/// `cargo xtask core-pin [<rev>]`: pins every lightair-core crate to a commit (default: the
+/// checkout's HEAD), which must already be on GitHub, so anyone can build the desktop.
+fn core_pin(rev: Option<String>) -> anyhow::Result<()> {
+    let checkout = core_checkout();
+    let git = |args: &[&str]| -> anyhow::Result<String> {
+        let out = Command::new("git").arg("-C").arg(&checkout).args(args).output()?;
+        anyhow::ensure!(out.status.success(), "git {} failed in {}", args.join(" "), checkout.display());
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    let rev = git(&["rev-parse", rev.as_deref().unwrap_or("HEAD")])?;
+    git(&["fetch", "-q", "origin"])?;
+    let on_github = Command::new("git").arg("-C").arg(&checkout).args(["merge-base", "--is-ancestor", &rev, "origin/main"]).status()?.success();
+    anyhow::ensure!(on_github, "{rev} isn't on lightair-core's GitHub main yet; push it first");
+    let path = root().join("Cargo.toml");
+    let text = std::fs::read_to_string(&path)?;
+    let mut changed = 0;
+    let out: Vec<String> = text
+        .lines()
+        .map(|l| {
+            if l.contains(CORE_URL)
+                && let Some(i) = l.find("rev = \"")
+                && let Some(j) = l[i + 7..].find('"')
+            {
+                changed += 1;
+                return format!("{}{}{}", &l[..i + 7], rev, &l[i + 7 + j..]);
+            }
+            l.to_string()
+        })
+        .collect();
+    std::fs::write(&path, out.join("\n") + "\n")?;
+    run(cargo().args(["update", "--workspace", "--quiet"]))?;
+    eprintln!("{changed} lightair-core crates pinned to {}", &rev[..12]);
+    Ok(())
+}
+
+/// `cargo xtask core-link`: builds against the lightair-core checkout beside this repo (a `[patch]`
+/// in `.cargo/config.toml`), for changing both at once.
+fn core_link() -> anyhow::Result<()> {
+    let checkout = core_checkout().canonicalize()?;
+    core_unlink()?;
+    let mut block = format!("{CORE_LINK_BEGIN}\n[patch.\"{CORE_URL}\"]\n");
+    for c in core_crates()? {
+        block.push_str(&format!("{c} = {{ path = {:?} }}\n", checkout.join("crates").join(&c).display().to_string()));
+    }
+    block.push_str(CORE_LINK_END);
+    let config = root().join(".cargo/config.toml");
+    let mut text = std::fs::read_to_string(&config)?;
+    text = text.trim_end().to_string() + "\n\n" + &block + "\n";
+    std::fs::write(&config, text)?;
+    eprintln!("building against {}; `cargo xtask core-unlink` before committing", checkout.display());
+    Ok(())
+}
+
+/// `cargo xtask core-unlink`: back to the pinned commit.
+fn core_unlink() -> anyhow::Result<()> {
+    let config = root().join(".cargo/config.toml");
+    let text = std::fs::read_to_string(&config)?;
+    if let (Some(a), Some(b)) = (text.find(CORE_LINK_BEGIN), text.find(CORE_LINK_END)) {
+        let out = text[..a].trim_end().to_string() + "\n" + text[b + CORE_LINK_END.len()..].trim_start_matches('\n');
+        std::fs::write(&config, out)?;
+        eprintln!("lightair-core link removed: the pinned commit again");
+    }
+    Ok(())
+}
+
+fn core_linked() -> bool {
+    std::fs::read_to_string(root().join(".cargo/config.toml")).is_ok_and(|t| t.contains(CORE_LINK_BEGIN))
+}
+
 /// The Effect Stack's .effect files and lightair-render's copies of them (whose uniforms the
 /// Editor's WGSL ports read) must match: the module here is their source.
 fn effects_in_sync() -> anyhow::Result<()> {
@@ -663,8 +751,13 @@ fn effects_in_sync() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The inner loop: `cargo check` (all targets, so tests too) for this Mac; clippy and Windows
+/// are for `precommit`. The whole workspace by default: crates that didn't change cost almost
+/// nothing to check, while checking a subset (`--changed`) unifies dependencies' features over
+/// that subset only, so each new subset first rebuilds some dependencies (docs/build-speed.md).
 fn check(changed: bool) -> anyhow::Result<()> {
     be_polite();
+    anyhow::ensure!(!core_linked(), "lightair-core is linked to the local checkout: `cargo xtask core-unlink` (and `core-pin`) first");
     effects_in_sync()?;
     // Plain `cargo build` and `cargo test` leave object files behind too: past 50,000 files in
     // the folder (a few seconds per crate again), clear them first.
