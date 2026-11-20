@@ -29,7 +29,7 @@ libobs mix, which the existing stream and recording encoders take. Sources only 
 (application audio, system audio via ScreenCaptureKit, media and browser layers) are pulled into
 the engine through libobs audio-capture callbacks, and kept out of libobs's own mixes.
 
-## Model (lightair-core)
+## Model (lightair-model)
 
 ```text
  Inputs ─► Tracks ──────────────┐            ┌─► Program (master) ─► Stream, Recording track 1
@@ -113,7 +113,7 @@ the engine through libobs audio-capture callbacks, and kept out of libobs's own 
    pan law, smoothing, meters (peak, RMS, LUFS), offline render; unit tests on exact signals.
 2. **Built-in DSP**: gain, EQ, compressor, gate, limiter, de-esser, ducking, noise suppression,
    reverb, delay, channel tools, Voice Clarity; tests on test tones and noise.
-3. **Model**: tracks, buses, mixes, routing, recording/stream mix choices in `lightair-core`,
+3. **Model**: tracks, buses, mixes, routing, recording/stream mix choices in `lightair-model`,
    commands, migration from today's tracks.
 4. **Real-time I/O**: CoreAudio inputs with channel selection, monitor output, clock and drift
    compensation; the libobs bridge both ways; A/V sync test.

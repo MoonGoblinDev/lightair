@@ -5,7 +5,7 @@ use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{AudioMix, Bus, Command, Id, MixerStrip, Workspace, Route, Send, Track};
+use lightair_model::{AudioMix, Bus, Command, Id, MixerStrip, Workspace, Route, Send, Track};
 
 use super::StudioWindow;
 use crate::ui::{self, tok};

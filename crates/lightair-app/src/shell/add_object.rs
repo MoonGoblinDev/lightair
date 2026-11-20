@@ -276,8 +276,8 @@ impl StudioWindow {
         let placeholder = match (step, a.screens.as_ref().map(|p| p.mode)) {
             (Step::Cameras, _) => "Search cameras",
             (Step::Phones, _) => "Search iPhones and iPads",
-            (Step::Screens, Some(lightair_core::kinds::DISPLAY)) => "Search displays",
-            (Step::Screens, Some(lightair_core::kinds::APP)) => "Search apps",
+            (Step::Screens, Some(lightair_model::kinds::DISPLAY)) => "Search displays",
+            (Step::Screens, Some(lightair_model::kinds::APP)) => "Search apps",
             (Step::Screens, _) => "Search windows",
             _ => "Search objects and widgets",
         };
@@ -343,7 +343,7 @@ impl StudioWindow {
                 return;
             }
             Kind::Display | Kind::Window | Kind::App => {
-                use lightair_core::kinds::{APP, DISPLAY, WINDOW};
+                use lightair_model::kinds::{APP, DISPLAY, WINDOW};
                 let mode = match kind {
                     Kind::Display => DISPLAY,
                     Kind::Window => WINDOW,
@@ -474,7 +474,7 @@ impl StudioWindow {
         let settings = super::screen_pick::settings(mode, value);
         let (w, h) = size.map_or((1920.0, 1080.0), |(w, h)| (w as f32, h as f32));
         let name: String = name.chars().take(48).collect();
-        self.add_source_object(&name, lightair_core::kinds::SCREEN, settings, (w, h), cx);
+        self.add_source_object(&name, lightair_model::kinds::SCREEN, settings, (w, h), cx);
         self.close_add_object(window, cx);
     }
 
@@ -501,7 +501,7 @@ impl StudioWindow {
     fn add_phone(&mut self, name: &str, uid: &str, window: &mut Window, cx: &mut Context<Self>) {
         let settings = serde_json::json!({"device": uid});
         // its sound in the mixer too (without a track a source is silent)
-        self.add_placed_object(name, lightair_core::kinds::CAMERA, settings, (1080.0, 1920.0), (0.5, 0.5), true, cx);
+        self.add_placed_object(name, lightair_model::kinds::CAMERA, settings, (1080.0, 1920.0), (0.5, 0.5), true, cx);
         self.close_add_object(window, cx);
     }
 
@@ -723,7 +723,7 @@ impl StudioWindow {
                     .into_any_element()
             }
             Step::Screens => {
-                use lightair_core::kinds::{APP, DISPLAY};
+                use lightair_model::kinds::{APP, DISPLAY};
                 let pick = state.screens.as_ref()?;
                 let mode = pick.mode;
                 let (icon, what) = match mode {
@@ -910,8 +910,8 @@ impl StudioWindow {
             Step::Cameras => Some("Camera"),
             Step::Phones => Some("iPhone or iPad"),
             Step::Screens => Some(match screen_mode {
-                Some(lightair_core::kinds::DISPLAY) => "Display",
-                Some(lightair_core::kinds::APP) => "App",
+                Some(lightair_model::kinds::DISPLAY) => "Display",
+                Some(lightair_model::kinds::APP) => "App",
                 _ => "Window",
             }),
             Step::Web => Some("Browser"),

@@ -10,7 +10,7 @@ use gpui_kit::component::input::{Editor, EditorState, Input as TextInput, InputE
 use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Id, Source};
+use lightair_model::{Command, Id, Source};
 use lightair_engine::media::{MediaAction, MediaState, MediaStatus};
 use lightair_engine::timers::{TIMER_KIND, TimerAction, TimerStatus};
 use serde_json::{Value, json};
@@ -566,11 +566,11 @@ impl StudioWindow {
     /// Which of an interface's channels a track takes: all, one (mono) or a pair (stereo).
     fn track_channels(
         &self,
-        workspace: &lightair_core::Workspace,
-        track: &lightair_core::Track,
+        workspace: &lightair_model::Workspace,
+        track: &lightair_model::Track,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        use lightair_core::TrackChannels;
+        use lightair_model::TrackChannels;
         let source = workspace.sources.get(&track.source)?;
         if source.kind != lightair_engine::devices::DEVICE_KIND {
             return None;
@@ -615,7 +615,7 @@ impl StudioWindow {
                                 // the source takes the device's name (System Default for the system's); the
                                 // track keeps its own (crate::console::repoint)
                                 let name = crate::console::mic_name(&value, &lightair_engine::devices::device_name(&value).unwrap_or_default());
-                                let t = lightair_core::Track { channels: TrackChannels::All, ..track.clone() };
+                                let t = lightair_model::Track { channels: TrackChannels::All, ..track.clone() };
                                 let cmd = Command::Batch {
                                     label: "Change input device".into(),
                                     commands: vec![
@@ -633,7 +633,7 @@ impl StudioWindow {
                     menu
                 })
         };
-        let set = |c: TrackChannels| Command::UpdateTrack { track: lightair_core::Track { channels: c, ..track.clone() } };
+        let set = |c: TrackChannels| Command::UpdateTrack { track: lightair_model::Track { channels: c, ..track.clone() } };
         let mut options = vec![("All".to_string(), TrackChannels::All)];
         options.extend((0..channels).map(|c| (format!("{}", c + 1), TrackChannels::Mono(c))));
         options.extend((0..channels / 2).map(|p| (format!("{}–{}", p * 2 + 1, p * 2 + 2), TrackChannels::Stereo(p * 2, p * 2 + 1))));
@@ -682,8 +682,8 @@ impl StudioWindow {
     /// A mixer track: level, mute, and its effect chain (the mixer strip stays compact).
     pub(super) fn track_inspector(
         &self,
-        workspace: &lightair_core::Workspace,
-        track: &lightair_core::Track,
+        workspace: &lightair_model::Workspace,
+        track: &lightair_model::Track,
         body: Div,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -701,7 +701,7 @@ impl StudioWindow {
         .child(self.track_routing(workspace, track, cx))
         .child({
             let rec = track.record;
-            let cmd = Command::UpdateTrack { track: lightair_core::Track { record: !rec, ..track.clone() } };
+            let cmd = Command::UpdateTrack { track: lightair_model::Track { record: !rec, ..track.clone() } };
             div()
                 .flex()
                 .items_center()
@@ -874,7 +874,7 @@ impl StudioWindow {
             let c = world.crop;
             let (bw, bh) = ((w - (c.left + c.right) as i64).max(16) as f32, (h - (c.top + c.bottom) as i64).max(16) as f32);
             let (cx_, cy_) = (world.x + world.width / 2.0, world.y + world.height / 2.0);
-            let resized = lightair_core::Layout { x: cx_ - bw / 2.0, y: cy_ - bh / 2.0, width: bw, height: bh, ..world };
+            let resized = lightair_model::Layout { x: cx_ - bw / 2.0, y: cy_ - bh / 2.0, width: bw, height: bh, ..world };
             Some(Command::SetLayout { scene, object, canvas, layout: sc.local(object, canvas, &resized)? })
         });
         match layout {

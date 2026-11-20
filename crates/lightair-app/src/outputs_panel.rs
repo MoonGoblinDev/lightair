@@ -11,7 +11,7 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Destination, Encoding, Canvas, Id, Workspace, VideoEncoder};
+use lightair_model::{Command, Destination, Encoding, Canvas, Id, Workspace, VideoEncoder};
 use lightair_engine::outputs::{OutputKey, OutputState, StreamProtocol, runtime};
 
 use crate::platforms::{self, PLATFORMS, Platform, Region, Shape};

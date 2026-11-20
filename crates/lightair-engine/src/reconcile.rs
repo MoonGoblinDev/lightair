@@ -1,5 +1,5 @@
 //! The reconciler: makes libobs match the Lightair document (docs/04-engine-libobs.md,
-//! "Reconciler"). It consumes patches from `lightair_core::diff`, runs on the engine thread,
+//! "Reconciler"). It consumes patches from `lightair_model::diff`, runs on the engine thread,
 //! and is idempotent: applying `diff(empty, workspace)` to an empty engine gives the same libobs
 //! state as any sequence of edits ending at `workspace`.
 //!
@@ -8,8 +8,8 @@
 use std::collections::{HashMap, HashSet};
 
 use libobs_sys as sys;
-use lightair_core::catalog::lower;
-use lightair_core::{
+use lightair_model::catalog::lower;
+use lightair_model::{
     Effect, Fit, Canvas, Id, Object, ObjectPatch, Layout, Patch, Workspace, Track, TransitionKind, TransitionSettings,
     diff_objects,
 };
@@ -62,7 +62,7 @@ pub struct Reconciler {
     /// Each canvas's output channel goes through its own transition.
     transitions: HashMap<Id, ObsSource>,
     transition_settings: TransitionSettings,
-    stinger: Option<lightair_core::Stinger>,
+    stinger: Option<lightair_model::Stinger>,
     /// The running Move, driven by a libobs tick callback.
     anim: Arc<Mutex<Option<MoveAnim>>>,
     tick_registered: bool,
@@ -238,7 +238,7 @@ impl Reconciler {
     /// pointer, clicks) last on each, the capture's own pointer hidden while Lightair draws one.
     /// A capture in several scenes takes the look of the scene on air, else the first one's.
     fn sync_screen_zoom_pointers(&mut self, workspace: &Workspace) {
-        let mut want: HashMap<Id, lightair_core::ScreenZoomPointer> = HashMap::new();
+        let mut want: HashMap<Id, lightair_model::ScreenZoomPointer> = HashMap::new();
         let on_air = workspace.program.and_then(|p| workspace.scene(p));
         for scene in on_air.into_iter().chain(workspace.scenes.iter()) {
             let Some(look) = scene.screen else { continue };
@@ -351,7 +351,7 @@ impl Reconciler {
             let cell = meters().get(id).unwrap_or_else(|| meters().insert(id));
             cells.push((crate::audio::node(id), cell));
         }
-        let master = meters().get(lightair_core::MASTER_ID).unwrap_or_else(|| meters().insert(lightair_core::MASTER_ID));
+        let master = meters().get(lightair_model::MASTER_ID).unwrap_or_else(|| meters().insert(lightair_model::MASTER_ID));
         cells.push((lightair_audio::PROGRAM, master));
         host.set_meter_cells(cells);
     }
@@ -404,11 +404,11 @@ impl Reconciler {
         let settings = &workspace.outputs.recording;
         let host = self.audio.as_mut().ok_or("the audio engine isn't running")?;
         let tap = match settings.multitrack_point {
-            lightair_core::MultitrackPoint::Raw => lightair_audio::Tap::Input,
-            lightair_core::MultitrackPoint::PreFader => lightair_audio::Tap::PreFader,
-            lightair_core::MultitrackPoint::PostFader => lightair_audio::Tap::PostFader,
+            lightair_model::MultitrackPoint::Raw => lightair_audio::Tap::Input,
+            lightair_model::MultitrackPoint::PreFader => lightair_audio::Tap::PreFader,
+            lightair_model::MultitrackPoint::PostFader => lightair_audio::Tap::PostFader,
         };
-        let float = settings.multitrack_format == lightair_core::MultitrackFormat::Float32;
+        let float = settings.multitrack_format == lightair_model::MultitrackFormat::Float32;
         let marked = workspace.tracks.iter().any(|t| t.record) || workspace.audio.buses.iter().any(|b| b.record);
         let mut strips: Vec<(lightair_audio::NodeId, String, u16)> = workspace
             .tracks
@@ -416,7 +416,7 @@ impl Reconciler {
             .filter(|t| t.record || !marked)
             .map(|t| {
                 // a mono channel records as mono (before the pan it's the same on both sides)
-                let ch = if matches!(t.channels, lightair_core::TrackChannels::Mono(_)) && tap != lightair_audio::Tap::PostFader {
+                let ch = if matches!(t.channels, lightair_model::TrackChannels::Mono(_)) && tap != lightair_audio::Tap::PostFader {
                     1
                 } else {
                     2
@@ -432,7 +432,7 @@ impl Reconciler {
             return Err("no tracks to record".into());
         }
         std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
-        let clean = lightair_core::file_safe;
+        let clean = lightair_model::file_safe;
         let mut used = HashSet::new();
         let mut files = Vec::new();
         let specs = strips
@@ -570,7 +570,7 @@ impl Reconciler {
     }
 
     /// Makes a source's libobs source (as this platform plays its kind) and its effects.
-    fn create_source(&mut self, source: &lightair_core::Source) {
+    fn create_source(&mut self, source: &lightair_model::Source) {
         let timer = source.kind == TIMER_KIND;
         let resolved = crate::kinds::resolve(&source.kind, &source.settings);
         let kind = match &resolved {
@@ -623,9 +623,9 @@ impl Reconciler {
 
     /// A new source for a source whose libobs type changed, put back in every scene that shows
     /// it (the audio engine takes it again when audio syncs).
-    fn recreate_source(&mut self, source: &lightair_core::Source, workspace: &Workspace) {
+    fn recreate_source(&mut self, source: &lightair_model::Source, workspace: &Workspace) {
         let id = source.id;
-        let scenes: Vec<lightair_core::Scene> = workspace.scenes.iter().map(|s| s.flatten()).collect();
+        let scenes: Vec<lightair_model::Scene> = workspace.scenes.iter().map(|s| s.flatten()).collect();
         let using: Vec<(Id, Id)> = scenes
             .iter()
             .flat_map(|s| s.objects.iter().filter(|l| l.source == Some(id)).map(move |l| (s.id, l.id)))
@@ -659,7 +659,7 @@ impl Reconciler {
         }
     }
 
-    fn add_scene_in(&mut self, scene: &lightair_core::Scene, canvas: Id) {
+    fn add_scene_in(&mut self, scene: &lightair_model::Scene, canvas: Id) {
         if self.scenes.contains_key(&(scene.id, canvas)) {
             return;
         }
@@ -1162,15 +1162,15 @@ impl Reconciler {
     /// Used to check that incremental reconciliation and a full rebuild produce identical state.
     /// What a Studio take records: the screens and cameras in the program (visible in the
     /// primary canvas), each once, with its live source.
-    pub fn studio_take_sources(&self, workspace: &Workspace) -> Vec<(lightair_core::Source, *mut sys::obs_source_t)> {
+    pub fn studio_take_sources(&self, workspace: &Workspace) -> Vec<(lightair_model::Source, *mut sys::obs_source_t)> {
         let Some(scene) = workspace.program.and_then(|p| workspace.scene(p)) else { return Vec::new() };
         let canvas = workspace.primary_canvas().id;
-        let mut out: Vec<(lightair_core::Source, *mut sys::obs_source_t)> = Vec::new();
+        let mut out: Vec<(lightair_model::Source, *mut sys::obs_source_t)> = Vec::new();
         for object in scene.flatten().objects {
             let visible = object.layouts.get(&canvas).is_none_or(|l| l.visible);
             let Some(source) = object.source.and_then(|i| workspace.sources.get(&i)) else { continue };
             if !visible
-                || !matches!(source.kind.as_str(), lightair_core::kinds::SCREEN | lightair_core::kinds::CAMERA)
+                || !matches!(source.kind.as_str(), lightair_model::kinds::SCREEN | lightair_model::kinds::CAMERA)
                 || out.iter().any(|(i, _)| i.id == source.id)
             {
                 continue;
@@ -1362,7 +1362,7 @@ impl Reconciler {
     /// its primary canvas's size.
     pub fn rebuild(&mut self, workspace: &Workspace) {
         self.clear();
-        let patches = lightair_core::diff(&workspace.empty_like(), workspace);
+        let patches = lightair_model::diff(&workspace.empty_like(), workspace);
         self.apply(workspace, &patches);
         let primary = workspace.primary_canvas();
         let mut ovi = unsafe { std::mem::zeroed::<sys::obs_video_info>() };
@@ -1453,11 +1453,11 @@ pub(crate) unsafe fn apply_layout(item: *mut sys::obs_sceneitem_t, l: &Layout) {
 }
 
 /// Shape-mask filter settings (Lightair's libobs module, `lightair_shape_mask`).
-fn mask_settings(s: &lightair_core::Shape) -> serde_json::Value {
+fn mask_settings(s: &lightair_model::Shape) -> serde_json::Value {
     let kind = match s.kind {
-        lightair_core::ShapeKind::Rounded => 0,
-        lightair_core::ShapeKind::Circle => 1,
-        lightair_core::ShapeKind::Pill => 2,
+        lightair_model::ShapeKind::Rounded => 0,
+        lightair_model::ShapeKind::Circle => 1,
+        lightair_model::ShapeKind::Pill => 2,
     };
     serde_json::json!({
         "shape": kind,
@@ -1479,11 +1479,11 @@ const CROP_GHOST: f64 = 0.42;
 /// The mask while a object is being cropped: the whole picture is laid out, the shape (or a plain
 /// box) sits in the crop window, and what's outside it fades in as a ghost.
 fn crop_view_settings(l: &Layout, outside: f64) -> serde_json::Value {
-    let shape = l.shape.unwrap_or(lightair_core::Shape {
+    let shape = l.shape.unwrap_or(lightair_model::Shape {
         radius: 0.0,
         feather: 0.0,
         border: 0.0,
-        ..lightair_core::Shape::new(lightair_core::ShapeKind::Rounded)
+        ..lightair_model::Shape::new(lightair_model::ShapeKind::Rounded)
     });
     let mut v = mask_settings(&shape);
     v["window_left"] = l.crop.left.into();
@@ -1520,7 +1520,7 @@ pub(crate) unsafe fn add_item(
             return None;
         }
         let inner = sys::obs_scene_add(sys::obs_sceneitem_group_get_scene(group), source.as_ptr());
-        let shape = layout.shape.unwrap_or(lightair_core::Shape::new(lightair_core::ShapeKind::Rounded));
+        let shape = layout.shape.unwrap_or(lightair_model::Shape::new(lightair_model::ShapeKind::Rounded));
         let filter = ObsSource::create_private(
             "lightair_shape_mask",
             &format!("mask {name}"),
@@ -1563,7 +1563,7 @@ pub(crate) unsafe fn layout_item(item: *mut sys::obs_sceneitem_t, masked: Option
             bottom: l.crop.bottom as i32,
         };
         sys::obs_sceneitem_set_crop(m.inner, &crop);
-        apply_layout(item, &Layout { crop: lightair_core::Crop::default(), ..*l });
+        apply_layout(item, &Layout { crop: lightair_model::Crop::default(), ..*l });
         if let Some(shape) = &l.shape {
             m.filter.update(&data_from_json(&mask_settings(shape)));
         }
@@ -1668,7 +1668,7 @@ unsafe extern "C" fn on_levels(
 /// Cut sets it directly, Move lands through it).
 fn transition_source(
     t: &TransitionSettings,
-    stinger: Option<&lightair_core::Stinger>,
+    stinger: Option<&lightair_model::Stinger>,
 ) -> (&'static str, serde_json::Value) {
     match t.kind {
         // Without a stinger video, a fade.
@@ -1689,7 +1689,7 @@ fn transition_source(
         TransitionKind::Wipe => {
             // Gradient images shipped with the transitions module; the dark end is revealed
             // first, so `linear-h` travels right and `linear-v` travels down.
-            use lightair_core::Direction::*;
+            use lightair_model::Direction::*;
             let image = if matches!(t.direction, Left | Right) { "linear-h.png" } else { "linear-v.png" };
             let invert = matches!(t.direction, Left | Up);
             ("wipe_transition", serde_json::json!({"luma_image": image, "luma_invert": invert, "luma_softness": 0.05}))
@@ -1704,7 +1704,7 @@ fn transition_source(
 /// A source's settings as its libobs source takes them (portable kinds translated).
 /// A source's libobs settings; `drawn`: its scene's look draws the pointer (so the capture's
 /// own goes, as with the drawn pointer effect).
-fn source_settings(source: &lightair_core::Source, drawn: bool) -> serde_json::Value {
+fn source_settings(source: &lightair_model::Source, drawn: bool) -> serde_json::Value {
     let mut s = crate::kinds::resolve(&source.kind, &source.settings).map_or_else(|| source.settings.clone(), |(_, s)| s);
     // Lightair draws the pointer: the capture's own goes (every platform's name for it)
     if (drawn || draws_pointer(source))
@@ -1718,13 +1718,13 @@ fn source_settings(source: &lightair_core::Source, drawn: bool) -> serde_json::V
 }
 
 /// Whether a source is a screen capture (a display, a window, an app or a game).
-fn is_screen(source: &lightair_core::Source) -> bool {
-    source.kind == lightair_core::kinds::SCREEN
+fn is_screen(source: &lightair_model::Source) -> bool {
+    source.kind == lightair_model::kinds::SCREEN
         || matches!(source.kind.as_str(), "screen_capture" | "display_capture" | "monitor_capture" | "window_capture" | "game_capture")
 }
 
 /// A `ScreenZoomPointer` as the pointer filter's settings.
-fn screen_zoom_pointer_settings(l: &lightair_core::ScreenZoomPointer) -> serde_json::Value {
+fn screen_zoom_pointer_settings(l: &lightair_model::ScreenZoomPointer) -> serde_json::Value {
     serde_json::json!({
         "draw": l.pointer_drawn && !l.pointer_hidden,
         // the capture's own pointer goes when Lightair draws one, or when there's to be none
@@ -1748,8 +1748,8 @@ fn screen_zoom_pointer_settings(l: &lightair_core::ScreenZoomPointer) -> serde_j
 }
 
 /// Whether a source has the drawn pointer on.
-fn draws_pointer(source: &lightair_core::Source) -> bool {
-    source.effects.iter().any(|e| e.enabled && (e.kind == crate::pointer::KIND || e.kind == lightair_core::catalog::OLD_POINTER_KIND))
+fn draws_pointer(source: &lightair_model::Source) -> bool {
+    source.effects.iter().any(|e| e.enabled && (e.kind == crate::pointer::KIND || e.kind == lightair_model::catalog::OLD_POINTER_KIND))
 }
 
 fn data_from_json(value: &serde_json::Value) -> Data {

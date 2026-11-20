@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use lightair_core::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
+use lightair_model::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
 use lightair_engine::timers::{TIMER_KIND, TimerAction};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
@@ -14,7 +14,7 @@ fn apply(engine: &Engine, doc: &mut Document, cmd: Command) {
     engine.call(move |s| s.reconciler.apply(&workspace, &patches));
 }
 
-fn wait_text(engine: &Engine, id: lightair_core::Id, want: &str) -> String {
+fn wait_text(engine: &Engine, id: lightair_model::Id, want: &str) -> String {
     let deadline = Instant::now() + Duration::from_secs(4);
     loop {
         let t = engine.call(move |s| s.reconciler.timer_text(id)).unwrap_or_default();

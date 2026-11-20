@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Source, Workspace, Track, diff};
+use lightair_model::{Command, Document, Source, Workspace, Track, diff};
 use lightair_engine::meters::meters;
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
@@ -35,7 +35,7 @@ fn tone_wav(path: &std::path::Path) {
     f.write_all(&data).unwrap();
 }
 
-fn peak_after(track: lightair_core::Id, wait: Duration) -> f32 {
+fn peak_after(track: lightair_model::Id, wait: Duration) -> f32 {
     std::thread::sleep(wait);
     let cell = meters().get(track).expect("meter cell exists");
     let l = cell.levels();

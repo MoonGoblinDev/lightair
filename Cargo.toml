@@ -11,25 +11,29 @@ publish = false
 [workspace.dependencies]
 # internal
 libobs-sys = { path = "crates/libobs-sys" }
-lightair-audio = { path = "crates/lightair-audio" }
-lightair-core = { path = "crates/lightair-core" }
 lightair-engine = { path = "crates/lightair-engine" }
-lightair-fonts = { path = "crates/lightair-fonts" }
-lightair-automation = { path = "crates/lightair-automation" }
 lightair-avatar = { path = "crates/lightair-avatar" }
 # Live2D models: mocari, a pure Rust runtime (Lightair's fork, third_party/mocari).
 mocari = { path = "third_party/mocari" }
-lightair-live = { path = "crates/lightair-live" }
-lightair-platform = { path = "crates/lightair-platform" }
 lightair-preview = { path = "crates/lightair-preview" }
-lightair-render = { path = "crates/lightair-render" }
-lightair-remote = { path = "crates/lightair-remote" }
-lightair-store = { path = "crates/lightair-store" }
 lightair-ui = { path = "crates/lightair-ui" }
 lightair-web = { path = "crates/lightair-web" }
-lightair-widgets = { path = "crates/lightair-widgets" }
 
 # external
+# The crates every Lightair app shares, from lightair-core (MoonGoblinDev/lightair-core), checked
+# out beside this repo in the same folder. Before a release builds from GitHub, these become git
+# dependencies pinned to a lightair-core commit (docs/15).
+lightair-model = { path = "../lightair-core/crates/lightair-model" }
+lightair-store = { path = "../lightair-core/crates/lightair-store" }
+lightair-audio = { path = "../lightair-core/crates/lightair-audio" }
+lightair-render = { path = "../lightair-core/crates/lightair-render" }
+lightair-fonts = { path = "../lightair-core/crates/lightair-fonts" }
+lightair-live = { path = "../lightair-core/crates/lightair-live" }
+lightair-widgets = { path = "../lightair-core/crates/lightair-widgets" }
+lightair-automation = { path = "../lightair-core/crates/lightair-automation" }
+lightair-remote = { path = "../lightair-core/crates/lightair-remote" }
+lightair-platform = { path = "../lightair-core/crates/lightair-platform" }
+
 anyhow = "1"
 thiserror = "2"
 tracing = "0.1"
@@ -52,6 +56,39 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 opt-level = 2
 debug = false
+
+# lightair-core's crates sit outside this workspace, so "*" above would optimise them like
+# third-party code; they stay as debuggable as our own.
+[profile.dev.package.lightair-model]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-store]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-audio]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-render]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-fonts]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-live]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-widgets]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-automation]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-remote]
+opt-level = 0
+debug = "line-tables-only"
+[profile.dev.package.lightair-platform]
+opt-level = 0
+debug = "line-tables-only"
 
 # gpui-component with a switch to hide the dock's "…" panel menu (third_party/gpui-component/LIGHTAIR-PATCH.md).
 [patch.crates-io]

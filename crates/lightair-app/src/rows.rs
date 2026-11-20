@@ -2,7 +2,7 @@
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
-use lightair_core::{Command, Id};
+use lightair_model::{Command, Id};
 
 use crate::ui::{self, tok};
 
@@ -12,7 +12,7 @@ pub enum RowTarget {
     Scene(Id),
     Object { scene: Id, object: Id },
     /// A mixer strip (track, bus or mix).
-    Strip(lightair_core::MixerStrip),
+    Strip(lightair_model::MixerStrip),
 }
 
 impl RowTarget {

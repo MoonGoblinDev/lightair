@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Scene, Source, Track, Workspace, diff};
+use lightair_model::{Command, Document, Scene, Source, Track, Workspace, diff};
 use lightair_engine::{Engine, EngineConfig};
 use lightair_preview::{Preview, sample_ycbcr};
 use serde_json::json;
@@ -50,7 +50,7 @@ fn a_track_with_a_picture_runs_only_on_air() {
     assert!(shown.0 < 40, "the track's picture isn't drawn: {shown:?}");
     assert!(!engine.call(move |s| s.reconciler.source_active(sid)), "off air: not running");
     // on air: running
-    let object = lightair_core::Object::new("Orange", sid, [(doc.workspace().primary_canvas().id, lightair_core::Layout::boxed(0.0, 0.0, 320.0, 180.0))]);
+    let object = lightair_model::Object::new("Orange", sid, [(doc.workspace().primary_canvas().id, lightair_model::Layout::boxed(0.0, 0.0, 320.0, 180.0))]);
     apply(&engine, &mut doc, Command::AddObject { scene: scene_id, object, index: None });
     let shown = centre(&preview);
     assert!(shown.0 > 40, "on air, it's drawn: {shown:?}");

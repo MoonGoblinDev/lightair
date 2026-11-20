@@ -4,7 +4,7 @@ use gpui_kit::component::input::{Input as TextInput, InputEvent, InputState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Id, Workspace, TransitionKind, TransitionSettings};
+use lightair_model::{Command, Id, Workspace, TransitionKind, TransitionSettings};
 
 use super::StudioWindow;
 use crate::ui::{self, tok};
@@ -315,7 +315,7 @@ impl StudioWindow {
 #[cfg(test)]
 mod tests {
     use super::{matches, score};
-    use lightair_core::{Workspace, Scene};
+    use lightair_model::{Workspace, Scene};
 
     #[test]
     fn scoring() {

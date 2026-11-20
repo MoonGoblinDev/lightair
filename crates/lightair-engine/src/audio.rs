@@ -4,8 +4,8 @@
 
 use lightair_audio as la;
 use la::dsp::*;
-use lightair_core::catalog::{self, EffectDef};
-use lightair_core::{Effect, Id, Workspace, Route, TrackChannels};
+use lightair_model::catalog::{self, EffectDef};
+use lightair_model::{Effect, Id, Workspace, Route, TrackChannels};
 use serde_json::Value;
 
 /// The engine's id for a document id.
@@ -141,7 +141,7 @@ pub fn params(e: &Effect) -> Option<Params> {
             limit: r.flag("limit"),
             podcast: r.num("character") >= 0.5,
         }),
-        lightair_core::catalog::PLUGIN_KIND => Params::Plugin(PluginParams { plugin: crate::plugins::instance(e) }),
+        lightair_model::catalog::PLUGIN_KIND => Params::Plugin(PluginParams { plugin: crate::plugins::instance(e) }),
         _ => return None,
     })
 }
@@ -161,7 +161,7 @@ fn dest(r: Route) -> la::Dest {
     }
 }
 
-fn sends(sends: &[lightair_core::Send]) -> Vec<la::Send> {
+fn sends(sends: &[lightair_model::Send]) -> Vec<la::Send> {
     sends.iter().map(|s| la::Send { mix: node(s.mix), level_db: s.level_db, pre_fader: s.pre_fader }).collect()
 }
 
@@ -262,13 +262,13 @@ pub fn spec(workspace: &Workspace) -> la::GraphSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lightair_core::{AudioMix, Bus, Source, Send, Track};
+    use lightair_model::{AudioMix, Bus, Source, Send, Track};
     use serde_json::json;
 
     #[test]
     fn a_workspace_mixer_becomes_the_engine_graph() {
         let mut p = Workspace::new("Show");
-        let mic = Source::new("Mic", lightair_core::kinds::MIC, json!({}));
+        let mic = Source::new("Mic", lightair_model::kinds::MIC, json!({}));
         let bus = Bus::new("Guests");
         let phones = AudioMix::new("Headphones");
         let mut t = Track::new("Host", mic.id);
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn the_engine_chain_follows_the_workspace_order() {
-        use lightair_core::{Command, Document, MixerStrip};
+        use lightair_model::{Command, Document, MixerStrip};
         let mut doc = Document::new(Workspace::new("Order"));
         let mic = Source::new("Mic", "lightair_audio_device", json!({}));
         let mut t = Track::new("Host", mic.id);

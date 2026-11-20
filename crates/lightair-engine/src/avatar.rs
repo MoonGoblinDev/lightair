@@ -435,7 +435,7 @@ impl Shared {
         if shown {
             *self.hidden_since.lock() = None;
             if cam.is_none() && !device.is_empty() {
-                let Some((kind, settings)) = crate::kinds::resolve(lightair_core::kinds::CAMERA, &json!({"device": device, "height": 720})) else { return };
+                let Some((kind, settings)) = crate::kinds::resolve(lightair_model::kinds::CAMERA, &json!({"device": device, "height": 720})) else { return };
                 if let Some(media) = crate::access::needed_by(kind)
                     && crate::access::hold_back(media)
                 {

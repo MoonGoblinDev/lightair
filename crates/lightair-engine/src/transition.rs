@@ -9,7 +9,7 @@
 use std::time::Instant;
 
 use libobs_sys as sys;
-use lightair_core::{Id, Layout, Scene as DocScene};
+use lightair_model::{Id, Layout, Scene as DocScene};
 
 use crate::obs::{ObsScene, ObsSource};
 
@@ -48,9 +48,9 @@ unsafe impl Send for MoveAnim {}
 /// Which object in `from` a object of `to` continues: the one showing the same source, else the
 /// one with the same link (`Object::link`). Never by name: two objects called "Logo" needn't be
 /// the same thing.
-pub(crate) fn match_object<'a>(from: &'a DocScene, object: &lightair_core::Object) -> Option<&'a lightair_core::Object> {
-    let same_source = |l: &&lightair_core::Object| object.source.is_some() && l.source == object.source;
-    let same_link = |l: &&lightair_core::Object| object.link.is_some() && l.link == object.link;
+pub(crate) fn match_object<'a>(from: &'a DocScene, object: &lightair_model::Object) -> Option<&'a lightair_model::Object> {
+    let same_source = |l: &&lightair_model::Object| object.source.is_some() && l.source == object.source;
+    let same_link = |l: &&lightair_model::Object| object.link.is_some() && l.link == object.link;
     from.objects.iter().find(same_source).or_else(|| from.objects.iter().find(same_link))
 }
 
@@ -72,7 +72,7 @@ pub(crate) fn lerp_layout(a: &Layout, b: &Layout, t: f32) -> Layout {
         rotation: lerp(a.rotation, b.rotation, t),
         tilt_x: lerp(a.tilt_x, b.tilt_x, t),
         tilt_y: lerp(a.tilt_y, b.tilt_y, t),
-        crop: lightair_core::Crop {
+        crop: lightair_model::Crop {
             left: crop(a.crop.left, b.crop.left),
             top: crop(a.crop.top, b.crop.top),
             right: crop(a.crop.right, b.crop.right),

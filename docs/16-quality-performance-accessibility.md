@@ -60,7 +60,7 @@ precommit` what a commit needs (docs/build-speed.md).
 
 | Level | What | Tooling |
 |---|---|---|
-| **Unit** | `lightair-core` commands, validation, undo coalescing, migrations, reconciler diffing | `cargo test`, property tests (`proptest`) for command sequences and undo/redo round trips |
+| **Unit** | `lightair-model` commands, validation, undo coalescing, migrations, reconciler diffing | `cargo test`, property tests (`proptest`) for command sequences and undo/redo round trips |
 | **Engine integration** | Reconciler against real libobs: create, mutate and tear down every entity type; idempotence (full apply == incremental) | Headless libobs with null graphics + test sources |
 | **UI** | Components and panels in headless GPUI windows: pointer/keyboard input, focus order, layout assertions, accessibility tree | gpui-kit UI testing harness |
 | **Golden render** | Each video effect, transition, Lightair Effect Stack tab, text style and template rendered to images and compared to approved goldens (perceptual diff with tolerance) | Offscreen libobs render, per-GPU-vendor goldens where needed |
@@ -103,7 +103,7 @@ Lightair targets **WCAG 2.2 AA** equivalence for desktop and the platform access
 
 A feature is done when:
 
-1. It's modelled in `lightair-core` as commands with undo, validation and persistence (with migration tests if the schema changed).
+1. It's modelled in `lightair-model` as commands with undo, validation and persistence (with migration tests if the schema changed).
 2. It works in every format, in recordings, clips, virtual camera and remote API.
 3. It has UI in the design system, keyboard access, AccessKit semantics and localised strings.
 4. It has unit, integration and (if visual or audible) golden tests.

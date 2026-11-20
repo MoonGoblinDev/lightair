@@ -3,7 +3,7 @@
 //! it. Items run the same actions as the keyboard, so each menu shows its shortcuts.
 
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
-use lightair_core::{Clip, Command, Id, Layout, Scene};
+use lightair_model::{Clip, Command, Id, Layout, Scene};
 
 use super::*;
 use crate::rows::RowTarget;
@@ -58,7 +58,7 @@ impl StudioWindow {
         copy.objects = original
             .objects
             .iter()
-            .map(|l| lightair_core::Object { id: ids[&l.id], parent: l.parent.map(|p| ids[&p]), ..l.clone() })
+            .map(|l| lightair_model::Object { id: ids[&l.id], parent: l.parent.map(|p| ids[&p]), ..l.clone() })
             .collect();
         let id = copy.id;
         self.exec(Command::AddScene { scene: copy, index: Some(index + 1) }, cx);

@@ -1,7 +1,7 @@
 //! Reconciler idempotence (docs/04-engine-libobs.md, "Reconciler"): applying the edits one by
 //! one must leave libobs in exactly the same state as rebuilding from the final document.
 
-use lightair_core::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
+use lightair_model::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
 
@@ -82,7 +82,7 @@ fn incremental_reconcile_matches_full_rebuild() {
     assert_eq!(engine.call(|s| s.reconciler.counts()), (2, 2, 3));
 
     // ---- add a vertical canvas: every scene gets a second libobs scene in a new canvas
-    let vertical = lightair_core::Canvas::vertical();
+    let vertical = lightair_model::Canvas::vertical();
     let vid = vertical.id;
     let mut commands = vec![Command::AddCanvas { canvas: vertical }];
     for scene in &doc.workspace().scenes {
@@ -124,6 +124,6 @@ fn incremental_reconcile_matches_full_rebuild() {
 }
 
 /// A object id that doesn't exist: the last edit must fail validation and change nothing.
-fn doc_object_placeholder() -> lightair_core::Id {
-    lightair_core::Id::new()
+fn doc_object_placeholder() -> lightair_model::Id {
+    lightair_model::Id::new()
 }

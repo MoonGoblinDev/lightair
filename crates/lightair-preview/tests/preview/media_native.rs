@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Layout, Object, Scene, Source, Workspace, diff};
+use lightair_model::{Command, Document, Layout, Object, Scene, Source, Workspace, diff};
 use lightair_engine::media::{MediaAction, MediaState};
 use lightair_engine::obs::{Data, ObsSource};
 use lightair_engine::{Engine, EngineConfig, sys};

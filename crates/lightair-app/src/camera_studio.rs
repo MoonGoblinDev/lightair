@@ -1,13 +1,13 @@
 //! The effect stack's data (docs/plans/effects-revamp.md): the module bundle and
 //! its preset collections (makeup looks, stickers, lights, grades, ambience, motion). The face effects themselves are in the
-//! catalog (`lightair_core::catalog`); the engine merges them into one `lightair_camera_studio`
+//! catalog (`lightair_model::catalog`); the engine merges them into one `lightair_camera_studio`
 //! filter.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use lightair_core::catalog::{self, Presets};
+use lightair_model::catalog::{self, Presets};
 use serde_json::{Value, json};
 
 /// The libobs filter all face effects run on.

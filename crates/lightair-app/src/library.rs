@@ -17,7 +17,7 @@ use gpui_kit::component::menu::{ContextMenuExt, PopupMenu, PopupMenuItem};
 use gpui_kit::component::Sizable;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::Id;
+use lightair_model::Id;
 use lightair_engine::player::Player;
 use lightair_preview::Preview;
 use lightair_store::recordings::{self, Index, Item, Kind};

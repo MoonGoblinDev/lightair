@@ -2,7 +2,7 @@
 //! (docs/07-scenes-objects-canvas.md, "Media layer"). Looping and the file live in settings.
 
 use libobs_sys as sys;
-use lightair_core::Id;
+use lightair_model::Id;
 
 use crate::reconcile::Reconciler;
 

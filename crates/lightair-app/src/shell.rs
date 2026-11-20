@@ -12,7 +12,7 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{
+use lightair_model::{
     Command, Direction, Canvas, Id, Source, Object, Layout, Workspace, Scene, TransitionKind, TransitionSettings,
 };
 use lightair_preview::Preview;
@@ -487,7 +487,7 @@ const SNAP_PX: f32 = 8.0;
 /// A new display capture: the main display (macOS names it; Windows takes the primary one), with
 /// the pointer, without Lightair's own windows.
 pub(crate) fn display_settings() -> serde_json::Value {
-    let mut settings = json!({"mode": lightair_core::kinds::DISPLAY, "cursor": true, "hide_obs": true});
+    let mut settings = json!({"mode": lightair_model::kinds::DISPLAY, "cursor": true, "hide_obs": true});
     if let Some(uuid) = lightair_engine::displays::main_display_uuid() {
         settings["display"] = uuid.into();
     }
@@ -1479,7 +1479,7 @@ impl StudioWindow {
             }
             // In Fit the picture keeps its shape, so the frame does too (Stretch to distort).
             DragMode::Resize(corner) => {
-                let keep = ev.modifiers.shift || (l.fit == lightair_core::Fit::Fit && web.is_none());
+                let keep = ev.modifiers.shift || (l.fit == lightair_model::Fit::Fit && web.is_none());
                 l = geo::resize(&l, corner, (dx, dy), keep);
                 if !ev.modifiers.platform {
                     // The dragged corner snaps to the canvas edges and centre lines (⌘: free).
@@ -1606,7 +1606,7 @@ impl StudioWindow {
             if let Some((e, _)) = edges.iter().find(|(_, p)| near(*p)) {
                 return Some(Handle::Edge(*e));
             }
-            if alt && l.crop != lightair_core::Crop::default() && geo::contains(l, (x, y)) {
+            if alt && l.crop != lightair_model::Crop::default() && geo::contains(l, (x, y)) {
                 return Some(Handle::Pan);
             }
         }
@@ -1780,7 +1780,7 @@ impl StudioWindow {
         let source_id = source.id;
         let object = Object::new(name, source.id, layouts);
         let object_id = object.id;
-        let track = sound.then(|| lightair_core::Track::new(name, source_id));
+        let track = sound.then(|| lightair_model::Track::new(name, source_id));
         let mut commands = vec![Command::AddSource { source }, Command::AddObject { scene, object, index: None }];
         commands.extend(track.map(|track| Command::AddTrack { track, index: None }));
         let cmd = Command::Batch { label: format!("Add {name}"), commands };
@@ -1793,10 +1793,10 @@ impl StudioWindow {
     /// default, the source starts with the Beauty effect.
     fn add_camera(&mut self, label: &str, uid: &str, cx: &mut Context<Self>) {
         let defaults = self.prefs.camera;
-        let source = self.add_source_object_id(label, lightair_core::kinds::CAMERA, defaults.settings(uid), (1280.0, 720.0), cx);
+        let source = self.add_source_object_id(label, lightair_model::kinds::CAMERA, defaults.settings(uid), (1280.0, 720.0), cx);
         if defaults.studio_on
             && let Some(source) = source
-            && let Some(beauty) = lightair_core::catalog::def("studio.beauty")
+            && let Some(beauty) = lightair_model::catalog::def("studio.beauty")
         {
             let cmd = Command::AddSourceEffect { source, effect: beauty.create(), index: None };
             self.exec(cmd, cx);
@@ -1830,7 +1830,7 @@ impl StudioWindow {
         let in_use = workspace
             .sources
             .values()
-            .filter(|i| i.kind == lightair_core::kinds::CAMERA)
+            .filter(|i| i.kind == lightair_model::kinds::CAMERA)
             .filter_map(|i| i.settings["device"].as_str().map(str::to_string))
             .find(|d| face_camera(d));
         let connected: Vec<(String, String)> = self.connected.as_ref().map(|c| c.cameras.clone()).unwrap_or_default();
@@ -1929,7 +1929,7 @@ impl StudioWindow {
                 let workspace = this.studio.read(cx).workspace().clone();
                 // the cut point it had (the scene's, else the show's)
                 let had = scene.and_then(|s| workspace.scene(s)).and_then(|s| s.stinger.clone()).or(workspace.stinger.clone());
-                let stinger = lightair_core::Stinger { path: path.to_string_lossy().into_owned(), cut_ms: had.map_or(500, |s| s.cut_ms) };
+                let stinger = lightair_model::Stinger { path: path.to_string_lossy().into_owned(), cut_ms: had.map_or(500, |s| s.cut_ms) };
                 match scene {
                     Some(scene) => this.exec(Command::SetSceneStinger { scene, stinger: Some(stinger) }, cx),
                     None => this.exec(Command::SetStinger { stinger: Some(stinger) }, cx),
@@ -2460,13 +2460,13 @@ impl StudioWindow {
     /// Adds the screen recording scenes (screen, screen + camera, split, camera) on backdrops,
     /// from the workspace's screen (a display capture is added if it has none) and camera.
     pub(crate) fn add_screen_layouts(&mut self, cx: &mut Context<Self>) {
-        use lightair_core::kinds;
+        use lightair_model::kinds;
         let workspace = self.studio.read(cx).workspace().clone();
         let mut commands = Vec::new();
         let screen = match workspace.sources.values().find(|i| i.kind == kinds::SCREEN) {
             Some(i) => i.id,
             None => {
-                let source = lightair_core::Source::new("Display", kinds::SCREEN, display_settings());
+                let source = lightair_model::Source::new("Display", kinds::SCREEN, display_settings());
                 let id = source.id;
                 commands.push(Command::AddSource { source });
                 id
@@ -2474,7 +2474,7 @@ impl StudioWindow {
         };
         let camera = workspace.sources.values().find(|i| i.kind == kinds::CAMERA).map(|i| i.id);
         let (_, _, dw, dh) = lightair_platform::input::main_display();
-        let sources = lightair_core::screen_layouts::Sources {
+        let sources = lightair_model::screen_layouts::Sources {
             screen,
             screen_aspect: if dh > 0.0 { dw / dh } else { 16.0 / 10.0 },
             camera,
@@ -2484,7 +2484,7 @@ impl StudioWindow {
         for c in &commands {
             let _ = c.apply(&mut with);
         }
-        commands.extend(lightair_core::screen_layouts::scenes(&with, &sources));
+        commands.extend(lightair_model::screen_layouts::scenes(&with, &sources));
         self.exec(Command::Batch { label: "Add screen recording scenes".into(), commands }, cx);
     }
 
@@ -3943,7 +3943,7 @@ impl StudioWindow {
                 });
                 let crop_paths = crop_view.as_ref().map(|(full, shape, _)| (*full, shape.clone()));
                 let round_handles =
-                    l.shape.is_some_and(|sh| sh.kind != lightair_core::ShapeKind::Rounded || sh.radius > 0.3);
+                    l.shape.is_some_and(|sh| sh.kind != lightair_model::ShapeKind::Rounded || sh.radius > 0.3);
                 // The rotate gizmo (rings per axis) replaces the other handles while it's on.
                 let gizmo_on = self.rotate_tool && !locked && editing && !cropping;
                 let knob = (!locked && editing && !cropping && !gizmo_on).then(|| {
@@ -4498,7 +4498,7 @@ impl StudioWindow {
         let object = scene.as_ref().and_then(|s| studio.selected_object.and_then(|l| s.object(l))).cloned();
         let selection = studio.selection();
         let track = studio.selected_track.and_then(|t| workspace.track(t)).cloned();
-        let strip = studio.selected_track.and_then(|t| lightair_core::MixerStrip::find(workspace, t));
+        let strip = studio.selected_track.and_then(|t| lightair_model::MixerStrip::find(workspace, t));
         let mut body = div().flex().flex_col().gap_3().px_3();
         if let (Some(sc), Some(l)) = (&scene, &object)
             && selection.len() == 1

@@ -32,7 +32,7 @@ reset and presets.
 | Layer | Change |
 |---|---|
 | `lightair-effect-stack` (C) | Port Dewy's latest pipeline: MediaPipe 478-point mesh on Core ML, mesh-drawn contour, highlight, eyeliner styles and brow, lash-line eyelids, Finish pass for light, faster and edge-snapped segmentation. Add a **background** stage (blur, remove, replace) driven by the person mask. Add **`lightair_fx`**, a data-driven GPU effect filter: one filter type, one `.effect` file per look (`data/fx/*.effect`), parameters from settings. |
-| `lightair-core` | Effects keep `kind` + `settings`. Face effects use kinds `studio.*`; generic shader effects `fx.*`; libobs filters keep their ids. |
+| `lightair-model` | Effects keep `kind` + `settings`. Face effects use kinds `studio.*`; generic shader effects `fx.*`; libobs filters keep their ids. |
 | `lightair-engine` | Input effect chains: consecutive `studio.*` effects become one `lightair_camera_studio` filter with merged settings (each effect's switch and intensity applied); `fx.*` become `lightair_fx` with `fx` set; the rest pass through. |
 | `lightair-app` | A typed catalog (`effects/catalog.rs`): kind, name, category, description, icon, controls (slider, bipolar slider, choice, colour, preset grid, file, switch), groups, defaults. The **Effect catalog sheet** (search, categories, tiles, descriptions) and the **effect stack** in the Inspector with per-effect controls. Old projects' single Lightair Effect Stack effect is split into the new face effects on load. |
 

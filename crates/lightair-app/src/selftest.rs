@@ -44,7 +44,7 @@ fn camera(engine: &Engine) {
         let Some((name, uid)) = devices.into_iter().find(|(n, _)| !n.contains("Virtual") && !n.contains("VCam")) else {
             return "no camera device".to_string();
         };
-        let Some((kind, settings)) = lightair_engine::kinds::resolve(lightair_core::kinds::CAMERA, &serde_json::json!({ "device": uid }))
+        let Some((kind, settings)) = lightair_engine::kinds::resolve(lightair_model::kinds::CAMERA, &serde_json::json!({ "device": uid }))
         else {
             return "no camera source on this platform".into();
         };
@@ -110,7 +110,7 @@ fn green_key(engine: &Engine) {
         let Some((name, uid)) = devices.into_iter().find(|(n, _)| !n.contains("Virtual") && !n.contains("VCam")) else {
             return "no camera device".to_string();
         };
-        let Some((kind, settings)) = lightair_engine::kinds::resolve(lightair_core::kinds::CAMERA, &serde_json::json!({ "device": uid }))
+        let Some((kind, settings)) = lightair_engine::kinds::resolve(lightair_model::kinds::CAMERA, &serde_json::json!({ "device": uid }))
         else {
             return "no camera source on this platform".into();
         };
@@ -119,7 +119,7 @@ fn green_key(engine: &Engine) {
         };
         let mut look = Data::new();
         look.set_int("bg_mode", 2);
-        look.set_int("bg_model", lightair_core::catalog::BG_MODEL_SYSTEM);
+        look.set_int("bg_model", lightair_model::catalog::BG_MODEL_SYSTEM);
         look.set_int("bg_feather", 30);
         look.set_int("bg_key", i64::from(blue));
         if let Some(fx) = ObsSource::create_private(crate::camera_studio::KIND, "Self-test green key", Some(&look)) {
@@ -266,7 +266,7 @@ fn virtual_camera(engine: &Engine) {
         let Some((name, uid)) = devices.into_iter().find(|(_, u)| u.eq_ignore_ascii_case(&uuid)) else {
             return format!("no camera with uid {uuid}");
         };
-        let (kind, settings) = lightair_engine::kinds::resolve(lightair_core::kinds::CAMERA, &serde_json::json!({ "device": uid })).unwrap();
+        let (kind, settings) = lightair_engine::kinds::resolve(lightair_model::kinds::CAMERA, &serde_json::json!({ "device": uid })).unwrap();
         let cam = ObsSource::create(kind, "Self-test virtual camera in", Some(&Data::from_json(&settings))).unwrap();
         // read back on a canvas of its own (on the program it would loop into itself)
         let canvas = lightair_engine::obs::ObsCanvas::create("Self-test readback", 640, 360, 30, 1).unwrap();

@@ -1,8 +1,0 @@
-{
-  "minimum": {"type": "number", "label": "Combo from (messages)", "value": 3, "min": 2, "max": 50, "group": "Emote combo"},
-  "window": {"type": "number", "label": "Within (seconds)", "value": 8, "min": 2, "max": 60, "group": "Emote combo"},
-  "size": {"type": "slider", "label": "Emote size", "value": 96, "min": 32, "max": 220, "step": 2, "group": "Look"},
-  "font": {"type": "fontpicker", "label": "Font", "value": "Inter, -apple-system, \"Segoe UI\", sans-serif", "group": "Look"},
-  "textColor": {"type": "colorpicker", "label": "Count", "value": "#FFFFFF", "group": "Look"},
-  "accentColor": {"type": "colorpicker", "label": "Glow", "value": "#FF3B4A", "group": "Look"}
-}

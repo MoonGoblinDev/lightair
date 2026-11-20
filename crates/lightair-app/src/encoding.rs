@@ -2,7 +2,7 @@
 //! encoder a choice means on this machine, the size it encodes at, and what Automatic picks for
 //! a destination.
 
-use lightair_core::{Destination, Encoding, Canvas, Workspace, RecordingSettings, VideoEncoder};
+use lightair_model::{Destination, Encoding, Canvas, Workspace, RecordingSettings, VideoEncoder};
 use lightair_engine::outputs::{
     EncoderConfig, H264_ENCODERS, HEVC_ENCODERS, PRORES_ENCODERS, aac_encoder, first_available,
 };
@@ -72,7 +72,7 @@ pub fn for_stream(caps: &[String], workspace: &Workspace, d: &Destination) -> En
 
 /// The libobs mix a mixer mix plays into: the audio engine plays the first five mixes, in mixer
 /// order, into libobs mixes 1–5 (0 is Program, the master); `None` past those or when gone.
-pub fn libobs_mix(workspace: &Workspace, mix: lightair_core::Id) -> Option<usize> {
+pub fn libobs_mix(workspace: &Workspace, mix: lightair_model::Id) -> Option<usize> {
     workspace.audio.mixes.iter().position(|m| m.id == mix).filter(|&k| k < 5).map(|k| k + 1)
 }
 
@@ -154,7 +154,7 @@ mod tests {
         let mut workspace = Workspace::new("P");
         workspace.outputs.stream_bitrate_kbps = 9000;
         let d = |platform: &str| Destination {
-            id: lightair_core::Id::new(),
+            id: lightair_model::Id::new(),
             name: platform.into(),
             server: "rtmp://example.com/live".into(),
             enabled: true,

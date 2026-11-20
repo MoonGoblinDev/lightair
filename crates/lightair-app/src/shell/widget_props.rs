@@ -9,7 +9,7 @@ use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::Sizable;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Id, Source};
+use lightair_model::{Command, Id, Source};
 use lightair_widgets::fields::{self, Field};
 use lightair_widgets::{Custom, Instance, catalog, test_events};
 use std::collections::HashSet;

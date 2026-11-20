@@ -2,7 +2,7 @@
 //! hit-testing, and resize/crop computed in the object's own frame. libobs turns a object around
 //! its box centre, clockwise for positive degrees (y points down).
 
-use lightair_core::{Crop, Layout, ShapeKind};
+use lightair_model::{Crop, Layout, ShapeKind};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Corner {
@@ -263,12 +263,12 @@ pub fn content_rect(l: &Layout, source: Option<(f32, f32)>) -> Layout {
     let vw = (sw - (k.left + k.right) as f32).max(1.0);
     let vh = (sh - (k.top + k.bottom) as f32).max(1.0);
     let (w, h) = match l.fit {
-        lightair_core::Fit::Fit => {
+        lightair_model::Fit::Fit => {
             let s = (l.width / vw).min(l.height / vh);
             (vw * s, vh * s)
         }
-        lightair_core::Fit::Original => (vw, vh),
-        lightair_core::Fit::Fill | lightair_core::Fit::Stretch => return *l,
+        lightair_model::Fit::Original => (vw, vh),
+        lightair_model::Fit::Fill | lightair_model::Fit::Stretch => return *l,
     };
     // Same centre, same rotation.
     let (cx, cy) = centre(l);
@@ -655,7 +655,7 @@ mod tests {
         let c = content_rect(&sq, Some((1440.0, 1080.0)));
         assert_eq!((c.x, c.width, c.height), (350.0, 900.0, 900.0));
         // Fill and Stretch fill the box; an unknown size leaves it alone.
-        let fill = Layout { fit: lightair_core::Fit::Fill, ..l };
+        let fill = Layout { fit: lightair_model::Fit::Fill, ..l };
         assert_eq!(content_rect(&fill, Some((1440.0, 1080.0))), fill);
         assert_eq!(content_rect(&l, None), l);
     }
@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn handles_sit_on_the_shape() {
-        use lightair_core::Shape;
+        use lightair_model::Shape;
         // A 200×100 box with a circle: radius 50, centred at (100, 50).
         let l = Layout { shape: Some(Shape::new(ShapeKind::Circle)), ..Layout::boxed(0.0, 0.0, 200.0, 100.0) };
         let (corners, edges) = crop_handles(&l);

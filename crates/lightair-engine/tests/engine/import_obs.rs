@@ -2,7 +2,7 @@
 //! that aren't installed (they must not take the engine down). No cameras or microphones here,
 //! so the test never triggers a permission prompt.
 
-use lightair_core::{Document, Workspace, diff};
+use lightair_model::{Document, Workspace, diff};
 use lightair_engine::{Engine, EngineConfig};
 
 const COLLECTION: &str = r#"{

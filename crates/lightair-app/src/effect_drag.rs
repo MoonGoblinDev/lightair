@@ -2,7 +2,7 @@
 //! audio effect to another strip. The engine runs a chain in this order.
 
 use gpui_kit::*;
-use lightair_core::{Command, Effect, Id, MixerStrip, Workspace};
+use lightair_model::{Command, Effect, Id, MixerStrip, Workspace};
 
 use crate::ui::{self, tok};
 
@@ -91,7 +91,7 @@ pub fn move_cmd(p: &Workspace, d: &DraggedEffect, to: Home, before: Option<Id>) 
 mod tests {
     // not `super::*`: gpui's `test` attribute would shadow the standard one
     use super::{DraggedEffect, Home, move_cmd};
-    use lightair_core::{Command, Document, Effect, Id, Source, MixerStrip, Workspace, Track};
+    use lightair_model::{Command, Document, Effect, Id, Source, MixerStrip, Workspace, Track};
     use serde_json::json;
 
     fn chain(doc: &Document, t: Id) -> Vec<String> {

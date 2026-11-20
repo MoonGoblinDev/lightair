@@ -545,7 +545,7 @@ const fn service(id: &'static str, name: &'static str, color: u32, mark: &'stati
 
 /// Whether a destination takes a second audio track for its VODs: Twitch's VOD track (OBS
 /// sends it to Twitch alone; other platforms ignore or reject a second track).
-pub fn takes_vod_track(d: &lightair_core::Destination) -> bool {
+pub fn takes_vod_track(d: &lightair_model::Destination) -> bool {
     d.platform.as_deref().and_then(by_id).or_else(|| guess(&d.server)).is_some_and(|p| p.id == "twitch")
 }
 

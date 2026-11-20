@@ -1,7 +1,7 @@
 //! Secrets live in the OS credential store, never in workspace files
 //! (docs/14-data-persistence-settings.md, "Security of stored data").
 
-use lightair_core::Id;
+use lightair_model::Id;
 
 const SERVICE: &str = "Lightair stream key";
 

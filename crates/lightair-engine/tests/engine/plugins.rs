@@ -65,7 +65,7 @@ fn audio_units_scan_load_process_and_keep_state() {
 #[test]
 fn a_workspace_insert_loads_and_reports() {
     let info = hipass(&plugins::scan_audio_units());
-    let e = lightair_core::catalog::plugin_effect("au", &info.id, &info.name, &info.vendor);
+    let e = lightair_model::catalog::plugin_effect("au", &info.id, &info.name, &info.vendor);
     assert!(plugins::instance(&e).is_none(), "not loaded yet");
     let t0 = Instant::now();
     while !plugins::changed() {
@@ -77,7 +77,7 @@ fn a_workspace_insert_loads_and_reports() {
     assert!(level(&*p, 100.0, 40) < 0.05);
     assert!(plugins::take_state(e.id).is_some());
     // a missing one fails, reported
-    let gone = lightair_core::catalog::plugin_effect("au", "au:61756678:00000000:00000000", "Gone", "Nobody");
+    let gone = lightair_model::catalog::plugin_effect("au", "au:61756678:00000000:00000000", "Gone", "Nobody");
     assert!(plugins::instance(&gone).is_none());
     assert!(matches!(plugins::status(gone.id), plugins::Status::Failed(_)));
     plugins::retain(&Default::default());

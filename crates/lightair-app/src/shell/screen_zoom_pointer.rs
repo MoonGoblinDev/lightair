@@ -8,7 +8,7 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Workspace, Scene, ScreenZoomPointer};
+use lightair_model::{Command, Workspace, Scene, ScreenZoomPointer};
 
 use super::StudioWindow;
 use crate::ui::{self, tok};
@@ -70,7 +70,7 @@ impl StudioWindow {
             .objects
             .iter()
             .filter_map(|l| l.source.and_then(|i| workspace.sources.get(&i)))
-            .filter(|i| i.kind == lightair_core::kinds::SCREEN)
+            .filter(|i| i.kind == lightair_model::kinds::SCREEN)
             .count();
         if !on {
             return body;

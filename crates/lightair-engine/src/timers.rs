@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use libobs_sys as sys;
-use lightair_core::Id;
+use lightair_model::Id;
 use parking_lot::Mutex;
 use serde_json::Value;
 

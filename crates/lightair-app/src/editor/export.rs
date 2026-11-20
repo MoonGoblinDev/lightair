@@ -361,7 +361,7 @@ impl Editor {
         }
         let settings = panel.settings;
         let typed = self.text_field("exp-name").map(|i| i.read(cx).value().trim().to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| p.name.clone());
-        let base = lightair_core::file_safe(&typed);
+        let base = lightair_model::file_safe(&typed);
         let ext = settings.container.ext();
         let folder = panel.folder.clone();
         let taken = |path: &std::path::Path| if settings.container == Container::Png { path.with_extension("").exists() } else { path.exists() };

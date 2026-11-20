@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use gpui_kit::*;
-use lightair_core::{Command, Id, Layout, Object, Scene, Source, Track, Workspace};
+use lightair_model::{Command, Id, Layout, Object, Scene, Source, Track, Workspace};
 use lightair_engine::outputs::{OutputKey, OutputState, runtime};
 use lightair_preview::Preview;
 use lightair_remote::{ApiError, Call, Config, ErrorKind, Handler, Reply, Server};
@@ -876,8 +876,8 @@ impl StudioWindow {
     fn remote_audio_add(&mut self, who: &str, p: &Value, cx: &mut Context<Self>) -> Reply {
         let (kind, name, settings) = match text(p, "kind").unwrap_or("microphone") {
             "microphone" | "mic" => (lightair_engine::devices::DEVICE_KIND, "Mic", json!({"device": text(p, "device").unwrap_or("")})),
-            "desktop" | "desktop_audio" => (lightair_core::kinds::DESKTOP_AUDIO, "Desktop audio", json!({})),
-            "app" | "app_audio" => (lightair_core::kinds::APP_AUDIO, "App audio", json!({"app": text(p, "app").unwrap_or("")})),
+            "desktop" | "desktop_audio" => (lightair_model::kinds::DESKTOP_AUDIO, "Desktop audio", json!({})),
+            "app" | "app_audio" => (lightair_model::kinds::APP_AUDIO, "App audio", json!({"app": text(p, "app").unwrap_or("")})),
             k => return Err(ApiError::invalid(format!("no sound kind {k} (microphone, desktop, app)"))),
         };
         let name = text(p, "name").unwrap_or(name);
@@ -956,8 +956,8 @@ impl StudioWindow {
                 let size = size_in(&s, 1920.0, 1080.0);
                 NewSource { kind: lightair_engine::web::KIND.into(), settings: s, size, sound: true, name: host }
             }
-            "display" | "window" | "app" | "screen_capture" | "display_capture" | "window_capture" | lightair_core::kinds::SCREEN => {
-                use lightair_core::kinds::{APP, DISPLAY, WINDOW};
+            "display" | "window" | "app" | "screen_capture" | "display_capture" | "window_capture" | lightair_model::kinds::SCREEN => {
+                use lightair_model::kinds::{APP, DISPLAY, WINDOW};
                 let mode = match kind {
                     "window" | "window_capture" => WINDOW,
                     "app" => APP,
@@ -978,9 +978,9 @@ impl StudioWindow {
                     WINDOW => "Window",
                     _ => "App",
                 };
-                NewSource { kind: lightair_core::kinds::SCREEN.into(), settings, size: (1920.0, 1080.0), sound: false, name: name.into() }
+                NewSource { kind: lightair_model::kinds::SCREEN.into(), settings, size: (1920.0, 1080.0), sound: false, name: name.into() }
             }
-            "camera" | "macos-avcapture" | "av_capture_input" | "av_capture_input_v2" | lightair_core::kinds::CAMERA => {
+            "camera" | "macos-avcapture" | "av_capture_input" | "av_capture_input_v2" | lightair_model::kinds::CAMERA => {
                 let device = match s.get("device").and_then(Value::as_str) {
                     Some(d) => d.to_string(),
                     None => {
@@ -992,7 +992,7 @@ impl StudioWindow {
                 if let Some(h) = s.get("height") {
                     settings["height"] = h.clone();
                 }
-                NewSource { kind: lightair_core::kinds::CAMERA.into(), settings, size: (1280.0, 720.0), sound: false, name: "Camera".into() }
+                NewSource { kind: lightair_model::kinds::CAMERA.into(), settings, size: (1280.0, 720.0), sound: false, name: "Camera".into() }
             }
             "timer" | lightair_engine::timers::TIMER_KIND => {
                 defaults(&mut s, json!({
@@ -1158,7 +1158,7 @@ fn resident_bytes() -> u64 {
 
 /// `capture.targets`: what a display, window, app, camera or microphone capture can show.
 fn capture_targets(p: &Value, engine: &Arc<lightair_engine::Engine>) -> Reply {
-    use lightair_core::kinds::{APP, DISPLAY, WINDOW};
+    use lightair_model::kinds::{APP, DISPLAY, WINDOW};
     let kind = p.get("kind").and_then(Value::as_str).unwrap_or("display");
     let items: Vec<Value> = match kind {
         "display" | "window" | "app" => {

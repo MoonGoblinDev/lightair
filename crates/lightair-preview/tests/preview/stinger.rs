@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use lightair_core::{
+use lightair_model::{
     Command, Document, Source, Object, Layout, Workspace, Scene, TransitionKind, TransitionSettings, diff,
 };
 use lightair_engine::{Engine, EngineConfig};
@@ -64,7 +64,7 @@ fn stinger_plays_over_the_switch() {
         Command::AddScene { scene: a_scene, index: None },
         Command::AddScene { scene: b_scene, index: None },
         Command::SetStinger {
-            stinger: Some(lightair_core::Stinger { path: video.to_string_lossy().into_owned(), cut_ms: 600 }),
+            stinger: Some(lightair_model::Stinger { path: video.to_string_lossy().into_owned(), cut_ms: 600 }),
         },
         Command::SetTransition {
             settings: TransitionSettings { kind: TransitionKind::Stinger, duration_ms: 1200, ..Default::default() },

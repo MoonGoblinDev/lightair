@@ -21,7 +21,7 @@ Status key: ✅ done · 🔨 in progress · ⬜ not started
 - A display capture or camera visible live in the window.
 
 ## M3 · Core document ✅
-- `lightair-core`: Project / Format / Scene / Layer / Input / Track / Output model with stable IDs, commands, validation, undo/redo with gesture coalescing.
+- `lightair-model`: Project / Format / Scene / Layer / Input / Track / Output model with stable IDs, commands, validation, undo/redo with gesture coalescing.
 - Engine reconciler applies patches to libobs (idempotent).
 - `lightair-store`: project package read/write, autosave journal, recovery.
 

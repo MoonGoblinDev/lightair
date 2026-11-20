@@ -9,7 +9,7 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::menu::ContextMenuExt;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Clip, Command, Id, Object, Layout, Workspace, Scene};
+use lightair_model::{Clip, Command, Id, Object, Layout, Workspace, Scene};
 
 use super::StudioWindow;
 use super::assets::DraggedAsset;
@@ -349,7 +349,7 @@ impl StudioWindow {
         &self,
         scene: &Scene,
         object: &Object,
-        canvas: &lightair_core::Canvas,
+        canvas: &lightair_model::Canvas,
         body: Div,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -639,7 +639,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::{TreeDrop, drop_command, rows};
-    use lightair_core::{Command, Document, Id, Source, Object, Layout, Workspace, Scene};
+    use lightair_model::{Command, Document, Id, Source, Object, Layout, Workspace, Scene};
 
     /// Back, Group{A, B}, Front — built through commands like the app does.
     fn scene() -> (Document, Id, [Id; 5]) {

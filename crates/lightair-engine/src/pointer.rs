@@ -15,7 +15,7 @@
 //!   centre move on critically damped springs; the view keeps the pointer inside it and never
 //!   leaves the capture. The pointer and clicks are drawn zoomed too.
 //!
-//! A scene's [`lightair_core::ScreenZoomPointer`] puts one of these on each of its screen captures
+//! A scene's [`lightair_model::ScreenZoomPointer`] puts one of these on each of its screen captures
 //! (`reconcile`); the effect catalog's "Drawn pointer" is the same filter without the zoom.
 //!
 //! Positions map from display points to the capture's pixels through the frame of what it
@@ -32,7 +32,7 @@ use lightair_platform::system_pointer;
 
 use crate::sys;
 
-pub const KIND: &str = lightair_core::catalog::POINTER_KIND;
+pub const KIND: &str = lightair_model::catalog::POINTER_KIND;
 
 use lightair_render::shapes::{Bitmap, RES, arrow, crosshair, disc, dot, ibeam, ring};
 /// The pointer's size in display points at size 1.

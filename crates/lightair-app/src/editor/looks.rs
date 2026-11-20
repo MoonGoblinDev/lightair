@@ -139,7 +139,7 @@ impl Editor {
         // emoji stickers: big, with a white edge
         let mut stickers = div().flex().flex_wrap().gap_1();
         for (n, e) in STICKERS.iter().enumerate() {
-            let style = TextStyle { text: (*e).into(), size: 220.0 * k, color: 0xFFFFFF, bold: false, align: 1, background: None, outline: Some(0xFFFFFF), width: size.0 as f32 };
+            let style = TextStyle { text: (*e).into(), size: 220.0 * k, color: 0xFFFFFF, bold: false, align: 1, background: None, outline: Some(0xFFFFFF), width: size.0 as f32, font: None };
             let source = MediaSource::Content(Content::Text(style), Transform::default());
             let drag = DraggedMedia::new("Sticker", source.clone(), None, *e, &self.drag_hidden);
             stickers = stickers.child(

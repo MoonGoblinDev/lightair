@@ -339,7 +339,7 @@ impl StudioWindow {
                 // the program's screen pointed at this window (only it, not the desktop around it),
                 // once the system lists it; then a take while the Library, then the Editor, show
                 cx.spawn(async move |this, cx| {
-                    use lightair_core::kinds::{SCREEN, WINDOW};
+                    use lightair_model::kinds::{SCREEN, WINDOW};
                     let mut own = None;
                     for _ in 0..40 {
                         cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
@@ -363,7 +363,7 @@ impl StudioWindow {
                         let mut settings = super::screen_pick::settings(WINDOW, &own);
                         settings["cursor"] = true.into();
                         settings["hide_obs"] = false.into();
-                        this.exec(lightair_core::Command::SetSourceSettings { source: screen, settings }, cx);
+                        this.exec(lightair_model::Command::SetSourceSettings { source: screen, settings }, cx);
                         this.show_place(super::Place::Library, cx);
                         true
                     });
@@ -572,8 +572,8 @@ impl StudioWindow {
                 self.show_place(super::Place::Live, cx);
                 let scene = self.studio.read(cx).selected_scene;
                 if let Some(scene) = scene {
-                    let look = lightair_core::ScreenZoomPointer { zoom: lightair_core::ScreenZoomPointer::ZOOM_TOGGLE, ..Default::default() };
-                    self.exec(lightair_core::Command::SetScreenZoomPointer { scene, screen: Some(look) }, cx);
+                    let look = lightair_model::ScreenZoomPointer { zoom: lightair_model::ScreenZoomPointer::ZOOM_TOGGLE, ..Default::default() };
+                    self.exec(lightair_model::Command::SetScreenZoomPointer { scene, screen: Some(look) }, cx);
                     self.select_object(None, cx);
                 }
             }
@@ -623,14 +623,14 @@ impl StudioWindow {
             Ok("screen-layouts") => {
                 // the layout scenes, the display blank (an app that isn't there), Screen on air
                 let p = self.studio.read(cx).workspace().clone();
-                if let Some(display) = p.sources.values().find(|i| i.kind == lightair_core::kinds::SCREEN) {
-                    let s = serde_json::json!({"mode": lightair_core::kinds::APP, "app": "app.lightair.nothing"});
-                    self.exec(lightair_core::Command::SetSourceSettings { source: display.id, settings: s }, cx);
+                if let Some(display) = p.sources.values().find(|i| i.kind == lightair_model::kinds::SCREEN) {
+                    let s = serde_json::json!({"mode": lightair_model::kinds::APP, "app": "app.lightair.nothing"});
+                    self.exec(lightair_model::Command::SetSourceSettings { source: display.id, settings: s }, cx);
                 }
                 self.add_screen_layouts(cx);
                 let p = self.studio.read(cx).workspace().clone();
                 if let Some(scene) = p.scenes.iter().find(|s| s.name == "Screen") {
-                    self.exec(lightair_core::Command::SetProgram { scene: Some(scene.id) }, cx);
+                    self.exec(lightair_model::Command::SetProgram { scene: Some(scene.id) }, cx);
                     self.studio.update(cx, |s, _| s.select_scene(scene.id));
                 }
             }
@@ -642,13 +642,13 @@ impl StudioWindow {
                 if let Some(dir) = self.studio.read(cx).workspace_dir().and_then(|d| d.parent().map(|p| p.join("shot-recordings"))) {
                     settings.folder = Some(dir);
                 }
-                self.exec(lightair_core::Command::SetRecordingSettings { settings }, cx);
-                if let Some(display) = p.sources.values().find(|i| i.kind == lightair_core::kinds::SCREEN) {
-                    let s = serde_json::json!({"mode": lightair_core::kinds::APP, "app": "app.lightair.nothing", "cursor": false});
-                    self.exec(lightair_core::Command::SetSourceSettings { source: display.id, settings: s }, cx);
+                self.exec(lightair_model::Command::SetRecordingSettings { settings }, cx);
+                if let Some(display) = p.sources.values().find(|i| i.kind == lightair_model::kinds::SCREEN) {
+                    let s = serde_json::json!({"mode": lightair_model::kinds::APP, "app": "app.lightair.nothing", "cursor": false});
+                    self.exec(lightair_model::Command::SetSourceSettings { source: display.id, settings: s }, cx);
                 }
                 if let Some(main) = p.scenes.iter().find(|s| s.name == "Main") {
-                    self.exec(lightair_core::Command::SetProgram { scene: Some(main.id) }, cx);
+                    self.exec(lightair_model::Command::SetProgram { scene: Some(main.id) }, cx);
                 }
                 self.studio_take(cx);
                 cx.spawn(async move |this, cx| {
@@ -662,16 +662,16 @@ impl StudioWindow {
                 // one's screen in the picture)
                 let p = self.studio.read(cx).workspace().clone();
                 if let Some(bg) = p.sources.values().find(|i| i.name == "Background") {
-                    let mut e = lightair_core::catalog::def(lightair_core::catalog::POINTER_KIND).unwrap().create();
+                    let mut e = lightair_model::catalog::def(lightair_model::catalog::POINTER_KIND).unwrap().create();
                     e.settings["size"] = serde_json::json!(4.0);
                     e.settings["idle_s"] = serde_json::json!(0.0);
-                    self.exec(lightair_core::Command::AddSourceEffect { source: bg.id, effect: e, index: None }, cx);
+                    self.exec(lightair_model::Command::AddSourceEffect { source: bg.id, effect: e, index: None }, cx);
                 }
                 // the logo sits where the pointer usually is
                 if let Some(scene) = p.program.and_then(|s| p.scene(s)) {
                     let f = p.primary_canvas().id;
                     for l in scene.objects.iter().filter(|l| l.name == "Logo") {
-                        self.exec(lightair_core::Command::SetObjectVisible { scene: scene.id, object: l.id, canvas: f, visible: false }, cx);
+                        self.exec(lightair_model::Command::SetObjectVisible { scene: scene.id, object: l.id, canvas: f, visible: false }, cx);
                     }
                 }
             }
@@ -750,7 +750,7 @@ impl StudioWindow {
                 if let Some(dir) = self.studio.read(cx).workspace_dir().and_then(|d| d.parent().map(|p| p.join("shot-recordings"))) {
                     settings.folder = Some(dir);
                 }
-                self.exec(lightair_core::Command::SetRecordingSettings { settings }, cx);
+                self.exec(lightair_model::Command::SetRecordingSettings { settings }, cx);
                 self.studio.update(cx, |s, cx| s.toggle_recording(cx));
                 cx.spawn(async move |this, cx| {
                     cx.background_executor().timer(std::time::Duration::from_secs(3)).await;
@@ -763,7 +763,7 @@ impl StudioWindow {
                 .detach();
             }
             Ok("perf") => self.perf_open = true,
-            Ok("two-canvases") => self.add_canvas(lightair_core::Canvas::vertical(), cx),
+            Ok("two-canvases") => self.add_canvas(lightair_model::Canvas::vertical(), cx),
             Ok("dests") => {
                 // Sample destinations (no keys) to see the list.
                 for (name, server, platform, on) in [
@@ -771,8 +771,8 @@ impl StudioWindow {
                     ("Twitch", "rtmp://aps10.contribute.live-video.net/app/", "twitch", true),
                     ("Kick", "rtmps://example.global-contribute.live-video.net/app/", "kick", false),
                 ] {
-                    let destination = lightair_core::Destination {
-                        id: lightair_core::Id::new(),
+                    let destination = lightair_model::Destination {
+                        id: lightair_model::Id::new(),
                         name: name.into(),
                         server: server.into(),
                         enabled: on,
@@ -783,18 +783,18 @@ impl StudioWindow {
                         vod_mix: None,
                         chat: None,
                     };
-                    self.exec(lightair_core::Command::AddDestination { destination }, cx);
+                    self.exec(lightair_model::Command::AddDestination { destination }, cx);
                 }
             }
             Ok("edit-dest") => {
-                let destination = lightair_core::Destination {
-                    id: lightair_core::Id::new(),
+                let destination = lightair_model::Destination {
+                    id: lightair_model::Id::new(),
                     name: "Twitch".into(),
                     server: "rtmp://aps10.contribute.live-video.net/app/".into(),
                     enabled: true,
                     canvas: None,
                     platform: Some("twitch".into()),
-                    encoding: Some(lightair_core::Encoding {
+                    encoding: Some(lightair_model::Encoding {
                         bitrate_kbps: 8000,
                         height: Some(720),
                         ..Default::default()
@@ -804,7 +804,7 @@ impl StudioWindow {
                     chat: None,
                 };
                 let id = destination.id;
-                self.exec(lightair_core::Command::AddDestination { destination }, cx);
+                self.exec(lightair_model::Command::AddDestination { destination }, cx);
                 self.outputs.update(cx, |o, cx| o.open_edit(id, window, cx));
             }
             Ok("dest-tiktok-vertical") => {
@@ -845,7 +845,7 @@ impl StudioWindow {
             Ok("source") => {
                 let source = {
                     let s = self.studio.read(cx);
-                    s.workspace().sources.values().find(|i| i.kind == lightair_core::kinds::SCREEN).map(|i| i.id)
+                    s.workspace().sources.values().find(|i| i.kind == lightair_model::kinds::SCREEN).map(|i| i.id)
                 };
                 if let Some(id) = source {
                     self.open_source_picker(id, window, cx);
@@ -883,7 +883,7 @@ impl StudioWindow {
             }
             Ok("group") => {
                 // The top two objects into a group, then an empty inside it.
-                let top: Vec<lightair_core::Id> = {
+                let top: Vec<lightair_model::Id> = {
                     let s = self.studio.read(cx);
                     s.selected_scene
                         .and_then(|id| s.workspace().scene(id))
@@ -954,16 +954,16 @@ impl StudioWindow {
                     };
                     let mut first = None;
                     for kind in kinds {
-                        if let Some(d) = lightair_core::catalog::def(kind) {
+                        if let Some(d) = lightair_model::catalog::def(kind) {
                             let mut effect = d.create();
                             if hook.starts_with("fx-key") {
                                 effect.settings["key_color_type"] = serde_json::json!("custom");
                             }
                             if hook.starts_with("fx-system") {
-                                effect.settings["bg_model"] = serde_json::json!(lightair_core::catalog::BG_MODEL_SYSTEM);
+                                effect.settings["bg_model"] = serde_json::json!(lightair_model::catalog::BG_MODEL_SYSTEM);
                             }
                             first.get_or_insert(effect.id);
-                            self.exec(lightair_core::Command::AddSourceEffect { source: iid, effect, index: None }, cx);
+                            self.exec(lightair_model::Command::AddSourceEffect { source: iid, effect, index: None }, cx);
                         }
                     }
                     self.props.open_effect = first;
@@ -998,7 +998,7 @@ impl StudioWindow {
             Ok("audio-rename") => {
                 // the first track's name, being edited on its strip
                 if let Some(t) = self.studio.read(cx).workspace().tracks.first().map(|t| t.id) {
-                    self.mixer.update(cx, |m, cx| m.start_rename(lightair_core::MixerStrip::Track(t), window, cx));
+                    self.mixer.update(cx, |m, cx| m.start_rename(lightair_model::MixerStrip::Track(t), window, cx));
                 }
             }
             Ok("audio-add") => {
@@ -1016,15 +1016,15 @@ impl StudioWindow {
             }
             Ok("audio-colours") => {
                 // the Streaming mixer with coloured strips (Mic red, Desktop blue, Music amber)
-                self.use_audio_template(lightair_core::templates::Template::Streaming, cx);
-                let tracks: Vec<lightair_core::Id> = self.studio.read(cx).workspace().tracks.iter().map(|t| t.id).collect();
+                self.use_audio_template(lightair_model::templates::Template::Streaming, cx);
+                let tracks: Vec<lightair_model::Id> = self.studio.read(cx).workspace().tracks.iter().map(|t| t.id).collect();
                 for (t, c) in tracks.into_iter().zip([0xE5484D, 0x0090FF, 0xFFB224]) {
                     self.exec(
-                        lightair_core::Command::SetStripColor { strip: lightair_core::MixerStrip::Track(t), color: Some(c) },
+                        lightair_model::Command::SetStripColor { strip: lightair_model::MixerStrip::Track(t), color: Some(c) },
                         cx,
                     );
                 }
-                self.exec(lightair_core::Command::SetStripColor { strip: lightair_core::MixerStrip::Master, color: Some(0x30A46C) }, cx);
+                self.exec(lightair_model::Command::SetStripColor { strip: lightair_model::MixerStrip::Master, color: Some(0x30A46C) }, cx);
             }
             Ok("console") => {
                 // the console open, the first track selected (its pan in the Inspector)
@@ -1038,7 +1038,7 @@ impl StudioWindow {
             }
             Ok("audio-template") => {
                 // the Streaming template (it changes no preferences), the mic selected
-                self.use_audio_template(lightair_core::templates::Template::Streaming, cx);
+                self.use_audio_template(lightair_model::templates::Template::Streaming, cx);
                 let first = self.studio.read(cx).workspace().tracks.first().map(|t| t.id);
                 self.studio.update(cx, |s, cx| {
                     s.selected_object = None;
@@ -1048,7 +1048,7 @@ impl StudioWindow {
             }
             Ok("audio-eq") => {
                 // an EQ on the master, its card open: the response curve in view
-                if let Some(d) = lightair_core::catalog::def("audio.eq") {
+                if let Some(d) = lightair_model::catalog::def("audio.eq") {
                     let mut effect = d.create();
                     effect.settings["b1_on"] = serde_json::json!(true);
                     effect.settings["b5_on"] = serde_json::json!(true);
@@ -1056,12 +1056,12 @@ impl StudioWindow {
                     effect.settings["b8_on"] = serde_json::json!(true);
                     self.props.open_effect = Some(effect.id);
                     self.exec(
-                        lightair_core::Command::AddStripEffect { strip: lightair_core::MixerStrip::Master, effect, index: None },
+                        lightair_model::Command::AddStripEffect { strip: lightair_model::MixerStrip::Master, effect, index: None },
                         cx,
                     );
                     self.studio.update(cx, |s, cx| {
                         s.selected_object = None;
-                        s.select_track(Some(lightair_core::MASTER_ID));
+                        s.select_track(Some(lightair_model::MASTER_ID));
                         cx.notify();
                     });
                 }
@@ -1070,22 +1070,22 @@ impl StudioWindow {
                 // a Guests bus, a Headphones mix, the mic routed to the bus and sent to the mix
                 let workspace = self.studio.read(cx).workspace().clone();
                 if let Some(t) = workspace.tracks.first().map(|t| (**t).clone()) {
-                    let bus = lightair_core::Bus::new("Guests");
-                    let mix = lightair_core::AudioMix::new("Headphones");
+                    let bus = lightair_model::Bus::new("Guests");
+                    let mix = lightair_model::AudioMix::new("Headphones");
                     let (bid, _mid) = (bus.id, mix.id);
-                    self.exec(lightair_core::Command::AddBus { bus, index: None }, cx);
-                    self.exec(lightair_core::Command::AddMix { mix: mix.clone() }, cx);
-                    let track = lightair_core::Track {
-                        route: lightair_core::Route::Bus(bid),
-                        sends: vec![lightair_core::Send { mix: mix.id, level_db: -3.0, pre_fader: true }],
+                    self.exec(lightair_model::Command::AddBus { bus, index: None }, cx);
+                    self.exec(lightair_model::Command::AddMix { mix: mix.clone() }, cx);
+                    let track = lightair_model::Track {
+                        route: lightair_model::Route::Bus(bid),
+                        sends: vec![lightair_model::Send { mix: mix.id, level_db: -3.0, pre_fader: true }],
                         pan: -0.3,
                         ..t.clone()
                     };
-                    self.exec(lightair_core::Command::UpdateTrack { track }, cx);
-                    if let Some(d) = lightair_core::catalog::def("audio.limiter") {
+                    self.exec(lightair_model::Command::UpdateTrack { track }, cx);
+                    if let Some(d) = lightair_model::catalog::def("audio.limiter") {
                         self.exec(
-                            lightair_core::Command::AddStripEffect {
-                                strip: lightair_core::MixerStrip::Master,
+                            lightair_model::Command::AddStripEffect {
+                                strip: lightair_model::MixerStrip::Master,
                                 effect: d.create(),
                                 index: None,
                             },
@@ -1106,7 +1106,7 @@ impl StudioWindow {
                 if let Some(t) = track {
                     let mut first = None;
                     for kind in ["audio.eq", "audio.compressor"] {
-                        if let Some(d) = lightair_core::catalog::def(kind) {
+                        if let Some(d) = lightair_model::catalog::def(kind) {
                             let mut effect = d.create();
                             if kind == "audio.eq" {
                                 effect.settings["b1_on"] = serde_json::json!(true);
@@ -1114,7 +1114,7 @@ impl StudioWindow {
                                 effect.settings["b5_gain"] = serde_json::json!(3.0);
                             }
                             first.get_or_insert(effect.id);
-                            self.exec(lightair_core::Command::AddEffect { track: t.id, effect, index: None }, cx);
+                            self.exec(lightair_model::Command::AddEffect { track: t.id, effect, index: None }, cx);
                         }
                     }
                     self.props.open_effect = first;

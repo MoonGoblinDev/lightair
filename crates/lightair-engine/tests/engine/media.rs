@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use lightair_core::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
+use lightair_model::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
 use lightair_engine::media::{MediaAction, MediaState, MediaStatus};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
@@ -32,7 +32,7 @@ fn silence_wav(path: &Path, seconds: u32) {
     f.write_all(&data).unwrap();
 }
 
-fn wait(engine: &Engine, id: lightair_core::Id, pred: impl Fn(&MediaStatus) -> bool) -> MediaStatus {
+fn wait(engine: &Engine, id: lightair_model::Id, pred: impl Fn(&MediaStatus) -> bool) -> MediaStatus {
     let deadline = Instant::now() + Duration::from_secs(4);
     loop {
         let status = engine.call(move |s| s.reconciler.media_status(id)).expect("media input");

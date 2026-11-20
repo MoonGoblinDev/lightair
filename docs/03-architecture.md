@@ -8,7 +8,7 @@ This document describes how Lightair is put together: processes, threads, crates
 |---|---|---|
 | Interface | Rust, **GPUI** via **gpui-kit** (pinned) | Windows, docks, panels, canvas editing, all interaction |
 | Design system | `lightair-ui` on `gpui-base` + themed `gpui-component` | Tokens, studio-specific components |
-| Application core | Rust (`lightair-core`) | Project document, commands, undo/redo, validation. No I/O, no libobs |
+| Application core | Rust (`lightair-model`) | Project document, commands, undo/redo, validation. No I/O, no libobs |
 | Engine adapter | Rust (`lightair-engine`) over `libobs-sys` | Owns libobs; reconciles the document into libobs objects; streams runtime telemetry back |
 | Engine | **libobs** (OBS Studio, vendored at a pinned release) | Capture, compositing, audio mixing, encoding, outputs |
 | Native media modules | C/C++/ObjC/Rust compiled as libobs modules | Lightair's sources, filters, transitions, audio effects, beauty pipeline |
@@ -53,12 +53,22 @@ Browser helper        Virtual camera            Audio plugin host
 | Thread / executor | Owner | Rules |
 |---|---|---|
 | **Main (GPUI)** | GPUI | Never blocks. Never calls libobs mutators. Reads immutable document snapshots and telemetry. |
-| **Core actor** | `lightair-core` | Single-threaded owner of the authoritative document. Applies commands, produces patches, records undo. Runs on a dedicated thread; tasks arrive over a channel. |
+| **Core actor** | `lightair-model` | Single-threaded owner of the authoritative document. Applies commands, produces patches, records undo. Runs on a dedicated thread; tasks arrive over a channel. |
 | **Engine actor** | `lightair-engine` | The single caller of libobs mutating APIs. Applies patches in order, owns all `obs_*_t` handles, translates libobs signals into events. |
 | **libobs internal threads** | libobs | Graphics, video, audio, encoder and output threads. Lightair code running inside them (native modules, render callbacks) must be real-time safe: no allocation in the hot path where avoidable, no locks shared with the UI, no I/O. |
 | **Async runtime** | `lightair-services`, `lightair-remote` | Tokio. Network, OAuth, chat sockets, remote API, update checks. Talks to core via commands, never to libobs directly. |
 
 **Why actors.** libobs is thread-safe in places and not in others. Funnelling every mutation through one engine thread makes ordering explicit, makes "apply this patch atomically" possible, and makes it trivial to keep the UI responsive while libobs does something slow (opening a capture device can take a second).
+
+## Repositories
+
+The crates every Lightair app shares (`lightair-model`, `-store`, `-audio`, `-render`, `-fonts`,
+`-live`, `-widgets`, `-automation`, `-remote`, `-platform`) live in their own repository,
+**lightair-core** (`MoonGoblinDev/lightair-core`, public, GPL-3.0-or-later), checked out beside this
+one. This repository holds the desktop app: the GPUI shell, the libobs engine adapter, the preview
+bridge, the browser, the native modules. Lightair Live and Lightair Editor, the mobile apps, use
+lightair-core the same way. During development this repository depends on lightair-core by path
+(`../lightair-core`); a release pins it to a commit.
 
 ## Crate graph
 
@@ -67,7 +77,7 @@ lightair-app ──────────────────────�
  ├─ lightair-shell           windows, docks, command palette, menus, keybindings
  │   └─ lightair-features/*  one crate per panel/feature (see below)
  ├─ lightair-ui              design system: tokens, theme, studio components
- ├─ lightair-core            document model, commands, undo, validation (pure)
+ ├─ lightair-model           document model, commands, undo, validation (pure)
  ├─ lightair-engine          libobs adapter, reconciler, telemetry
  │   ├─ libobs-sys           bindgen FFI for the vendored libobs
  │   └─ lightair-preview     canvas → GPU surface bridge (IOSurface / DXGI)
@@ -79,7 +89,7 @@ lightair-app ──────────────────────�
  └─ lightair-compat          OBS plugin compatibility: frontend API shim, Qt plugin host, plugin classifier
 ```
 
-**Feature crates** (`lightair-features/*`) each own one area of the UI and depend only on `lightair-ui`, `lightair-core` (types + command constructors) and a read-only telemetry interface. They never depend on `lightair-engine`:
+**Feature crates** (`lightair-features/*`) each own one area of the UI and depend only on `lightair-ui`, `lightair-model` (types + command constructors) and a read-only telemetry interface. They never depend on `lightair-engine`:
 
 `layers`, `scenes`, `canvas`, `mixer`, `outputs`, `inspector`, `effect-stack`, `chat`, `activity`, `clips`, `settings`, `onboarding`, `multiview`, `stats`.
 

@@ -5,7 +5,7 @@
 //! desktop audio to a loopback device, needs the screen recording permission in the test.)
 #![cfg(windows)]
 
-use lightair_core::{Command, Document, Source, Object, Layout, Workspace, Scene, diff, kinds};
+use lightair_model::{Command, Document, Source, Object, Layout, Workspace, Scene, diff, kinds};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
 

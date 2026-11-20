@@ -1,4 +1,4 @@
-//! Publishing reading rules (crates/lightair-live/src/rules.rs): `rules-key` makes the signing
+//! Publishing reading rules (lightair-core/crates/lightair-live/src/rules.rs): `rules-key` makes the signing
 //! pair once (the private half in this Mac's Keychain, the public half to paste into rules.rs);
 //! `rules-sign <file>` writes `<file>.sig` for publishing next to the file.
 
@@ -31,7 +31,7 @@ pub fn key() -> anyhow::Result<()> {
     let k = SigningKey::from_bytes(&seed);
     let status = Command::new("/usr/bin/security").args(["add-generic-password", "-s", SERVICE, "-a", "lightair", "-w", &hex(&seed)]).status()?;
     anyhow::ensure!(status.success(), "couldn't keep the key in the Keychain");
-    println!("kept the private key in the Keychain ({SERVICE}). Public key, for PUBLIC_KEY in crates/lightair-live/src/rules.rs:\n{}", hex(&k.verifying_key().to_bytes()));
+    println!("kept the private key in the Keychain ({SERVICE}). Public key, for PUBLIC_KEY in lightair-core/crates/lightair-live/src/rules.rs:\n{}", hex(&k.verifying_key().to_bytes()));
     Ok(())
 }
 

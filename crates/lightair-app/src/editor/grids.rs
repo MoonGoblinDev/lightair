@@ -303,7 +303,7 @@ impl Editor {
         let has: Vec<String> = self.picked_picture().map(|c| c.effects.iter().map(|e| e.kind.clone()).collect()).unwrap_or_default();
         let mut body = self.grid_head("EFFECTS", "Click to add one to the picked clips (again to take it off), or drag it onto a clip.").gap_2();
         let all = thumbs::effects();
-        for cat in lightair_core::catalog::Category::ALL {
+        for cat in lightair_model::catalog::Category::ALL {
             let defs: Vec<_> = all.iter().filter(|d| d.category == cat).collect();
             if defs.is_empty() {
                 continue;
@@ -401,7 +401,7 @@ impl Editor {
 }
 
 fn catalog_defaults(kind: &str) -> serde_json::Map<String, serde_json::Value> {
-    lightair_core::catalog::def(kind).map(|d| d.defaults()).unwrap_or_default()
+    lightair_model::catalog::def(kind).map(|d| d.defaults()).unwrap_or_default()
 }
 
 impl Editor {

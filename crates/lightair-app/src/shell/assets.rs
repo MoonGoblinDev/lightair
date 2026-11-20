@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Clip, Command, Id, Source, Object, Layout, Workspace};
+use lightair_model::{Clip, Command, Id, Source, Object, Layout, Workspace};
 use serde_json::json;
 
 use super::StudioWindow;
@@ -314,7 +314,7 @@ impl StudioWindow {
         clip.objects[0].prefab = None;
         clip.objects[0].prefab_id = None;
         // its own id, kept in the file: instances stay linked when it's renamed
-        let prefab_id = lightair_core::Id::new();
+        let prefab_id = lightair_model::Id::new();
         clip.prefab_id = Some(prefab_id);
         let path = free_name(&dir, &name, "prefab");
         let Ok(text) = serde_json::to_string_pretty(&clip) else { return };
@@ -333,7 +333,7 @@ impl StudioWindow {
     pub(super) fn save_scene_asset(&mut self, scene: Id, cx: &mut Context<Self>) {
         let studio = self.studio.read(cx);
         let Some(dir) = studio.assets_dir() else { return };
-        let Some(asset) = lightair_core::SceneAsset::of(studio.workspace(), scene) else { return };
+        let Some(asset) = lightair_model::SceneAsset::of(studio.workspace(), scene) else { return };
         let path = free_name(&dir, &asset.name, "scene");
         let Ok(text) = serde_json::to_string_pretty(&asset) else { return };
         if let Err(e) = std::fs::write(&path, text) {
@@ -349,7 +349,7 @@ impl StudioWindow {
     pub(super) fn add_scene_asset(&mut self, asset: &Asset, cx: &mut Context<Self>) {
         let Some(saved) = std::fs::read_to_string(&asset.path)
             .ok()
-            .and_then(|t| serde_json::from_str::<lightair_core::SceneAsset>(&t).ok())
+            .and_then(|t| serde_json::from_str::<lightair_model::SceneAsset>(&t).ok())
         else {
             self.studio.update(cx, |s, _| s.issue = Some("That scene file couldn't be read.".into()));
             return;
@@ -371,7 +371,7 @@ impl StudioWindow {
         let path = self.studio.read(cx).assets_dir()?.join(file);
         let mut clip: Clip = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
         if clip.prefab_id.is_none() {
-            clip.prefab_id = Some(lightair_core::Id::new());
+            clip.prefab_id = Some(lightair_model::Id::new());
             if let Ok(text) = serde_json::to_string_pretty(&clip) {
                 let _ = std::fs::write(&path, text);
             }
@@ -411,7 +411,7 @@ impl StudioWindow {
             _ => (None, None),
         };
         // Where the middle goes (canvas terms), per canvas.
-        let centre = |canvas: &lightair_core::Canvas| match at {
+        let centre = |canvas: &lightair_model::Canvas| match at {
             Placement::At(f, p) if f == canvas.id => p,
             _ => (canvas.width as f32 / 2.0, canvas.height as f32 / 2.0),
         };

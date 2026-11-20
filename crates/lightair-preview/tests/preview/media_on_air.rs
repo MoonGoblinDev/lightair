@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Layout, Object, Scene, Source, Track, TransitionKind, TransitionSettings, Workspace, diff};
+use lightair_model::{Command, Document, Layout, Object, Scene, Source, Track, TransitionKind, TransitionSettings, Workspace, diff};
 use lightair_engine::media::MediaState;
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
@@ -16,7 +16,7 @@ fn apply(engine: &Engine, doc: &mut Document, cmd: Command) {
     engine.call(move |s| s.reconciler.apply(&workspace, &patches));
 }
 
-fn state(engine: &Engine, id: lightair_core::Id) -> (MediaState, i64) {
+fn state(engine: &Engine, id: lightair_model::Id) -> (MediaState, i64) {
     std::thread::sleep(Duration::from_millis(700));
     let st = engine.call(move |s| s.reconciler.media_status(id)).unwrap();
     (st.state, st.time_ms)

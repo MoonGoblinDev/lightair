@@ -6,7 +6,7 @@
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Layout, Object, Scene, Source, Workspace, diff};
+use lightair_model::{Command, Document, Layout, Object, Scene, Source, Workspace, diff};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
 use windows::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};

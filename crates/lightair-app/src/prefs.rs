@@ -80,7 +80,7 @@ impl Default for CameraDefaults {
 }
 
 impl CameraDefaults {
-    /// A new camera's settings (`lightair_core::kinds::CAMERA`): its device, at `height`.
+    /// A new camera's settings (`lightair_model::kinds::CAMERA`): its device, at `height`.
     pub fn settings(&self, device: &str) -> serde_json::Value {
         let mut s = serde_json::json!({ "device": device });
         if let Some(h) = self.height {

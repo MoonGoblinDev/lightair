@@ -1,9 +1,0 @@
-{
-  "handles": {"type": "textarea", "label": "Platform and handle, one a line", "value": "twitch: yourname\nyoutube: @yourname\ntiktok: @yourname\nx: @yourname", "group": "Social"},
-  "seconds": {"type": "number", "label": "Seconds each", "value": 6, "min": 2, "max": 60, "group": "Social"},
-  "font": {"type": "fontpicker", "label": "Font", "value": "Inter, -apple-system, \"Segoe UI\", sans-serif", "group": "Look"},
-  "fontSize": {"type": "slider", "label": "Text size", "value": 28, "min": 10, "max": 80, "step": 1, "group": "Look"},
-  "align": {"type": "dropdown", "label": "Align", "value": "left", "options": {"left": "Left", "center": "Centre", "right": "Right"}, "group": "Look"},
-  "textColor": {"type": "colorpicker", "label": "Text", "value": "#FFFFFF", "group": "Look"},
-  "background": {"type": "colorpicker", "label": "Background", "value": "rgba(0,0,0,0.45)", "group": "Look"}
-}

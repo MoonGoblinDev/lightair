@@ -1,9 +1,0 @@
-{
-  "title": {"type": "text", "label": "Title", "value": "Top chatters", "group": "Leaderboard"},
-  "count": {"type": "number", "label": "How many", "value": 5, "min": 1, "max": 20, "group": "Leaderboard"},
-  "font": {"type": "fontpicker", "label": "Font", "value": "Inter, -apple-system, \"Segoe UI\", sans-serif", "group": "Look"},
-  "fontSize": {"type": "slider", "label": "Text size", "value": 22, "min": 10, "max": 60, "step": 1, "group": "Look"},
-  "textColor": {"type": "colorpicker", "label": "Text", "value": "#FFFFFF", "group": "Look"},
-  "background": {"type": "colorpicker", "label": "Background", "value": "rgba(0,0,0,0.5)", "group": "Look"},
-  "accentColor": {"type": "colorpicker", "label": "Title", "value": "#F5A623", "group": "Look"}
-}

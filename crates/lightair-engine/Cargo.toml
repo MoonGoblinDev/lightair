@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 lightair-web.workspace = true
 libobs-sys.workspace = true
-lightair-core.workspace = true
+lightair-model.workspace = true
 lightair-avatar.workspace = true
 glam = "0.30"
 lightair-audio.workspace = true

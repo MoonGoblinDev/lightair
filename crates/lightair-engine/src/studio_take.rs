@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lightair_core::{Id, Source, kinds};
+use lightair_model::{Id, Source, kinds};
 use serde_json::json;
 
 use crate::obs::{ObsCanvas, Data, ObsScene, ObsSource};

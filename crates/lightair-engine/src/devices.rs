@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 /// The input kind of a device input (its settings: `{"device": "<id>"}`, "" for the system's).
-pub const DEVICE_KIND: &str = lightair_core::kinds::AUDIO_DEVICE;
+pub const DEVICE_KIND: &str = lightair_model::kinds::AUDIO_DEVICE;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceInfo {
@@ -132,13 +132,13 @@ impl Resampler {
 
 enum Cmd {
     Open {
-        input: lightair_core::Id,
+        input: lightair_model::Id,
         device: String,
         sample_rate: u32,
         ring: rtrb::Producer<f32>,
         reply: mpsc::Sender<Result<u16, String>>,
     },
-    Close(lightair_core::Id),
+    Close(lightair_model::Id),
     /// The monitor: plays `ring` (stereo, interleaved) on an output device.
     OpenOutput {
         device: String,
@@ -164,7 +164,7 @@ impl Devices {
         let thread = std::thread::Builder::new()
             .name("lightair-devices".into())
             .spawn(move || {
-                let mut streams: HashMap<lightair_core::Id, cpal::Stream> = HashMap::new();
+                let mut streams: HashMap<lightair_model::Id, cpal::Stream> = HashMap::new();
                 // the monitor's stream, held open (at most one)
                 let mut output: Vec<cpal::Stream> = Vec::new();
                 while let Ok(cmd) = rx.recv() {
@@ -208,7 +208,7 @@ impl Devices {
     /// `sample_rate`). Returns its channel count.
     pub fn open(
         &self,
-        input: lightair_core::Id,
+        input: lightair_model::Id,
         device: &str,
         sample_rate: u32,
         ring: rtrb::Producer<f32>,
@@ -220,7 +220,7 @@ impl Devices {
         answer.recv_timeout(std::time::Duration::from_secs(5)).map_err(|_| "the device didn't open".to_string())?
     }
 
-    pub fn close(&self, input: lightair_core::Id) {
+    pub fn close(&self, input: lightair_model::Id) {
         let _ = self.tx.send(Cmd::Close(input));
     }
 

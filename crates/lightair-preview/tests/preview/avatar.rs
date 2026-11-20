@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Fit, Layout, Object, Scene, Source, Workspace, diff};
+use lightair_model::{Command, Document, Fit, Layout, Object, Scene, Source, Workspace, diff};
 use lightair_engine::{Engine, EngineConfig};
 use lightair_preview::{Preview, frame_rgba};
 use serde_json::json;

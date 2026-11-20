@@ -1,7 +1,7 @@
 //! The workspace a first launch starts with (until onboarding generates one from the user's
 //! devices; docs/05-interface-shell.md, "Onboarding").
 
-use lightair_core::{Command, Source, Object, Layout, Workspace, Scene, Track};
+use lightair_model::{Command, Source, Object, Layout, Workspace, Scene, Track};
 use serde_json::json;
 
 pub fn starter_workspace() -> Workspace {
@@ -14,7 +14,7 @@ pub fn starter_workspace() -> Workspace {
         "color_source_v3",
         json!({"color": 0xFF1B1B1Cu32, "width": canvas.width, "height": canvas.height}),
     );
-    let display = Source::new("Main display", lightair_core::kinds::SCREEN, crate::shell::display_settings());
+    let display = Source::new("Main display", lightair_model::kinds::SCREEN, crate::shell::display_settings());
     let icon_path = brand_icon();
     let logo = Source::new("Lightair logo", "image_source", json!({"file": icon_path.to_string_lossy()}));
 
@@ -35,8 +35,8 @@ pub fn starter_workspace() -> Workspace {
         Object::new("Logo", logo.id, [(canvas.id, Layout::boxed(80.0, h - 240.0, 160.0, 160.0))]),
     ];
 
-    let mic = Source::new(crate::mixer::SYSTEM_DEFAULT, lightair_core::kinds::MIC, json!({"device": ""}));
-    let desktop = Source::new("Desktop audio", lightair_core::kinds::DESKTOP_AUDIO, json!({}));
+    let mic = Source::new(crate::mixer::SYSTEM_DEFAULT, lightair_model::kinds::MIC, json!({"device": ""}));
+    let desktop = Source::new("Desktop audio", lightair_model::kinds::DESKTOP_AUDIO, json!({}));
     let mut mic_track = Track::new(crate::mixer::SYSTEM_DEFAULT, mic.id);
     mic_track.effects = crate::mixer::voice_clarity();
     let desktop_track = Track::new("Desktop audio", desktop.id);
@@ -88,8 +88,8 @@ pub fn plain_workspace() -> Workspace {
     soon.objects.push(Object::new("Background", bg.id, [(f, Layout::boxed(0.0, 0.0, w, h))]));
     soon.objects.push(Object::new("Countdown", timer.id, [(f, Layout::boxed(760.0, 470.0, 400.0, 140.0))]));
     let logo_box = Layout {
-        shape: Some(lightair_core::Shape::new(lightair_core::ShapeKind::Circle)),
-        crop: lightair_core::Crop { left: 64, top: 64, right: 64, bottom: 64 },
+        shape: Some(lightair_model::Shape::new(lightair_model::ShapeKind::Circle)),
+        crop: lightair_model::Crop { left: 64, top: 64, right: 64, bottom: 64 },
         tilt_y: 20.0,
         ..Layout::boxed(1500.0, 640.0, 360.0, 360.0)
     };

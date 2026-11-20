@@ -1,7 +1,0 @@
-{
-  "unit": {"type": "text", "label": "After the number", "value": "BPM", "group": "Heart rate"},
-  "font": {"type": "fontpicker", "label": "Font", "value": "Inter, -apple-system, \"Segoe UI\", sans-serif", "group": "Look"},
-  "fontSize": {"type": "slider", "label": "Text size", "value": 64, "min": 16, "max": 200, "step": 2, "group": "Look"},
-  "textColor": {"type": "colorpicker", "label": "Text", "value": "#FFFFFF", "group": "Look"},
-  "accentColor": {"type": "colorpicker", "label": "Heart", "value": "#FF3B5C", "group": "Look"}
-}

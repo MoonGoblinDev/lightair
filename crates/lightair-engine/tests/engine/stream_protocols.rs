@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::{Command as Proc, Stdio};
 use std::time::{Duration, Instant};
 
-use lightair_core::{Command, Document, Id, Source, Object, Layout, Workspace, Scene, diff};
+use lightair_model::{Command, Document, Id, Source, Object, Layout, Workspace, Scene, diff};
 use lightair_engine::outputs::{OutputKey, OutputState, StreamConfig, StreamProtocol, default_encoders, runtime};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;

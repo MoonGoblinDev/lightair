@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use lightair_core::kinds::{APP, DISPLAY, WINDOW};
+use lightair_model::kinds::{APP, DISPLAY, WINDOW};
 use lightair_engine::Engine;
 use lightair_engine::obs::ObsSource;
 use lightair_preview::{Frame, Preview};

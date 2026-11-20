@@ -116,7 +116,7 @@ The app and engine call these instead of OS APIs. A test per module runs on both
    *Done when:* a project made on a Mac opens on Windows, plays, records and streams, and the
    screenshot hooks produce Windows screenshots.
 
-   Done: portable kinds (`lightair_core::kinds`: screen, camera, mic, desktop audio, app
+   Done: portable kinds (`lightair_model::kinds`: screen, camera, mic, desktop audio, app
    audio) with their own setting names; the engine maps them per platform
    (`lightair_engine::kinds`) and gives an input a new source when an edit maps it to another
    libobs type; projects move to format 2 on open (and OBS imports arrive portable). Game

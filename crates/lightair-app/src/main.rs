@@ -136,7 +136,7 @@ fn main() {
     engine.call(move |s| {
         s.reconciler.set_headphones(monitor, program);
         // before the engine starts: nothing to restart
-        s.reconciler.set_audio_block(block, &lightair_core::Workspace::new(""));
+        s.reconciler.set_audio_block(block, &lightair_model::Workspace::new(""));
     });
     if let Ok(what) = std::env::var("LIGHTAIR_SELFTEST") {
         selftest::run(&engine, &what);
@@ -174,7 +174,7 @@ fn main() {
         shell::bind_keys(cx);
         shell::app_menu::bind(cx);
 
-        let starter: fn() -> lightair_core::Workspace = match std::env::var("LIGHTAIR_STARTER").as_deref() {
+        let starter: fn() -> lightair_model::Workspace = match std::env::var("LIGHTAIR_STARTER").as_deref() {
             Ok("plain") => starter::plain_workspace,
             _ => starter::starter_workspace,
         };

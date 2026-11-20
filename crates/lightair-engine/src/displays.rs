@@ -104,7 +104,7 @@ fn screen_settings(mode: i64, key: &str, value: Option<&serde_json::Value>) -> O
     if let Some(v) = value {
         s[key] = v.clone();
     }
-    let (kind, settings) = crate::kinds::resolve(lightair_core::kinds::SCREEN, &s)?;
+    let (kind, settings) = crate::kinds::resolve(lightair_model::kinds::SCREEN, &s)?;
     #[cfg(target_os = "macos")]
     let kind = crate::on_screen::inner_id(kind).unwrap_or(kind);
     Some((kind, settings))
@@ -116,7 +116,7 @@ pub fn screen_options(mode: i64, key: &str) -> Vec<(String, serde_json::Value)> 
     // (listed in its own mode: that's what keeps the lists to windows and apps on screen; with
     // nothing chosen yet libobs logs that it has no window to capture, harmlessly)
     let (Some((kind, settings)), Some(obs_key)) =
-        (screen_settings(mode, key, None), crate::kinds::libobs_key(lightair_core::kinds::SCREEN, key))
+        (screen_settings(mode, key, None), crate::kinds::libobs_key(lightair_model::kinds::SCREEN, key))
     else {
         return vec![];
     };
@@ -135,7 +135,7 @@ pub fn screen_capture(mode: i64, key: &str, value: &serde_json::Value, name: &st
 
 /// The displays, each with a capture of it (`captures`). Engine thread.
 pub fn list(captures: bool) -> Vec<Display> {
-    use lightair_core::kinds::DISPLAY;
+    use lightair_model::kinds::DISPLAY;
     let main = main_display_uuid();
     screen_options(DISPLAY, "display")
         .into_iter()

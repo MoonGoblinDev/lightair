@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::{Command as Proc, Stdio};
 use std::time::{Duration, Instant};
 
-use lightair_core::{Command, Document, Source, Object, Layout, Workspace, Scene, Track, diff};
+use lightair_model::{Command, Document, Source, Object, Layout, Workspace, Scene, Track, diff};
 use lightair_engine::outputs::{
     ClipsConfig, Container, OutputKey, OutputState, RecordingConfig, StreamConfig, default_encoders, runtime,
 };
@@ -133,7 +133,7 @@ fn record_and_stream() {
 
     // ---- recording
     let file = dir.join("take.mp4");
-    let canvas = lightair_core::Id::new();
+    let canvas = lightair_model::Id::new();
     let cfg = RecordingConfig {
         extra_mixes: vec![],
         canvas,
@@ -216,7 +216,7 @@ fn record_and_stream() {
             .spawn()
             .expect("ffmpeg starts");
         std::thread::sleep(Duration::from_millis(700));
-        let id = lightair_core::Id::new();
+        let id = lightair_model::Id::new();
         let cfg = StreamConfig {
             id,
             server: "rtmp://127.0.0.1:19350/live".into(),

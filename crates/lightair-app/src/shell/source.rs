@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use gpui_kit::component::input::{Input as TextInput, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Id, Source, kinds};
+use lightair_model::{Command, Id, Source, kinds};
 use serde_json::{Value, json};
 
 use super::StudioWindow;
@@ -228,7 +228,7 @@ impl StudioWindow {
         let toggle = display.then(|| {
             let mut settings = source.settings.clone();
             settings["hide_obs"] = (shows_lightair).into();
-            let cmd = lightair_core::Command::SetSourceSettings { source: id, settings };
+            let cmd = lightair_model::Command::SetSourceSettings { source: id, settings };
             div()
                 .flex()
                 .items_center()
@@ -250,7 +250,7 @@ impl StudioWindow {
             let track = self.studio.read(cx).workspace().tracks.iter().find(|t| t.source == id).map(|t| t.id);
             let cmd = match track {
                 Some(track) => Command::RemoveTrack { track },
-                None => Command::AddTrack { track: lightair_core::Track::new(&source.name, id), index: None },
+                None => Command::AddTrack { track: lightair_model::Track::new(&source.name, id), index: None },
             };
             div()
                 .flex()

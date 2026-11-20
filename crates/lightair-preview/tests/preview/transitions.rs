@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use lightair_core::{
+use lightair_model::{
     Command, Direction, Document, Id, Source, Object, Layout, Workspace, Scene, TransitionKind, TransitionSettings, diff,
 };
 use lightair_engine::{Engine, EngineConfig};

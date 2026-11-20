@@ -5,7 +5,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use lightair_core::{AudioMix, Bus, Command, Document, Effect, Source, Workspace, Route, Send, Track, diff};
+use lightair_model::{AudioMix, Bus, Command, Document, Effect, Source, Workspace, Route, Send, Track, diff};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
 

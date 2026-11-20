@@ -4,7 +4,7 @@
 
 use gpui_kit::component::input::{Editor, EditorState, InputEvent};
 use gpui_kit::*;
-use lightair_core::Id;
+use lightair_model::Id;
 
 use super::StudioWindow;
 use crate::ui::tok;

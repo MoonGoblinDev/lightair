@@ -8,7 +8,7 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Id, Source};
+use lightair_model::{Command, Id, Source};
 use serde_json::{Value, json};
 
 use super::StudioWindow;

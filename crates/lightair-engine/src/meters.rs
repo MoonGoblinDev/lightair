@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-use lightair_core::Id;
+use lightair_model::Id;
 use parking_lot::RwLock;
 
 pub const CHANNELS: usize = 2;

@@ -2,7 +2,7 @@
 //! newly added canvas. Full-canvas objects (backgrounds) fill the new canvas; everything else
 //! keeps its arrangement, scaled to the new width and centred vertically. The user refines it.
 
-use lightair_core::{Fit, Canvas, Layout};
+use lightair_model::{Fit, Canvas, Layout};
 
 pub fn reframe(l: &Layout, from: &Canvas, to: &Canvas) -> Layout {
     let (fw, fh, tw, th) = (from.width as f32, from.height as f32, to.width as f32, to.height as f32);

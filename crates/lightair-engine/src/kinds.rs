@@ -1,4 +1,4 @@
-//! Lightair's portable source kinds (`lightair_core::kinds`) as this platform's libobs sources:
+//! Lightair's portable source kinds (`lightair_model::kinds`) as this platform's libobs sources:
 //! which source type plays each, and its settings under libobs's names.
 //!
 //! | Kind | macOS | Windows |
@@ -18,7 +18,7 @@
 //!
 //! Settings that aren't Lightair's own (a camera's preset, say) pass through as they are.
 
-use lightair_core::kinds::{APP, APP_AUDIO, CAMERA, DESKTOP_AUDIO, DISPLAY, GAME, MIC, SCREEN, WINDOW};
+use lightair_model::kinds::{APP, APP_AUDIO, CAMERA, DESKTOP_AUDIO, DISPLAY, GAME, MIC, SCREEN, WINDOW};
 use serde_json::{Value, json};
 
 /// The libobs source type and settings for a source, or `None` when its kind is libobs's own.

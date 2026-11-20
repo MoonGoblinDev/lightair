@@ -515,7 +515,7 @@ pub struct AudioHost {
     garbage: rtrb::Consumer<FromRt>,
     /// Held for the audio thread, which pushes into them until it stops (in `drop`).
     _outs: Vec<ObsSource>,
-    captures: HashMap<lightair_core::Id, (ObsSource, Box<Capture>)>,
+    captures: HashMap<lightair_model::Id, (ObsSource, Box<Capture>)>,
     mixes: ([Option<la::NodeId>; OUT_MIXES - 1], Option<la::NodeId>),
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
@@ -527,7 +527,7 @@ pub struct AudioHost {
     /// Frames per block.
     block: usize,
     /// Open interfaces: their device name and channel count, by input.
-    devices: HashMap<lightair_core::Id, (String, u16)>,
+    devices: HashMap<lightair_model::Id, (String, u16)>,
     device_thread: Option<crate::devices::Devices>,
     /// The direct monitor: its output device and what it plays.
     monitor: Option<(String, la::NodeId)>,
@@ -625,7 +625,7 @@ impl AudioHost {
 
     /// Starts taking `input`'s audio from its libobs source (which then stays out of libobs's
     /// own mixes).
-    pub fn capture(&mut self, input: lightair_core::Id, source: &ObsSource) {
+    pub fn capture(&mut self, input: lightair_model::Id, source: &ObsSource) {
         if self.captures.contains_key(&input) {
             return;
         }
@@ -649,7 +649,7 @@ impl AudioHost {
     }
 
     /// Stops taking `input`'s audio; libobs mixes it again as it did before.
-    pub fn release(&mut self, input: lightair_core::Id) {
+    pub fn release(&mut self, input: lightair_model::Id) {
         let Some((source, cap)) = self.captures.remove(&input) else { return };
         unsafe {
             sys::obs_source_remove_audio_capture_callback(
@@ -664,13 +664,13 @@ impl AudioHost {
         drop(cap);
     }
 
-    pub fn captured(&self) -> impl Iterator<Item = lightair_core::Id> + '_ {
+    pub fn captured(&self) -> impl Iterator<Item = lightair_model::Id> + '_ {
         self.captures.keys().copied()
     }
 
     /// Opens an audio interface for `input`, every channel ("" for the default input). A
     /// device delivers small, regular buffers: it needs much less buffering than libobs.
-    pub fn open_device(&mut self, input: lightair_core::Id, device: &str) -> Result<u16, String> {
+    pub fn open_device(&mut self, input: lightair_model::Id, device: &str) -> Result<u16, String> {
         if self.devices.get(&input).is_some_and(|(d, _)| d == device) {
             return Ok(self.devices[&input].1);
         }
@@ -690,7 +690,7 @@ impl AudioHost {
         Ok(channels)
     }
 
-    pub fn close_device(&mut self, input: lightair_core::Id) {
+    pub fn close_device(&mut self, input: lightair_model::Id) {
         if self.devices.remove(&input).is_some() {
             if let Some(d) = &self.device_thread {
                 d.close(input);
@@ -699,12 +699,12 @@ impl AudioHost {
         }
     }
 
-    pub fn open_devices(&self) -> impl Iterator<Item = lightair_core::Id> + '_ {
+    pub fn open_devices(&self) -> impl Iterator<Item = lightair_model::Id> + '_ {
         self.devices.keys().copied()
     }
 
     /// An input fed by the caller (tests): `channels` interleaved, as a device would.
-    pub fn test_input(&mut self, input: lightair_core::Id, channels: u16) -> rtrb::Producer<f32> {
+    pub fn test_input(&mut self, input: lightair_model::Id, channels: u16) -> rtrb::Producer<f32> {
         let (producer, consumer) = rtrb::RingBuffer::new(RING_FRAMES * channels as usize);
         let rt = RtInput::new(crate::audio::node(input), consumer, channels as usize, 512, RING_FRAMES / 2);
         let _ = self.commands.push(ToRt::AddInput(rt));

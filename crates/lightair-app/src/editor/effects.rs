@@ -2,7 +2,7 @@
 //! clip, in order, each switched on or off, with the catalog's own controls.
 
 use super::*;
-use lightair_core::catalog::{self, Control, Pick};
+use lightair_model::catalog::{self, Control, Pick};
 use lightair_render::sequence::{Clip, ClipEffect};
 
 /// OBS colours (0xAABBGGRR) offered for effect colours.
@@ -164,6 +164,7 @@ impl Editor {
                     background: None,
                     outline: Some(0xFFFFFF),
                     width: 1920.0 * k,
+                    font: None,
                 };
                 let id = s.place_content(lightair_render::sequence::Content::Text(style), 1_000, 4_000);
                 if let Some(c) = s.clip_mut(id) {

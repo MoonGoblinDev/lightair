@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gpui_kit::{Context, SharedString};
-use lightair_core::{Command, CommandError, Document, Id, Workspace, diff};
+use lightair_model::{Command, CommandError, Document, Id, Workspace, diff};
 use lightair_engine::outputs::{
     ClipsConfig, Container, OutputKey, OutputState, RecordingConfig, StreamConfig, default_encoders, runtime,
 };
@@ -107,9 +107,9 @@ pub struct ThumbnailRequest {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UiRequest {
     /// A strip's effect, open in the Inspector.
-    OpenEffect(lightair_core::MixerStrip, Id),
+    OpenEffect(lightair_model::MixerStrip, Id),
     /// The effect catalog for a strip.
-    AddEffect(lightair_core::MixerStrip),
+    AddEffect(lightair_model::MixerStrip),
 }
 
 pub struct Studio {
@@ -143,7 +143,7 @@ pub struct Studio {
     pub last_clip: Option<PathBuf>,
     /// What the virtual camera was started on (the workspace's choice then): it restarts when
     /// the choice changes (a click, undo, another workspace).
-    virtual_camera_started: Option<lightair_core::VirtualCameraSettings>,
+    virtual_camera_started: Option<lightair_model::VirtualCameraSettings>,
     /// What other apps call the virtual camera (whose extension is installed), looked up when it
     /// starts.
     pub virtual_camera_name: &'static str,
@@ -230,11 +230,11 @@ impl Studio {
 
     /// Brings an older workspace's effects up to date (saved, but not an undo step).
     fn migrate(&mut self) {
-        let mut commands = lightair_core::catalog::migrate(self.doc.workspace());
+        let mut commands = lightair_model::catalog::migrate(self.doc.workspace());
         // tracks' libobs audio filters: the audio engine runs its own (LIGHTAIR_LEGACY_AUDIO
         // keeps libobs mixing, so the filters stay)
         if std::env::var("LIGHTAIR_LEGACY_AUDIO").map_or(true, |v| v != "1") {
-            commands.extend(lightair_core::catalog::migrate_audio(self.doc.workspace()));
+            commands.extend(lightair_model::catalog::migrate_audio(self.doc.workspace()));
         }
         if commands.is_empty() {
             return;
@@ -342,7 +342,7 @@ impl Studio {
             return;
         };
         let p = self.workspace().clone();
-        let source = lightair_core::Source::new(
+        let source = lightair_model::Source::new(
             "Replay",
             "ffmpeg_source",
             serde_json::json!({
@@ -353,12 +353,12 @@ impl Studio {
                 "clear_on_media_end": true,
             }),
         );
-        let layouts: Vec<(Id, lightair_core::Layout)> = p
+        let layouts: Vec<(Id, lightair_model::Layout)> = p
             .canvases
             .iter()
-            .map(|f| (f.id, lightair_core::Layout::boxed(0.0, 0.0, f.width as f32, f.height as f32)))
+            .map(|f| (f.id, lightair_model::Layout::boxed(0.0, 0.0, f.width as f32, f.height as f32)))
             .collect();
-        let object = lightair_core::Object::new("Replay", source.id, layouts);
+        let object = lightair_model::Object::new("Replay", source.id, layouts);
         let (object_id, source_id) = (object.id, source.id);
         let command = Command::Batch {
             label: "Replay clip".into(),
@@ -719,13 +719,13 @@ impl Studio {
 
     /// Which scene the virtual camera shows (`None`: the one on air), kept in the workspace.
     pub fn set_virtual_camera_scene(&mut self, scene: Option<Id>, cx: &mut Context<Self>) {
-        let settings = lightair_core::VirtualCameraSettings { scene, ..self.workspace().outputs.virtual_camera };
+        let settings = lightair_model::VirtualCameraSettings { scene, ..self.workspace().outputs.virtual_camera };
         let _ = self.execute(Command::SetVirtualCamera { settings }, cx);
     }
 
     /// Which canvas the virtual camera shows (`None`: the primary), kept in the workspace.
     pub fn set_virtual_camera_canvas(&mut self, canvas: Option<Id>, cx: &mut Context<Self>) {
-        let settings = lightair_core::VirtualCameraSettings { canvas, ..self.workspace().outputs.virtual_camera };
+        let settings = lightair_model::VirtualCameraSettings { canvas, ..self.workspace().outputs.virtual_camera };
         let _ = self.execute(Command::SetVirtualCamera { settings }, cx);
     }
 
@@ -849,7 +849,7 @@ impl Studio {
         for canvas in targets {
             let label = several.then(|| workspace.canvas(canvas).map(|f| f.name.clone()).unwrap_or_default());
             let name = match &label {
-                Some(l) => format!("Lightair {stamp} {}.{}", lightair_core::file_safe(l), container.extension()),
+                Some(l) => format!("Lightair {stamp} {}.{}", lightair_model::file_safe(l), container.extension()),
                 None => format!("Lightair {stamp}.{}", container.extension()),
             };
             let Some(shape) = workspace.canvas(canvas) else { continue };
@@ -948,9 +948,9 @@ impl Studio {
         let log = lightair_store::input_log::Writer::create(&folder.join("input.bin"), recorder.listening).ok().map(|mut w| {
             use lightair_store::input_log::{Entry, Record};
             // the screen recorded: its display, or its window where it is now (else the main display)
-            let screen = workspace.sources.values().find(|s| s.kind == lightair_core::kinds::SCREEN && tracks.iter().any(|t| t.screen && t.source == s.id));
-            let frame = screen.and_then(|s| match s.settings["mode"].as_i64().unwrap_or(lightair_core::kinds::DISPLAY) {
-                lightair_core::kinds::WINDOW => lightair_platform::input::window_frame(s.settings["window"].to_string().trim_matches('"')),
+            let screen = workspace.sources.values().find(|s| s.kind == lightair_model::kinds::SCREEN && tracks.iter().any(|t| t.screen && t.source == s.id));
+            let frame = screen.and_then(|s| match s.settings["mode"].as_i64().unwrap_or(lightair_model::kinds::DISPLAY) {
+                lightair_model::kinds::WINDOW => lightair_platform::input::window_frame(s.settings["window"].to_string().trim_matches('"')),
                 _ => s.settings["display"].as_str().and_then(lightair_platform::input::display_frame),
             });
             let (x, y, dw, dh) = frame.unwrap_or_else(lightair_platform::input::main_display);
@@ -1324,7 +1324,7 @@ impl Studio {
         let p = self.workspace();
         p.tracks
             .iter()
-            .filter(|t| p.sources.get(&t.source).is_some_and(|i| lightair_core::kinds::is_mic(&i.kind)))
+            .filter(|t| p.sources.get(&t.source).is_some_and(|i| lightair_model::kinds::is_mic(&i.kind)))
             .map(|t| (t.id, t.name.clone()))
             .collect()
     }
@@ -1463,7 +1463,7 @@ impl Studio {
     fn fix_selection(&mut self) {
         let p = self.doc.workspace();
         // a mixer strip: a track, bus, mix or the master
-        if self.selected_track.is_some_and(|t| lightair_core::MixerStrip::find(p, t).is_none()) {
+        if self.selected_track.is_some_and(|t| lightair_model::MixerStrip::find(p, t).is_none()) {
             self.selected_track = None;
         }
         if self.selected_scene.is_none_or(|s| p.scene(s).is_none()) {
@@ -1509,7 +1509,7 @@ fn virtual_camera_name() -> &'static str {
 
 /// `command`, and when it removes the last object showing a web page, the page's mixer track
 /// and the page too (one undo step): a page nobody sees shouldn't keep playing on air.
-fn with_page_cleanup(before: &lightair_core::Workspace, command: Command) -> Command {
+fn with_page_cleanup(before: &lightair_model::Workspace, command: Command) -> Command {
     fn removes(c: &Command) -> bool {
         match c {
             Command::RemoveObject { .. } | Command::RemoveScene { .. } => true,
@@ -1545,7 +1545,7 @@ fn with_page_cleanup(before: &lightair_core::Workspace, command: Command) -> Com
 #[cfg(test)]
 mod page_cleanup {
     use super::*;
-    use lightair_core::{Document, Layout, Object, Scene, Source, Track, Workspace};
+    use lightair_model::{Document, Layout, Object, Scene, Source, Track, Workspace};
 
     /// Deleting the only object showing a web page takes its track and the page with it (one
     /// undo step); a page still shown elsewhere, or a microphone's track, stays.

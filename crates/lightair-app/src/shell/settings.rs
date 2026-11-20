@@ -7,7 +7,7 @@ use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{ClipSettings, Command, Canvas, Reconnect, RecordingSettings, VideoEncoder};
+use lightair_model::{ClipSettings, Command, Canvas, Reconnect, RecordingSettings, VideoEncoder};
 
 use gpui_kit::component::input::{Input, InputState};
 
@@ -16,7 +16,7 @@ use crate::ui::{self, tok};
 
 /// A canvas being edited: its name and size fields, and the frame rate picked.
 pub(crate) struct CanvasEdit {
-    id: lightair_core::Id,
+    id: lightair_model::Id,
     name: Entity<InputState>,
     width: Entity<InputState>,
     height: Entity<InputState>,
@@ -134,7 +134,7 @@ impl StudioWindow {
         .detach();
     }
 
-    pub(super) fn edit_canvas(&mut self, id: lightair_core::Id, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn edit_canvas(&mut self, id: lightair_model::Id, window: &mut Window, cx: &mut Context<Self>) {
         let Some(f) = self.studio.read(cx).workspace().canvas(id).cloned() else { return };
         let field = |value: String, window: &mut Window, cx: &mut Context<Self>| {
             let e = cx.new(|cx| InputState::new(window, cx));
@@ -253,13 +253,13 @@ impl StudioWindow {
     }
 
     /// Sets the mixer up as a template (one undo step), with the settings it wants.
-    pub(super) fn use_audio_template(&mut self, t: lightair_core::templates::Template, cx: &mut Context<Self>) {
+    pub(super) fn use_audio_template(&mut self, t: lightair_model::templates::Template, cx: &mut Context<Self>) {
         let workspace = self.studio.read(cx).workspace().clone();
         self.exec(crate::mixer::template_command(&workspace, t), cx);
         if let Some(frames) = t.block() {
             self.set_audio_block(frames, cx);
         }
-        if t == lightair_core::templates::Template::Podcast {
+        if t == lightair_model::templates::Template::Podcast {
             crate::prefs::LOUDNESS_TARGET.store(-16, std::sync::atomic::Ordering::Relaxed);
             self.set_pref(|p| p.loudness_target = -16, cx);
         }
@@ -530,7 +530,7 @@ impl StudioWindow {
             );
         }
         let mut templates = group("Start from a template");
-        for (i, t) in lightair_core::templates::Template::ALL.into_iter().enumerate() {
+        for (i, t) in lightair_model::templates::Template::ALL.into_iter().enumerate() {
             templates = templates.child(row(
                 t.name(),
                 Some(t.description()),
@@ -819,7 +819,7 @@ impl StudioWindow {
 
     /// Multitrack audio: each track (or those marked Record) to its own file.
     fn multitrack_group(&self, rec: &RecordingSettings, cx: &mut Context<Self>) -> Div {
-        use lightair_core::{MultitrackFormat, MultitrackPoint};
+        use lightair_model::{MultitrackFormat, MultitrackPoint};
         let set = |r: RecordingSettings| Command::SetRecordingSettings { settings: r };
         let (multi, only) = (rec.multitrack, rec.audio_only);
         let (m, o) = (set(RecordingSettings { multitrack: !multi, ..rec.clone() }), set(RecordingSettings { audio_only: !only, ..rec.clone() }));

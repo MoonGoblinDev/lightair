@@ -28,7 +28,6 @@ use std::process::Command;
 
 #[cfg(target_os = "macos")]
 mod dist;
-mod fonts;
 mod rules;
 mod update;
 
@@ -523,12 +522,6 @@ fn chromium_runtime(dir: &Path) -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     match std::env::args().nth(1).as_deref() {
         Some("modules") => modules(),
-        Some("fonts-catalog") => {
-            let args: Vec<String> = std::env::args().collect();
-            let commit = args.iter().position(|a| a == "--commit").and_then(|i| args.get(i + 1)).cloned();
-            fonts::catalog(commit)
-        }
-        Some("fonts-bundle") => fonts::bundle(std::env::args().nth(2).map(std::path::PathBuf::from)),
         Some("bundle") => bundle(std::env::args().any(|a| a == "--release")),
         Some("dev") => dev(std::env::args().any(|a| a == "--release")),
         Some("virtual-camera") => virtual_camera(std::env::args().any(|a| a == "--uninstall")),
@@ -645,8 +638,34 @@ fn changed_packages() -> anyhow::Result<Option<Vec<String>>> {
 /// are for `precommit`. The whole workspace by default: crates that didn't change cost almost
 /// nothing to check, while checking a subset (`--changed`) unifies dependencies' features over
 /// that subset only, so each new subset first rebuilds some dependencies (docs/build-speed.md).
+/// The Effect Stack's .effect files and lightair-render's copies of them (whose uniforms the
+/// Editor's WGSL ports read) must match: the module here is their source.
+fn effects_in_sync() -> anyhow::Result<()> {
+    let ours = root().join("modules/lightair-effect-stack/data/fx");
+    let theirs = root().join("../lightair-core/crates/lightair-render/fx");
+    if !theirs.exists() {
+        eprintln!("lightair-core isn't beside this repo; the .effect files weren't compared");
+        return Ok(());
+    }
+    let mut differ = Vec::new();
+    for entry in std::fs::read_dir(&ours)?.flatten() {
+        let name = entry.file_name();
+        if std::fs::read(entry.path()).ok() != std::fs::read(theirs.join(&name)).ok() {
+            differ.push(name.to_string_lossy().into_owned());
+        }
+    }
+    differ.sort();
+    anyhow::ensure!(
+        differ.is_empty(),
+        "these .effect files differ from lightair-core's copies (crates/lightair-render/fx): {}; copy them there",
+        differ.join(", ")
+    );
+    Ok(())
+}
+
 fn check(changed: bool) -> anyhow::Result<()> {
     be_polite();
+    effects_in_sync()?;
     // Plain `cargo build` and `cargo test` leave object files behind too: past 50,000 files in
     // the folder (a few seconds per crate again), clear them first.
     let crowded = std::fs::read_dir(root().join("target/debug/deps")).map_or(0, |d| d.count()) > 50_000;

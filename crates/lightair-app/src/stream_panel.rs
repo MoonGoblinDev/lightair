@@ -37,7 +37,7 @@ pub struct StreamPanel {
     /// What the last change said, per channel.
     notes: HashMap<Key, String>,
     /// Bytes sent per stream output when last looked at (for its bitrate): (bytes, when, kbps).
-    sent: std::cell::RefCell<HashMap<lightair_core::Id, (u64, Instant, f64)>>,
+    sent: std::cell::RefCell<HashMap<lightair_model::Id, (u64, Instant, f64)>>,
 }
 
 fn since(ms: i64) -> String {

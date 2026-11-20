@@ -45,7 +45,7 @@ use std::ffi::c_void;
 use std::ffi::{CStr, c_char};
 
 use gpui_kit::{Bounds, Hsla, Pixels, Window};
-use lightair_core::Id;
+use lightair_model::Id;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 #[link(name = "QuartzCore", kind = "framework")]
@@ -704,10 +704,10 @@ impl NativePreview {
     pub fn attach(_: &gpui_kit::Window, _: gpui_kit::Hsla, _: gpui_kit::Hsla) -> Option<Self> {
         None
     }
-    pub fn picture(&mut self, _: lightair_core::Id) -> *mut std::ffi::c_void {
+    pub fn picture(&mut self, _: lightair_model::Id) -> *mut std::ffi::c_void {
         std::ptr::null_mut()
     }
-    pub fn place(&mut self, _: Option<gpui_kit::Bounds<gpui_kit::Pixels>>, _: &[(lightair_core::Id, gpui_kit::Bounds<gpui_kit::Pixels>)]) {}
+    pub fn place(&mut self, _: Option<gpui_kit::Bounds<gpui_kit::Pixels>>, _: &[(lightair_model::Id, gpui_kit::Bounds<gpui_kit::Pixels>)]) {}
     pub fn set_visible(&mut self, _: bool) {}
     pub fn refit(&mut self) {}
     pub fn player_visual(&mut self) -> *mut std::ffi::c_void {
@@ -715,8 +715,8 @@ impl NativePreview {
     }
     pub fn place_player(&mut self, _: Option<(gpui_kit::Bounds<gpui_kit::Pixels>, (u32, u32))>) {}
     pub fn show_player(&mut self, _: bool) {}
-    pub fn forget(&mut self, _: lightair_core::Id) {}
-    pub fn place_meters(&mut self, _: &[(lightair_core::Id, MeterPlace)]) {}
+    pub fn forget(&mut self, _: lightair_model::Id) {}
+    pub fn place_meters(&mut self, _: &[(lightair_model::Id, MeterPlace)]) {}
     pub fn show_meters(&mut self, _: bool) {}
 }
 

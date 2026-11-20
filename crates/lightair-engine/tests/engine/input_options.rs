@@ -1,7 +1,7 @@
 //! A source's list choices are read from the source itself (cameras, displays, windows, mics use
 //! the same path; a slideshow's list needs no permission).
 
-use lightair_core::{Command, Document, Source, Workspace, diff};
+use lightair_model::{Command, Document, Source, Workspace, diff};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
 

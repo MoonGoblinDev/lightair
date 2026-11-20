@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Effect, Source, Workspace, Track, TrackChannels, diff};
+use lightair_model::{Command, Document, Effect, Source, Workspace, Track, TrackChannels, diff};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
 

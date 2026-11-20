@@ -3,7 +3,7 @@
 //! stream or recording that stopped on an error. Shown as a count at the footer's left; the
 //! console lists them (shell/console_panel).
 
-use lightair_core::{Command, Id, Workspace, kinds};
+use lightair_model::{Command, Id, Workspace, kinds};
 use lightair_engine::outputs::{OutputKey, OutputState, runtime};
 
 /// The devices connected now: (id, name).
@@ -110,7 +110,7 @@ pub fn look(w: &Workspace, connected: Option<&Connected>) -> Vec<Attention> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lightair_core::Source;
+    use lightair_model::Source;
     use std::sync::Arc;
 
     #[test]
@@ -121,7 +121,7 @@ mod tests {
         let spare = source("Old cam", kinds::CAMERA, "cam:9");
         w.sources.insert(mic.id, Arc::new(mic.clone()));
         w.sources.insert(spare.id, Arc::new(spare));
-        w.tracks.push(Arc::new(lightair_core::Track::new("Mic", mic.id)));
+        w.tracks.push(Arc::new(lightair_model::Track::new("Mic", mic.id)));
         let gone = Connected { mics: vec![("builtin".into(), "MacBook Mic".into())], cameras: vec![] };
         let found = look(&w, Some(&gone));
         // the unused camera isn't listed

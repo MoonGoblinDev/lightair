@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Effect, Fit, Layout, Object, Scene, Source, Workspace, diff};
+use lightair_model::{Command, Document, Effect, Fit, Layout, Object, Scene, Source, Workspace, diff};
 use lightair_engine::{Engine, EngineConfig};
 use lightair_preview::{Preview, sample_ycbcr};
 use serde_json::json;
@@ -78,7 +78,7 @@ fn the_green_macos_paints_is_keyed_out() {
     person.effects.push(Effect::new(
         "Background removal",
         "studio.bg_remove",
-        json!({"bg_mode": 2, "bg_model": lightair_core::catalog::BG_MODEL_SYSTEM, "bg_feather": 30}),
+        json!({"bg_mode": 2, "bg_model": lightair_model::catalog::BG_MODEL_SYSTEM, "bg_feather": 30}),
     ));
     let full = Layout { fit: Fit::Stretch, ..Layout::boxed(0.0, 0.0, 640.0, 360.0) };
     let mut scene = Scene::new("Main");
@@ -127,7 +127,7 @@ fn the_green_macos_paints_is_keyed_out() {
     picture(&blue_file, [0.0, 0.0, 255.0]);
     let eid = doc.workspace().sources[&pid].effects[0].id;
     apply(&engine, &mut doc, Command::SetSourceSettings { source: pid, settings: json!({"file": blue_file.to_string_lossy()}) });
-    let settings = json!({"bg_mode": 2, "bg_model": lightair_core::catalog::BG_MODEL_SYSTEM, "bg_feather": 30, "bg_key": 1});
+    let settings = json!({"bg_mode": 2, "bg_model": lightair_model::catalog::BG_MODEL_SYSTEM, "bg_feather": 30, "bg_key": 1});
     apply(&engine, &mut doc, Command::SetSourceEffectSettings { source: pid, effect: eid, settings });
     std::thread::sleep(Duration::from_millis(1500));
     let n = preview.frames();

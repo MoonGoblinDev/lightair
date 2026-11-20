@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock};
 
 use lightair_audio::dsp::Plugin;
-use lightair_core::{Effect, Id};
+use lightair_model::{Effect, Id};
 use parking_lot::Mutex;
 
 #[cfg(target_os = "macos")]
@@ -309,7 +309,7 @@ pub fn retain(keep: &HashSet<Id>) {
 }
 
 /// The plugin inserts in a workspace (tracks, buses, mixes, master).
-pub fn inserts(workspace: &lightair_core::Workspace) -> HashSet<Id> {
+pub fn inserts(workspace: &lightair_model::Workspace) -> HashSet<Id> {
     let a = &workspace.audio;
     workspace
         .tracks
@@ -318,7 +318,7 @@ pub fn inserts(workspace: &lightair_core::Workspace) -> HashSet<Id> {
         .chain(a.buses.iter().flat_map(|b| b.effects.iter()))
         .chain(a.mixes.iter().flat_map(|m| m.effects.iter()))
         .chain(a.master.effects.iter())
-        .filter(|e| e.kind == lightair_core::catalog::PLUGIN_KIND)
+        .filter(|e| e.kind == lightair_model::catalog::PLUGIN_KIND)
         .map(|e| e.id)
         .collect()
 }

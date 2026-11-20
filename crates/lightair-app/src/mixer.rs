@@ -11,7 +11,7 @@ use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{AudioMix, Bus, Command, Effect, Id, Source, Master, MixerStrip, Workspace, Route, Send, Track, kinds};
+use lightair_model::{AudioMix, Bus, Command, Effect, Id, Source, Master, MixerStrip, Workspace, Route, Send, Track, kinds};
 use lightair_engine::meters::meters;
 use serde_json::json;
 
@@ -53,8 +53,8 @@ fn meter_frac(db: f32) -> f32 {
 /// The commands that set the mixer up as a template. Podcasts take an interface's channels as
 /// mics when there's one with more than two (a stereo USB mic isn't two people); music takes a
 /// two-channel one too (vocal and instrument). Otherwise the default source.
-pub fn template_command(workspace: &lightair_core::Workspace, t: lightair_core::templates::Template) -> Command {
-    use lightair_core::templates::{Mics, Template};
+pub fn template_command(workspace: &lightair_model::Workspace, t: lightair_model::templates::Template) -> Command {
+    use lightair_model::templates::{Mics, Template};
     let least = match t {
         Template::Podcast => 3,
         Template::Music => 2,
@@ -67,11 +67,11 @@ pub fn template_command(workspace: &lightair_core::Workspace, t: lightair_core::
         .max_by_key(|d| d.channels)
         .map(|d| Mics { kind: lightair_engine::devices::DEVICE_KIND.into(), device: d.id.clone(), name: d.name.clone(), channels: d.channels })
         .unwrap_or(Mics { kind: lightair_engine::devices::DEVICE_KIND.into(), device: String::new(), name: SYSTEM_DEFAULT.into(), channels: 1 });
-    lightair_core::templates::apply(workspace, t, &mics)
+    lightair_model::templates::apply(workspace, t, &mics)
 }
 
 pub fn voice_clarity() -> Vec<Effect> {
-    lightair_core::catalog::def("audio.voice").map(|d| vec![d.create()]).unwrap_or_default()
+    lightair_model::catalog::def("audio.voice").map(|d| vec![d.create()]).unwrap_or_default()
 }
 
 pub struct MixerPanel {
@@ -2168,7 +2168,7 @@ impl Knob {
                 }
             })
             .or_else(|| {
-                if id == lightair_core::MASTER_ID {
+                if id == lightair_model::MASTER_ID {
                     return Some(Command::UpdateMaster { master: Master { trim_db: v, ..p.audio.master.clone() } });
                 }
                 let m = p.audio.mix(id)?;
@@ -2312,7 +2312,7 @@ fn source_cmd(p: &Workspace, track: Id, to: &TrackSource, app_name: &str) -> Opt
         return None;
     }
     let mut commands = Vec::new();
-    let mut new_track = Track { channels: lightair_core::TrackChannels::All, ..(**t).clone() };
+    let mut new_track = Track { channels: lightair_model::TrackChannels::All, ..(**t).clone() };
     if old.kind == kind {
         let mut s = old.settings.clone();
         if let (Some(s), Some(n)) = (s.as_object_mut(), settings.as_object()) {
@@ -2432,7 +2432,7 @@ fn strip_views(p: &Workspace) -> Vec<StripView> {
     // the master last: always the right-most strip
     let m = &p.audio.master;
     v.push(StripView {
-        id: lightair_core::MASTER_ID,
+        id: lightair_model::MASTER_ID,
         kind: MixerStrip::Master,
         name: "Master".into(),
         volume_db: m.volume_db,

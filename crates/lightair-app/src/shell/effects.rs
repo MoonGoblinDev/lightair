@@ -12,8 +12,8 @@ use gpui_kit::component::input::{Input as TextInput, InputEvent, InputState};
 use gpui_kit::component::menu::{ContextMenuExt, PopupMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::catalog::{self, Category, Control, EffectDef, Needs, Presets, Slider as SliderDef};
-use lightair_core::{Command, Effect, Id, Source};
+use lightair_model::catalog::{self, Category, Control, EffectDef, Needs, Presets, Slider as SliderDef};
+use lightair_model::{Command, Effect, Id, Source};
 use serde_json::{Value, json};
 
 use super::StudioWindow;
@@ -26,7 +26,7 @@ pub(super) enum Owner {
     Source(Id),
     Track(Id),
     /// A bus, mix or the master.
-    Strip(lightair_core::MixerStrip),
+    Strip(lightair_model::MixerStrip),
 }
 
 impl Owner {
@@ -59,18 +59,18 @@ impl Owner {
         }
     }
     /// Its effects and name.
-    fn find(self, workspace: &lightair_core::Workspace) -> Option<(String, Vec<Effect>)> {
+    fn find(self, workspace: &lightair_model::Workspace) -> Option<(String, Vec<Effect>)> {
         match self {
             Owner::Source(id) => workspace.sources.get(&id).map(|i| (i.name.clone(), i.effects.clone())),
             Owner::Track(id) => workspace.track(id).map(|t| (t.name.clone(), t.effects.clone())),
-            Owner::Strip(lightair_core::MixerStrip::Bus(id)) => {
+            Owner::Strip(lightair_model::MixerStrip::Bus(id)) => {
                 workspace.audio.bus(id).map(|b| (b.name.clone(), b.effects.clone()))
             }
-            Owner::Strip(lightair_core::MixerStrip::Mix(id)) => {
+            Owner::Strip(lightair_model::MixerStrip::Mix(id)) => {
                 workspace.audio.mix(id).map(|m| (m.name.clone(), m.effects.clone()))
             }
-            Owner::Strip(lightair_core::MixerStrip::Master) => Some(("Master".into(), workspace.audio.master.effects.clone())),
-            Owner::Strip(lightair_core::MixerStrip::Track(id)) => workspace.track(id).map(|t| (t.name.clone(), t.effects.clone())),
+            Owner::Strip(lightair_model::MixerStrip::Master) => Some(("Master".into(), workspace.audio.master.effects.clone())),
+            Owner::Strip(lightair_model::MixerStrip::Track(id)) => workspace.track(id).map(|t| (t.name.clone(), t.effects.clone())),
         }
     }
     fn audio(self) -> bool {
@@ -82,13 +82,13 @@ impl Owner {
         use crate::effect_drag::Home;
         match self {
             Owner::Source(id) => Home::Source(id),
-            Owner::Track(id) => Home::Strip(lightair_core::MixerStrip::Track(id)),
+            Owner::Track(id) => Home::Strip(lightair_model::MixerStrip::Track(id)),
             Owner::Strip(s) => Home::Strip(s),
         }
     }
 
     /// Whose effect `effect` is (a mixer strip's: the audio inserts).
-    fn of_audio_effect(workspace: &lightair_core::Workspace, effect: Id) -> Option<(Owner, Effect)> {
+    fn of_audio_effect(workspace: &lightair_model::Workspace, effect: Id) -> Option<(Owner, Effect)> {
         let has = |effects: &[Effect]| effects.iter().find(|e| e.id == effect).cloned();
         let a = &workspace.audio;
         workspace
@@ -96,12 +96,12 @@ impl Owner {
             .iter()
             .find_map(|t| has(&t.effects).map(|e| (Owner::Track(t.id), e)))
             .or_else(|| {
-                a.buses.iter().find_map(|b| has(&b.effects).map(|e| (Owner::Strip(lightair_core::MixerStrip::Bus(b.id)), e)))
+                a.buses.iter().find_map(|b| has(&b.effects).map(|e| (Owner::Strip(lightair_model::MixerStrip::Bus(b.id)), e)))
             })
             .or_else(|| {
-                a.mixes.iter().find_map(|m| has(&m.effects).map(|e| (Owner::Strip(lightair_core::MixerStrip::Mix(m.id)), e)))
+                a.mixes.iter().find_map(|m| has(&m.effects).map(|e| (Owner::Strip(lightair_model::MixerStrip::Mix(m.id)), e)))
             })
-            .or_else(|| has(&a.master.effects).map(|e| (Owner::Strip(lightair_core::MixerStrip::Master), e)))
+            .or_else(|| has(&a.master.effects).map(|e| (Owner::Strip(lightair_model::MixerStrip::Master), e)))
     }
 }
 
@@ -162,7 +162,7 @@ impl StudioWindow {
     /// A bus's, mix's or the master's effects.
     pub(super) fn strip_effects_section(
         &self,
-        strip: lightair_core::MixerStrip,
+        strip: lightair_model::MixerStrip,
         effects: &[Effect],
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -170,7 +170,7 @@ impl StudioWindow {
     }
 
     /// A mixer track's effects: the same cards, from the audio catalog.
-    pub(super) fn track_effects_section(&self, track: &lightair_core::Track, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn track_effects_section(&self, track: &lightair_model::Track, cx: &mut Context<Self>) -> AnyElement {
         self.effect_stack(Owner::Track(track.id), &track.effects, cx)
     }
 
@@ -1168,7 +1168,7 @@ impl StudioWindow {
             s.select_track(Some(id));
         });
         let owner = match strip {
-            lightair_core::MixerStrip::Track(t) => Owner::Track(t),
+            lightair_model::MixerStrip::Track(t) => Owner::Track(t),
             other => Owner::Strip(other),
         };
         match req {
@@ -1564,7 +1564,7 @@ pub(super) struct MacosEffects {
     backgrounds: Backdrop,
 }
 
-pub(super) fn macos_effects_wanted(workspace: &lightair_core::Workspace) -> MacosEffects {
+pub(super) fn macos_effects_wanted(workspace: &lightair_model::Workspace) -> MacosEffects {
     let system = |e: &&Effect| {
         e.enabled
             && matches!(e.kind.as_str(), "studio.bg_remove" | "studio.bg_replace")
@@ -1576,7 +1576,7 @@ pub(super) fn macos_effects_wanted(workspace: &lightair_core::Workspace) -> Maco
     let mut plain = false;
     for o in &scene.objects {
         let Some(source) = o.source.and_then(|i| workspace.sources.get(&i)) else { continue };
-        if source.kind != lightair_core::kinds::CAMERA || !workspace.canvases.iter().any(|c| scene.shown(o.id, c.id)) {
+        if source.kind != lightair_model::kinds::CAMERA || !workspace.canvases.iter().any(|c| scene.shown(o.id, c.id)) {
             continue;
         }
         let mut uses = false;
@@ -1807,16 +1807,16 @@ fn effect_menu(
 #[cfg(test)]
 mod macos_effects_tests {
     use super::{Backdrop, macos_effects_wanted};
-    use lightair_core::{Effect, Layout, Object, Scene, Source, Workspace};
+    use lightair_model::{Effect, Layout, Object, Scene, Source, Workspace};
     use serde_json::json;
 
     /// A workspace: a camera keyed out on macOS's effect, a plain camera, and three scenes.
-    fn workspace(key: i64) -> (Workspace, [lightair_core::Id; 3]) {
+    fn workspace(key: i64) -> (Workspace, [lightair_model::Id; 3]) {
         let mut w = Workspace::new("t");
         let canvas = w.primary_canvas().id;
-        let mut keyed = Source::new("Camera", lightair_core::kinds::CAMERA, json!({}));
+        let mut keyed = Source::new("Camera", lightair_model::kinds::CAMERA, json!({}));
         keyed.effects.push(Effect::new("Background removal", "studio.bg_remove", json!({"bg_mode": 2, "bg_model": 2, "bg_key": key})));
-        let plain = Source::new("Camera 2", lightair_core::kinds::CAMERA, json!({}));
+        let plain = Source::new("Camera 2", lightair_model::kinds::CAMERA, json!({}));
         let colour = Source::new("Colour", "color_source_v3", json!({}));
         let scene = |name: &str, src: &Source| {
             let mut s = Scene::new(name);
@@ -1852,7 +1852,7 @@ mod macos_effects_tests {
     #[test]
     fn workspaces_without_macos_effects_are_left_alone() {
         let mut w = Workspace::new("t");
-        w.sources.insert(lightair_core::Id::new(), std::sync::Arc::new(Source::new("Camera", lightair_core::kinds::CAMERA, json!({}))));
+        w.sources.insert(lightair_model::Id::new(), std::sync::Arc::new(Source::new("Camera", lightair_model::kinds::CAMERA, json!({}))));
         assert!(!macos_effects_wanted(&w).managed);
     }
 }

@@ -11,7 +11,7 @@ use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::{Command, Fit, Canvas, Object, Layout, Workspace, Scene, Shape, ShapeKind};
+use lightair_model::{Command, Fit, Canvas, Object, Layout, Workspace, Scene, Shape, ShapeKind};
 
 use super::StudioWindow;
 use crate::ui::{self, tok};
@@ -583,8 +583,8 @@ impl StudioWindow {
         };
 
         // In the header: undo a crop or a tilt (both made on the canvas), and how to make them.
-        let cropped = lo.crop != lightair_core::Crop::default();
-        let reset = set(&|l| l.crop = lightair_core::Crop::default());
+        let cropped = lo.crop != lightair_model::Crop::default();
+        let reset = set(&|l| l.crop = lightair_model::Crop::default());
         let flat = set(&|l| {
             l.tilt_x = 0.0;
             l.tilt_y = 0.0;

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::{Command as Proc, Stdio};
 use std::time::{Duration, Instant};
 
-use lightair_core::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
+use lightair_model::{Command, Document, Source, Object, Layout, Workspace, Scene, diff};
 use lightair_engine::outputs::{Container, OutputState, RecordingConfig, default_encoders, runtime};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
@@ -67,7 +67,7 @@ fn pause_marker_split() {
     let first = dir.join("take.mp4");
     let cfg = RecordingConfig {
         extra_mixes: vec![],
-        canvas: lightair_core::Id::new(),
+        canvas: lightair_model::Id::new(),
         label: None,
         split_minutes: None,
         path: first.clone(),

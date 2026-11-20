@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui_kit::{Bounds, Hsla, Pixels, Window};
-use lightair_core::Id;
+use lightair_model::Id;
 use lightair_preview::Layer;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::POINT;

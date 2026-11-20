@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use libobs_sys as sys;
-use lightair_core::Id;
+use lightair_model::Id;
 use parking_lot::Mutex;
 
 use crate::obs::Data;

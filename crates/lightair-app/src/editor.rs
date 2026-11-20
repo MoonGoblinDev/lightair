@@ -15,7 +15,7 @@ use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu, PopupMenuItem};
 use gpui_kit::component::Sizable;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use lightair_core::Id;
+use lightair_model::Id;
 use lightair_render::edit::Edit;
 use lightair_render::seqrender::SequenceRenderer;
 use lightair_render::sequence::{Project, Media, MediaKind, Sequence, Part, TrackKind, Transform};

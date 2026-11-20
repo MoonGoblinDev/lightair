@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Layout, Object, Scene, Source, Workspace, diff};
+use lightair_model::{Command, Document, Layout, Object, Scene, Source, Workspace, diff};
 use lightair_engine::{Engine, EngineConfig};
 use lightair_preview::{Preview, frame_is_nv12, nv12, sample_ycbcr};
 use serde_json::json;

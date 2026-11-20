@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use lightair_core::{Command, Document, Source, Workspace, Route, Track, TrackChannels, diff};
+use lightair_model::{Command, Document, Source, Workspace, Route, Track, TrackChannels, diff};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
 

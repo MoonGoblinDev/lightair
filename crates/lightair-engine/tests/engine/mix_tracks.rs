@@ -3,7 +3,7 @@
 use std::process::Command as Proc;
 use std::time::{Duration, Instant};
 
-use lightair_core::{AudioMix, Command, Document, Source, Object, Layout, Workspace, Scene, Send, Track, diff};
+use lightair_model::{AudioMix, Command, Document, Source, Object, Layout, Workspace, Scene, Send, Track, diff};
 use lightair_engine::outputs::{Container, OutputKey, OutputState, RecordingConfig, default_encoders, runtime};
 use lightair_engine::{Engine, EngineConfig};
 use serde_json::json;
@@ -43,7 +43,7 @@ fn a_recording_carries_the_program_and_a_mix() {
         engine.call(move |s| s.reconciler.apply(&workspace, &patches));
     }
     let file = dir.join("take.mkv");
-    let canvas = lightair_core::Id::new();
+    let canvas = lightair_model::Id::new();
     let cfg = RecordingConfig {
         canvas,
         path: file.clone(),
