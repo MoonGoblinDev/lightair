@@ -523,7 +523,7 @@ fn main() -> anyhow::Result<()> {
     match std::env::args().nth(1).as_deref() {
         Some("modules") => modules(),
         Some("core-pin") => core_pin(std::env::args().nth(2)),
-        Some("core-link") => core_link(),
+        Some("core-link") => core_link(std::env::args().nth(2)),
         Some("core-unlink") => core_unlink(),
         Some("bundle") => bundle(std::env::args().any(|a| a == "--release")),
         Some("dev") => dev(std::env::args().any(|a| a == "--release")),
@@ -640,8 +640,6 @@ fn changed_packages() -> anyhow::Result<Option<Vec<String>>> {
 // ── lightair-core: the shared crates, pinned to a commit ────────────────────────────────────
 
 const CORE_URL: &str = "https://github.com/MoonGoblinDev/lightair-core";
-const CORE_LINK_BEGIN: &str = "# >>> cargo xtask core-link (local; `cargo xtask core-unlink` before committing)";
-const CORE_LINK_END: &str = "# <<< cargo xtask core-link";
 
 fn core_checkout() -> PathBuf {
     root().join("../lightair-core")
@@ -692,38 +690,43 @@ fn core_pin(rev: Option<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `cargo xtask core-link`: builds against the lightair-core checkout beside this repo (a `[patch]`
-/// in `.cargo/config.toml`), for changing both at once.
-fn core_link() -> anyhow::Result<()> {
-    let checkout = core_checkout().canonicalize()?;
-    core_unlink()?;
-    let mut block = format!("{CORE_LINK_BEGIN}\n[patch.\"{CORE_URL}\"]\n");
+fn core_link_file() -> PathBuf {
+    root().join(".cargo/core-link.toml")
+}
+
+/// `cargo xtask core-link [<path>]`: builds against a lightair-core checkout (default: the one
+/// beside this repo) instead of the pinned commit, through `.cargo/core-link.toml`, which
+/// `.cargo/config.toml` includes and git ignores. Only Cargo.lock changes; don't commit it while
+/// linked (`cargo xtask ship` in lightair-core pins and commits it).
+fn core_link(path: Option<String>) -> anyhow::Result<()> {
+    let checkout = path.map(PathBuf::from).unwrap_or_else(core_checkout).canonicalize()?;
+    let mut text = format!(
+        "# Written by `cargo xtask core-link`; removed by `cargo xtask core-unlink`. Never committed.\n[patch.\"{CORE_URL}\"]\n"
+    );
     for c in core_crates()? {
-        block.push_str(&format!("{c} = {{ path = {:?} }}\n", checkout.join("crates").join(&c).display().to_string()));
+        text.push_str(&format!("{c} = {{ path = {:?} }}\n", checkout.join("crates").join(&c).display().to_string()));
     }
-    block.push_str(CORE_LINK_END);
-    let config = root().join(".cargo/config.toml");
-    let mut text = std::fs::read_to_string(&config)?;
-    text = text.trim_end().to_string() + "\n\n" + &block + "\n";
-    std::fs::write(&config, text)?;
-    eprintln!("building against {}; `cargo xtask core-unlink` before committing", checkout.display());
+    std::fs::write(core_link_file(), text)?;
+    eprintln!("building against {} (`cargo xtask core-unlink` to go back to the pin)", checkout.display());
     Ok(())
 }
 
 /// `cargo xtask core-unlink`: back to the pinned commit.
 fn core_unlink() -> anyhow::Result<()> {
-    let config = root().join(".cargo/config.toml");
-    let text = std::fs::read_to_string(&config)?;
-    if let (Some(a), Some(b)) = (text.find(CORE_LINK_BEGIN), text.find(CORE_LINK_END)) {
-        let out = text[..a].trim_end().to_string() + "\n" + text[b + CORE_LINK_END.len()..].trim_start_matches('\n');
-        std::fs::write(&config, out)?;
-        eprintln!("lightair-core link removed: the pinned commit again");
+    match std::fs::remove_file(core_link_file()) {
+        Ok(()) => {
+            // Cargo.lock back to the pinned commit's sources
+            run(cargo().args(["metadata", "--format-version", "1", "--quiet"]).stdout(std::process::Stdio::null()))?;
+            eprintln!("lightair-core link removed: the pinned commit again");
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
     }
     Ok(())
 }
 
 fn core_linked() -> bool {
-    std::fs::read_to_string(root().join(".cargo/config.toml")).is_ok_and(|t| t.contains(CORE_LINK_BEGIN))
+    core_link_file().exists()
 }
 
 /// The Effect Stack's .effect files and lightair-render's copies of them (whose uniforms the
@@ -757,7 +760,9 @@ fn effects_in_sync() -> anyhow::Result<()> {
 /// that subset only, so each new subset first rebuilds some dependencies (docs/build-speed.md).
 fn check(changed: bool) -> anyhow::Result<()> {
     be_polite();
-    anyhow::ensure!(!core_linked(), "lightair-core is linked to the local checkout: `cargo xtask core-unlink` (and `core-pin`) first");
+    if core_linked() {
+        eprintln!("note: lightair-core is linked to a local checkout, so this checks against it, not the pin");
+    }
     effects_in_sync()?;
     // Plain `cargo build` and `cargo test` leave object files behind too: past 50,000 files in
     // the folder (a few seconds per crate again), clear them first.

@@ -9,3 +9,5 @@
 /screenshots
 # the publisher's client ids and secrets, and the notary profile (xtask release_env)
 /release.env
+# `cargo xtask core-link` (local only)
+/.cargo/core-link.toml

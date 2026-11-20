@@ -1,3 +1,8 @@
+# `cargo xtask core-link` writes core-link.toml (git-ignored): lightair-core's crates from the
+# checkout beside this repo, for changing both at once; `cargo xtask core-unlink` removes it.
+# (A top-level key: it must come before any table.)
+include = [{ path = "core-link.toml", optional = true }]
+
 [alias]
 xtask = "run --quiet --package xtask --"
 
