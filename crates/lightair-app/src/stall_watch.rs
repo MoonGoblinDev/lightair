@@ -4,11 +4,16 @@
 //! resumes it, and logs the stack ("UI stall"), every 100 ms while the stall lasts. For finding
 //! freezes; off unless asked for.
 
+// (the watch is Windows's: elsewhere only `start`, which does nothing)
+#[cfg(windows)]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(windows)]
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
 static HEARTBEAT_MS: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(windows)]
 fn now_ms(start: Instant) -> u64 {
     start.elapsed().as_millis() as u64
 }
