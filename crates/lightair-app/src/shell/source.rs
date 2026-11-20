@@ -244,6 +244,29 @@ impl StudioWindow {
                 )
                 .child(super::settings::switch("source-show-lightair", shows_lightair).on_click(cx.listener(move |this, _, _, cx| this.exec(cmd.clone(), cx))))
         });
+        // a camera's (or a phone's) sound: in the mixer or not (without a track it's silent)
+        let sound = (source.kind == kinds::CAMERA).then(|| {
+            let track = self.studio.read(cx).workspace().tracks.iter().find(|t| t.source == id).map(|t| t.id);
+            let cmd = match track {
+                Some(track) => Command::RemoveTrack { track },
+                None => Command::AddTrack { track: lightair_core::Track::new(&source.name, id), index: None },
+            };
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_size(px(12.)).child("Sound in the mixer"))
+                        .child(crate::ui::info("source-sound-info", "On to hear its sound: an iPhone's or iPad's, or a camera's own microphone. It gets a strip in the mixer.")),
+                )
+                .child(super::settings::switch("source-sound", track.is_some()).on_click(cx.listener(move |this, _, _, cx| this.exec(cmd.clone(), cx))))
+        });
         Some(
             self.section("Source", None, cx)
                 .child(
@@ -251,6 +274,7 @@ impl StudioWindow {
                         .on_click(cx.listener(move |this, _, window, cx| this.open_source_picker(id, window, cx))),
                 )
                 .children(toggle)
+                .children(sound)
                 .into_any_element(),
         )
     }

@@ -1991,7 +1991,7 @@ impl StudioWindow {
     fn moving(&self) -> bool {
         self.studio_take_countdown.is_some()
             || self.thumbnail_shot.is_some()
-            || self.add_object.as_ref().is_some_and(|a| a.screens.is_some())
+            || self.add_object_moving()
     }
 
     /// Frames drawn so far by the live pictures a region shows (it redraws when this changes).

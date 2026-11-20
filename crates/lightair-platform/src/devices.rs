@@ -36,6 +36,121 @@ pub fn allow_ios_screens() {
     }
 }
 
+/// Watches cameras for the app's whole life (macOS): keeps a discovery session of every kind of
+/// camera open, so an iPhone (Continuity Camera) that went away is offered again when it comes
+/// back, and calls `connected(unique id)` each time a camera or a phone's screen arrives.
+/// Elsewhere, nothing to do. Call once, on the main thread, after `allow_ios_screens`.
+pub fn watch_cameras(connected: impl Fn(String) + 'static) {
+    #[cfg(target_os = "macos")]
+    mac::watch(connected);
+    #[cfg(not(target_os = "macos"))]
+    let _ = connected;
+}
+
+/// The iPhones and iPads connected by cable whose screens can be shown: (name, unique id).
+/// macOS only (`allow_ios_screens` first); a phone shows here once it's unlocked and trusts
+/// this Mac. Elsewhere, none.
+pub fn ios_screens() -> Vec<(String, String)> {
+    #[cfg(target_os = "macos")]
+    return mac::ios_screens();
+    #[cfg(not(target_os = "macos"))]
+    Vec::new()
+}
+
+#[cfg(target_os = "macos")]
+mod mac {
+    use std::ptr::NonNull;
+
+    use block2::RcBlock;
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::{NSArray, NSString};
+
+    #[link(name = "AVFoundation", kind = "framework")]
+    unsafe extern "C" {
+        static AVCaptureDeviceWasConnectedNotification: &'static NSString;
+        static AVCaptureDeviceTypeBuiltInWideAngleCamera: &'static NSString;
+        static AVCaptureDeviceTypeExternal: &'static NSString;
+        static AVCaptureDeviceTypeContinuityCamera: &'static NSString;
+        static AVCaptureDeviceTypeDeskViewCamera: &'static NSString;
+        static AVMediaTypeVideo: &'static NSString;
+        static AVMediaTypeMuxed: &'static NSString;
+    }
+
+    /// The cameras of every kind (built in, plugged in, iPhones) for `media`, as a session.
+    fn session(media: &NSString) -> Option<Retained<AnyObject>> {
+        let class = AnyClass::get(c"AVCaptureDeviceDiscoverySession")?;
+        unsafe {
+            let types = NSArray::from_slice(&[
+                AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                AVCaptureDeviceTypeExternal,
+                AVCaptureDeviceTypeContinuityCamera,
+                AVCaptureDeviceTypeDeskViewCamera,
+            ]);
+            // position: unspecified (0)
+            msg_send![class, discoverySessionWithDeviceTypes: &*types, mediaType: media, position: 0isize]
+        }
+    }
+
+    fn string(s: &NSString) -> String {
+        s.to_string()
+    }
+
+    pub fn watch(connected: impl Fn(String) + 'static) {
+        // the sessions stay open: macOS offers an iPhone that comes back to apps looking
+        unsafe {
+            for media in [AVMediaTypeVideo, AVMediaTypeMuxed] {
+                if let Some(s) = session(media) {
+                    std::mem::forget(s);
+                }
+            }
+        }
+        let block = RcBlock::new(move |note: NonNull<AnyObject>| {
+            let device: Option<Retained<AnyObject>> = unsafe { msg_send![note.as_ref(), object] };
+            let Some(device) = device else { return };
+            let uid: Option<Retained<NSString>> = unsafe { msg_send![&*device, uniqueID] };
+            if let Some(uid) = uid {
+                connected(string(&uid));
+            }
+        });
+        unsafe {
+            let Some(centre) = AnyClass::get(c"NSNotificationCenter") else { return };
+            let centre: Retained<AnyObject> = msg_send![centre, defaultCenter];
+            let main: Option<Retained<AnyObject>> = AnyClass::get(c"NSOperationQueue").and_then(|q| msg_send![q, mainQueue]);
+            let observer: Option<Retained<AnyObject>> = msg_send![
+                &*centre,
+                addObserverForName: AVCaptureDeviceWasConnectedNotification,
+                object: std::ptr::null::<AnyObject>(),
+                queue: main.as_deref(),
+                usingBlock: &*block
+            ];
+            // (observing for the app's life)
+            std::mem::forget(observer);
+        }
+    }
+
+    pub fn ios_screens() -> Vec<(String, String)> {
+        let Some(s) = (unsafe { session(AVMediaTypeMuxed) }) else { return Vec::new() };
+        let devices: Retained<NSArray<AnyObject>> = unsafe { msg_send![&*s, devices] };
+        let n: usize = unsafe { msg_send![&*devices, count] };
+        (0..n)
+            .filter_map(|i| unsafe {
+                let d: Retained<AnyObject> = msg_send![&*devices, objectAtIndex: i];
+                // a phone's or tablet's screen: muxed, its model "iOS Device"
+                let model: Option<Retained<NSString>> = msg_send![&*d, modelID];
+                let name: Option<Retained<NSString>> = msg_send![&*d, localizedName];
+                let uid: Option<Retained<NSString>> = msg_send![&*d, uniqueID];
+                let ios = model.as_deref().map(string).is_none_or(|m| m.contains("iOS"));
+                match (ios, name, uid) {
+                    (true, Some(name), Some(uid)) => Some((string(&name), string(&uid))),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+}
+
 /// Whether a camera is a virtual one (a camera made by an app: OBS's, a meeting app's…) rather
 /// than hardware. macOS: its transport type (`kIOAudioDeviceTransportTypeVirtual`, as
 /// AVFoundation reports it); elsewhere, not known (false). `uid` is the device's unique id.

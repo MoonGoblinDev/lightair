@@ -11,7 +11,7 @@
 //! A camera's sound (capture cards) is passed through.
 
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -82,6 +82,26 @@ pub(crate) fn with_capture<R>(source: *mut sys::obs_source_t, f: impl FnOnce(*mu
 /// How long a capture keeps running once nothing shows it.
 const LINGER: Duration = Duration::from_secs(1);
 
+/// Devices that came back (an iPhone that went away and returned): (unique id, when, as a
+/// count of reconnections). A camera capture of one that's running starts again, as if new:
+/// OBS's own reconnection doesn't always catch an iPhone's return.
+static RECONNECTED: Mutex<Vec<(String, u64)>> = Mutex::new(Vec::new());
+static RECONNECTIONS: AtomicU64 = AtomicU64::new(0);
+
+/// A camera (or a phone's screen) with this unique id has (re)connected.
+pub fn device_reconnected(uid: &str) {
+    let n = RECONNECTIONS.fetch_add(1, Ordering::AcqRel) + 1;
+    let mut list = RECONNECTED.lock();
+    list.retain(|(u, _)| u != uid);
+    list.push((uid.to_string(), n));
+}
+
+/// The device a camera capture's settings name.
+fn device_of(settings: *mut sys::obs_data_t) -> String {
+    let s = unsafe { sys::obs_data_get_string(settings, c"device".as_ptr()) };
+    if s.is_null() { String::new() } else { unsafe { CStr::from_ptr(s) }.to_string_lossy().into_owned() }
+}
+
 struct Child(*mut sys::obs_source_t);
 // SAFETY: libobs sources are reference counted and thread-safe.
 unsafe impl Send for Child {}
@@ -97,6 +117,10 @@ struct Shared {
     hidden_since: Mutex<Option<Instant>>,
     /// The last size seen (width << 32 | height).
     size: AtomicU64,
+    /// Reconnections already looked at (`RECONNECTIONS`).
+    reconnections: AtomicU64,
+    /// A weak reference to the wrapper: where the capture's sound goes (`sound`).
+    weak: usize,
 }
 
 impl Shared {
@@ -122,7 +146,7 @@ impl Shared {
                 // it draws only while it counts as shown
                 sys::obs_source_inc_showing(child);
                 if self.kind.sound {
-                    sys::obs_source_add_audio_capture_callback(child, Some(sound), self.source as *mut c_void);
+                    sys::obs_source_add_audio_capture_callback(child, Some(sound), self.weak as *mut c_void);
                 }
             }
             *self.child.lock() = Some(Child(child));
@@ -136,7 +160,7 @@ impl Shared {
         if let Some(Child(c)) = child {
             unsafe {
                 if self.kind.sound {
-                    sys::obs_source_remove_audio_capture_callback(c, Some(sound), self.source as *mut c_void);
+                    sys::obs_source_remove_audio_capture_callback(c, Some(sound), self.weak as *mut c_void);
                 }
                 sys::obs_source_dec_showing(c);
                 sys::obs_source_release(c);
@@ -161,26 +185,90 @@ impl Shared {
     }
 }
 
+/// A stretch of a capture's sound on its way to its wrapper.
+struct Sound {
+    /// The wrapper (a weak reference of its own, let go once it's passed on).
+    to: usize,
+    planes: Vec<Vec<f32>>,
+    frames: u32,
+    timestamp: u64,
+    speakers: sys::speaker_layout,
+    samples_per_sec: u32,
+}
+
+// SAFETY: the weak reference is libobs's (thread-safe), the samples are owned.
+unsafe impl Send for Sound {}
+
 /// The capture's sound, out of the wrapper (libobs mixes the wrapper, not its private capture).
+/// Copied and passed on by a thread of its own: libobs calls this holding the capture's locks,
+/// and the wrapper's would be taken under them, the other way round from the graphics thread
+/// (which sizes the wrapper, then its capture): the two waited on each other for good.
 unsafe extern "C" fn sound(param: *mut c_void, _: *mut sys::obs_source_t, audio: *const sys::audio_data, _muted: bool) {
-    let parent = param as *mut sys::obs_source_t;
+    let weak = param as *mut sys::obs_weak_source_t;
     let a = unsafe { &*audio };
     let mut info = sys::obs_audio_info::default();
-    if !unsafe { sys::obs_get_audio_info(&mut info) } {
+    if !unsafe { sys::obs_get_audio_info(&mut info) } || a.frames == 0 {
         return;
     }
-    let mut out = sys::obs_source_audio {
-        frames: a.frames,
-        speakers: info.speakers,
-        format: sys::AUDIO_FORMAT_FLOAT_PLANAR,
-        samples_per_sec: info.samples_per_sec,
-        timestamp: a.timestamp,
-        ..Default::default()
-    };
-    for (o, d) in out.data.iter_mut().zip(a.data.iter()) {
-        *o = *d as *const u8;
+    // (a speaker layout's number is its channel count)
+    let channels = (info.speakers as usize).min(a.data.len());
+    let planes = a.data[..channels]
+        .iter()
+        .take_while(|d| !d.is_null())
+        .map(|d| unsafe { std::slice::from_raw_parts(*d as *const f32, a.frames as usize) }.to_vec())
+        .collect::<Vec<_>>();
+    if planes.is_empty() {
+        return;
     }
-    unsafe { sys::obs_source_output_audio(parent, &out) };
+    unsafe { sys::obs_weak_source_addref(weak) };
+    let sound = Sound {
+        to: weak as usize,
+        planes,
+        frames: a.frames,
+        timestamp: a.timestamp,
+        speakers: info.speakers,
+        samples_per_sec: info.samples_per_sec,
+    };
+    // (full, the forwarder is stuck: dropped rather than piled up)
+    if let Err(e) = sounds().try_send(sound) {
+        unsafe { sys::obs_weak_source_release(e.into_inner().to as *mut sys::obs_weak_source_t) };
+    }
+}
+
+/// Where captures' sound waits to be passed on to their wrappers (the thread starts with it).
+fn sounds() -> &'static crossbeam_channel::Sender<Sound> {
+    static SENDER: OnceLock<crossbeam_channel::Sender<Sound>> = OnceLock::new();
+    SENDER.get_or_init(|| {
+        let (tx, rx) = crossbeam_channel::bounded::<Sound>(512);
+        let spawned = std::thread::Builder::new().name("lightair-capture-sound".into()).spawn(move || {
+            for s in rx {
+                let weak = s.to as *mut sys::obs_weak_source_t;
+                let parent = unsafe { sys::obs_weak_source_get_source(weak) };
+                if !parent.is_null() {
+                    let mut out = sys::obs_source_audio {
+                        frames: s.frames,
+                        speakers: s.speakers,
+                        format: sys::AUDIO_FORMAT_FLOAT_PLANAR,
+                        samples_per_sec: s.samples_per_sec,
+                        timestamp: s.timestamp,
+                        ..Default::default()
+                    };
+                    for (o, p) in out.data.iter_mut().zip(&s.planes) {
+                        *o = p.as_ptr() as *const u8;
+                    }
+                    unsafe {
+                        sys::obs_source_output_audio(parent, &out);
+                        sys::obs_source_release(parent);
+                    }
+                }
+                unsafe { sys::obs_weak_source_release(weak) };
+            }
+        });
+        if spawned.is_err() {
+            tracing::warn!("couldn't start the capture sound thread");
+        }
+        tx
+    })
 }
 
 fn shared<'a>(data: *mut c_void) -> &'a Arc<Shared> {
@@ -203,6 +291,8 @@ unsafe extern "C" fn create(settings: *mut sys::obs_data_t, source: *mut sys::ob
         busy: AtomicBool::new(false),
         hidden_since: Mutex::new(None),
         size: AtomicU64::new(0),
+        reconnections: AtomicU64::new(RECONNECTIONS.load(Ordering::Acquire)),
+        weak: unsafe { sys::obs_source_get_weak_source(source) } as usize,
     });
     Box::into_raw(Box::new(s)) as *mut c_void
 }
@@ -214,7 +304,10 @@ unsafe extern "C" fn destroy(data: *mut c_void) {
         std::thread::sleep(Duration::from_millis(2));
     }
     s.stop();
-    unsafe { sys::obs_data_release(s.settings()) };
+    unsafe {
+        sys::obs_data_release(s.settings());
+        sys::obs_weak_source_release(s.weak as *mut sys::obs_weak_source_t);
+    }
 }
 
 unsafe extern "C" fn update(data: *mut c_void, settings: *mut sys::obs_data_t) {
@@ -232,6 +325,18 @@ unsafe extern "C" fn video_tick(data: *mut c_void, _seconds: f32) {
     let s = shared(data);
     let shown = unsafe { sys::obs_source_showing(s.source as *mut sys::obs_source_t) };
     let running = s.child.lock().is_some();
+    // its device came back: the capture let go, and made again (next tick) as if new
+    if s.kind.access.is_some() {
+        let now = RECONNECTIONS.load(Ordering::Acquire);
+        let seen = s.reconnections.swap(now, Ordering::AcqRel);
+        if now != seen && running {
+            let device = device_of(s.settings());
+            if !device.is_empty() && RECONNECTED.lock().iter().any(|(u, at)| *at > seen && *u == device) {
+                s.on_worker(false);
+                return;
+            }
+        }
+    }
     if shown {
         *s.hidden_since.lock() = None;
         // (not while macOS is asking the user for the camera: it's made once they answer)

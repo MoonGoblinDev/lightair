@@ -19,6 +19,8 @@ pub(super) enum Step {
     /// A display, window or app (the picker's mode).
     Screens,
     Web,
+    /// An iPhone's or iPad's screen, by cable.
+    Phones,
 }
 
 /// The rail's groups of types.
@@ -57,6 +59,9 @@ pub(super) struct AddObject {
     pub(super) screens: Option<super::screen_pick::ScreenPick>,
     /// The types' list (scrolled to the highlight as it moves).
     scroll: ScrollHandle,
+    /// iPhones and iPads connected by cable (name, unique id), looked for again every second.
+    phones: Vec<(String, String)>,
+    phones_at: Option<std::time::Instant>,
     _events: Subscription,
 }
 
@@ -72,6 +77,7 @@ enum Kind {
     Colour,
     Timer,
     Web,
+    Phone,
 }
 
 /// (kind, group, icon, name, what it is), in the order shown.
@@ -81,6 +87,7 @@ const KINDS: &[(Kind, Group, &str, &str, &str)] = &[
     (Kind::Window, Group::Capture, "app-window", "Window", "One window, even when it's covered"),
     (Kind::App, Group::Capture, "layout-grid", "App", "Every window of one app"),
     (Kind::Web, Group::Capture, "globe", "Browser", "A website, overlay or alert widget, live"),
+    (Kind::Phone, Group::Capture, "smartphone", "iPhone or iPad", "Its screen and sound, by cable"),
     (Kind::Image, Group::Media, "image", "Image", "A picture or logo"),
     (Kind::Video, Group::Media, "clapperboard", "Video", "A video file, looped"),
     (Kind::Text, Group::Graphics, "type", "Text", "A title or caption"),
@@ -234,6 +241,8 @@ impl StudioWindow {
             web_size: (1920, 1080),
             screens: None,
             scroll: ScrollHandle::new(),
+            phones: Vec::new(),
+            phones_at: None,
             _events: events,
         });
         cx.notify();
@@ -264,6 +273,7 @@ impl StudioWindow {
         }
         let placeholder = match (step, a.screens.as_ref().map(|p| p.mode)) {
             (Step::Cameras, _) => "Search cameras",
+            (Step::Phones, _) => "Search iPhones and iPads",
             (Step::Screens, Some(lightair_core::kinds::DISPLAY)) => "Search displays",
             (Step::Screens, Some(lightair_core::kinds::APP)) => "Search apps",
             (Step::Screens, _) => "Search windows",
@@ -304,6 +314,8 @@ impl StudioWindow {
                 self.pick(Kind::Web, window, cx);
             } else if part == "camera" {
                 self.pick(Kind::Camera, window, cx);
+            } else if part == "phone" {
+                self.pick(Kind::Phone, window, cx);
             }
         }
     }
@@ -349,6 +361,14 @@ impl StudioWindow {
             Kind::Timer => self.add_timer(cx),
             Kind::Web => {
                 self.add_object_step(Step::Web, window, cx);
+                return;
+            }
+            Kind::Phone => {
+                if let Some(a) = &mut self.add_object {
+                    a.phones = lightair_platform::devices::ios_screens();
+                    a.phones_at = Some(std::time::Instant::now());
+                }
+                self.add_object_step(Step::Phones, window, cx);
                 return;
             }
         }
@@ -455,11 +475,31 @@ impl StudioWindow {
         self.close_add_object(window, cx);
     }
 
-    /// Moves the screen picker on (new captures, stills). Called each frame from render.
+    /// Moves the screen picker on (new captures, stills), and looks for iPhones and iPads again
+    /// each second while they're listed. Called each frame from render.
     pub(super) fn tick_add_object(&mut self) {
         if let Some(pick) = self.add_object.as_mut().and_then(|a| a.screens.as_mut()) {
             pick.tick();
         }
+        if let Some(a) = self.add_object.as_mut().filter(|a| a.step == Step::Phones)
+            && a.phones_at.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(1))
+        {
+            a.phones = lightair_platform::devices::ios_screens();
+            a.phones_at = Some(std::time::Instant::now());
+        }
+    }
+
+    /// Whether the sheet shows something that changes by itself (redrawn meanwhile).
+    pub(super) fn add_object_moving(&self) -> bool {
+        self.add_object.as_ref().is_some_and(|a| a.screens.is_some() || a.step == Step::Phones)
+    }
+
+    /// Adds an iPhone's or iPad's screen (and its sound): a capture of it, upright.
+    fn add_phone(&mut self, name: &str, uid: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let settings = serde_json::json!({"device": uid});
+        // its sound in the mixer too (without a track a source is silent)
+        self.add_placed_object(name, lightair_core::kinds::CAMERA, settings, (1080.0, 1920.0), (0.5, 0.5), true, cx);
+        self.close_add_object(window, cx);
     }
 
     /// Adds the web page typed in (an address without a scheme gets https://).
@@ -791,6 +831,51 @@ impl StudioWindow {
                 }
                 body.into_any_element()
             }
+            Step::Phones => {
+                let phones: Vec<_> = state.phones.iter().filter(|(name, _)| matches(&query, &[name])).cloned().collect();
+                let mut body = list();
+                if phones.is_empty() {
+                    body = body.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_3()
+                            .py(px(40.))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .size(px(44.))
+                                    .rounded(px(10.))
+                                    .bg(tok::bg_raised())
+                                    .child(ui::icon("smartphone").size(px(20.)).text_color(tok::text_tertiary())),
+                            )
+                            .child(div().text_size(px(13.)).text_color(tok::text_secondary()).child("No iPhone or iPad connected"))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_1()
+                                    .max_w(px(340.))
+                                    .text_size(px(12.))
+                                    .line_height(px(17.))
+                                    .text_color(tok::text_tertiary())
+                                    .child("1. Connect it to this Mac with a cable.")
+                                    .child("2. Unlock it, and tap Trust if it asks.")
+                                    .child("3. It shows here a few seconds later."),
+                            ),
+                    );
+                }
+                let mut grid = div().grid().grid_cols(2).gap(px(4.));
+                for (i, (name, uid)) in phones.into_iter().enumerate() {
+                    grid = grid.child(tile(("phone", i), "smartphone", name.clone(), "Its screen and sound", None).on_click(cx.listener(
+                        move |this, _, window, cx| this.add_phone(&name, &uid, window, cx),
+                    )));
+                }
+                body.child(grid).into_any_element()
+            }
             Step::Cameras => {
                 let cams: Vec<_> = self.camera_devices.iter().filter(|(label, _)| matches(&query, &[label])).cloned().collect();
                 let mut body = list();
@@ -820,6 +905,7 @@ impl StudioWindow {
         let title = match step {
             Step::Types => None,
             Step::Cameras => Some("Camera"),
+            Step::Phones => Some("iPhone or iPad"),
             Step::Screens => Some(match screen_mode {
                 Some(lightair_core::kinds::DISPLAY) => "Display",
                 Some(lightair_core::kinds::APP) => "App",

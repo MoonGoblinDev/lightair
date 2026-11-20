@@ -171,6 +171,7 @@ const INFO_PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 	<key>LSMinimumSystemVersion</key><string>14.0</string>
 	<key>NSHighResolutionCapable</key><true/>
 	<key>NSCameraUsageDescription</key><string>Lightair shows your camera in your scenes and recordings.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key><true/>
 	<key>NSMicrophoneUsageDescription</key><string>Lightair records and streams your microphone.</string>
 	<key>NSAudioCaptureUsageDescription</key><string>Lightair records and streams the sound your Mac and its apps play.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key><string>Signing in to a platform with a passkey on your phone uses Bluetooth to reach it.</string>

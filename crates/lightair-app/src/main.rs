@@ -148,6 +148,11 @@ fn main() {
 
     gpui_kit::application().with_assets(assets::Assets).run(move |cx: &mut App| {
         gpui_kit::init(cx);
+        // a camera (an iPhone's above all) that comes back: its captures start again
+        lightair_platform::devices::watch_cameras(|uid| {
+            tracing::debug!(%uid, "camera connected");
+            lightair_engine::on_screen::device_reconnected(&uid);
+        });
         // VST3 plugins are made, edited and torn down on this thread
         // (GPUI's foreground executor: the main thread on both platforms)
         let (jobs, mut queue) = futures_channel::mpsc::unbounded::<Box<dyn FnOnce() + Send>>();
