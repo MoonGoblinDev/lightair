@@ -99,6 +99,7 @@ impl Receiver {
                             // handshake the phone gave up on can still be accepted here, and
                             // never sends anything)
                             let mut to = None;
+                            let mut dump: Option<std::fs::File> = None;
                             let out = UdpSocket::bind(("127.0.0.1", 0)).ok();
                             while let Some(Ok((_, data))) = socket.next().await {
                                 if current.lock().get(&source) != Some(&me) {
@@ -108,10 +109,14 @@ impl Receiver {
                                     }
                                     tracing::info!(%peer, source, "phone cameras: stream started");
                                     to = feeds.started(&source, peer);
+                                    dump = crate::dump_file(&source);
                                 }
                                 if let (Some(to), Some(out)) = (to, &out) {
                                     // (the decoder not listening yet: dropped, a keyframe comes each second)
                                     let _ = out.send_to(&data, to);
+                                }
+                                if let Some(f) = dump.as_mut() {
+                                    let _ = std::io::Write::write_all(f, &data);
                                 }
                                 feeds.data(&source, data.len());
                             }

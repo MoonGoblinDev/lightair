@@ -258,7 +258,13 @@ microphone and shows its pairing code.
   (manufacturer `Lightair`, model `Lightair Camera`); not on Windows yet, where a phone's own
   driver doesn't let other apps send it requests; and, for developers, **TCP addresses** in
   `LIGHTAIR_PHONE_LINK` (`127.0.0.1:4457`: the iOS simulator, or `adb forward tcp:4457
-  tcp:4457`). The Inspector says "by USB".
+  tcp:4457`). The Inspector says "by USB". Media goes on to the decoder in datagrams of seven
+  packets, as from SRT: macOS's loopback refuses datagrams over 9,216 bytes, so a phone's full
+  56-packet frames handed on whole were lost (the picture never came, and VideoToolbox called
+  what was left "bad data"). Tried with an iPhone 15 by cable: 12 Mb/s, 1 ms away, back by
+  itself 4 s after the desktop restarted.
+- **Looking into a stream:** `LIGHTAIR_PHONE_FEED_DUMP=<folder>` writes each phone stream that
+  starts, as it came, to `<folder>/<source>-<ms>.ts` (SRT or USB).
 - **Remote API:** `object.add {kind: "phone_camera"}`, `camera.pair`, `camera.status`,
   `camera.control` (docs/remote-api.md).
 - **Tests:** `cargo test -p lightair-phone-camera` (srt-tokio's caller through the listener to

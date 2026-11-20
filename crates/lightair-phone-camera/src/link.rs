@@ -231,6 +231,7 @@ where
 
         let out = UdpSocket::bind(("127.0.0.1", 0))?;
         let mut media_to: Option<Option<SocketAddr>> = None;
+        let mut dump: Option<std::fs::File> = None;
         let ended = loop {
             while let Some((channel, payload)) = frames.next_frame()? {
                 *heard.lock() = Instant::now();
@@ -259,11 +260,18 @@ where
                         if !host.signed_in(&source) {
                             continue;
                         }
+                        if media_to.is_none() {
+                            dump = crate::dump_file(&source);
+                        }
                         let to = *media_to
                             .get_or_insert_with(|| host.started(&source, "127.0.0.1:0".parse().expect("an address")));
+                        if let Some(f) = dump.as_mut() {
+                            let _ = f.write_all(&payload);
+                        }
                         if let Some(to) = to {
-                            // (datagrams of up to 56 packets, as the phone frames them)
-                            for d in payload.chunks(188 * 56) {
+                            // in datagrams of seven packets, as SRT carries them (macOS takes no
+                            // datagram over 9,216 bytes: a frame of 56 packets would be dropped)
+                            for d in payload.chunks(188 * 7) {
                                 let _ = out.send_to(d, to);
                             }
                         }

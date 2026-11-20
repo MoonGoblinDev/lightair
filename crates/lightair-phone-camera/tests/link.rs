@@ -179,6 +179,18 @@ fn a_phone_over_a_link() {
     decoder.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
     assert_eq!(decoder.recv(&mut buf).unwrap(), 188 * 7);
 
+    // a full frame (56 packets, as the phone sends at a high bitrate) arrives whole, in
+    // datagrams small enough for any system's loopback
+    let big: Vec<u8> = (0..188 * 56).map(|i| if i % 188 == 0 { 0x47 } else { (i % 251) as u8 }).collect();
+    phone.send(MEDIA, &big);
+    let mut got = Vec::new();
+    while got.len() < big.len() {
+        let n = decoder.recv(&mut buf).expect("the whole frame at the decoder");
+        assert!(n <= 1316, "a datagram of {n} bytes");
+        got.extend_from_slice(&buf[..n]);
+    }
+    assert_eq!(got, big);
+
     // the phone leaves
     drop(phone);
     assert!(wait_for(|| {

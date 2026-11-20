@@ -39,6 +39,16 @@ pub trait Feeds: Send + Sync {
     fn ended(&self, source: &str);
 }
 
+/// For looking into a phone's stream: with `LIGHTAIR_PHONE_FEED_DUMP=<folder>`, each stream
+/// that starts is also written to `<folder>/<source>-<ms>.ts` as it came.
+pub fn dump_file(source: &str) -> Option<std::fs::File> {
+    let dir = std::path::PathBuf::from(std::env::var_os("LIGHTAIR_PHONE_FEED_DUMP")?);
+    std::fs::create_dir_all(&dir).ok()?;
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    let name: String = source.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+    std::fs::File::create(dir.join(format!("{name}-{ms}.ts"))).ok()
+}
+
 /// The source a stream is for, from its SRT stream id: `#!::r=<source>,m=publish` (the access
 /// control syntax), or a bare id.
 pub fn source_of_stream_id(id: &str) -> Option<String> {
