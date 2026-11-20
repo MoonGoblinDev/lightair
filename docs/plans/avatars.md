@@ -17,7 +17,7 @@ of a camera. The camera's picture is never shown; only the character is. Any cam
 | 3 | **Inochi2D** | `.inp`, `.inx` | Inox2D (Rust, BSD-2; Lightair's fork at third_party/inox2d, github.com/MoonGoblinDev/inox2d), with Inochi2D 0.8's MeshGroups added | Done: parameters found by name from the face (head, body, eyes, gaze, brows, mouth, breath), physics, MeshGroups, masks, composites, blend modes (`lightair-avatar::inochi2d`, drawn by `lightair-engine::avatar_inochi2d`) |
 | 4 | **nijigenerate** | nijilive puppets (`.inp`/`.inx`, derived from Inochi2D 0.8) | the Inox2D fork, extended for nijilive's differences (reference: github.com/nijigenerate/nijilive, D, BSD-2) | MeshGroups (shared with Inochi2D 0.8) done; nijilive's own nodes not started |
 | 5 | **Ayatsuri 2D** | its own models (it also reads `.moc3` v3 to v5.3) | github.com/Ayatsuri2D/ayatsuri_2d (Rust, GPL-3.0: fine for Lightair) | Not started |
-| 6 | **Umamo** | its own format | github.com/future2d/umamo (Kotlin editor, GPL-3.0): format to read in Rust | Not started |
+| 6 | **Umamo** | `.uma` (its native format: a ZIP with the puppet graph as JSON, buffers, the texture atlas); it also exports `.moc3`, which Live2D's path reads | github.com/umamoorg/umamo (Kotlin, GPL-3.0; future2d/umamo is an old fork without `.uma`): reader and evaluator ported to Rust | Done: `lightair-avatar::uma` (keyform grids, warp and rotation deformers, blend shapes, glue, clip masks), drawn by `lightair-engine::avatar_uma` |
 
 Each format is a loader plus a poser; tracking, the mapping from tracking to the model, the
 object, the inspector and drawing are shared.
@@ -78,6 +78,15 @@ model file ──► loader (per format) ──► model ──► poser (per fo
 - **VRM** (`crates/lightair-avatar/src/vrm.rs`, `glb.rs`, `pose.rs`): 0.x and 1.0, humanoid,
   expressions, look-at, spring bones, MToon-like toon shader with outlines, drawn by
   `crates/lightair-engine/src/avatar.rs`. Only VRoid 1.0 exports have been tried (0.x untested).
+- **Umamo** (`crates/lightair-avatar/src/uma.rs`, drawn by `crates/lightair-engine/src/avatar_uma.rs`):
+  `.uma` read (manifest, `model/puppet.json` + `model/buffers.bin`, textures as atlas pages or
+  separate tiles) and evaluated as Umamo's runtime does (ported from its Kotlin at commit
+  f7ef026, files listed in the module's doc): keyform grids, warp lattices, rotation deformers,
+  blend shapes, glue, draw order, part visibility, masks. The face drives Cubism's standard
+  parameters with Live2D's conventions. A `.uma` carries no physics, pose groups, motions or
+  expressions (Umamo keeps those only for moc3 export): so Mao shows both arm sets, as Umamo
+  does. Not done: Cubism 5.3's advanced blend modes (drawn normal), an isolated part's own layer.
+  Tried on Mao turned into `.uma` by Umamo 0.5.0 itself: correct, through libobs too.
 - **Live2D** (`crates/lightair-avatar/src/live2d.rs` on mocari; drawn by
   `crates/lightair-engine/src/avatar2d.rs`): standard parameters from the face, the model's
   EyeBlink/LipSync groups, physics, pose, expressions; clip masks (a texture each time the mask
@@ -106,6 +115,7 @@ model file ──► loader (per format) ──► model ──► poser (per fo
 | Source, camera, trackers, VRM drawing, status/calibrate procs | `crates/lightair-engine/src/avatar.rs` |
 | Live2D drawing; `Flat`/`FlatGpu`, either flat kind | `crates/lightair-engine/src/avatar2d.rs` |
 | Inochi2D drawing | `crates/lightair-engine/src/avatar_inochi2d.rs` |
+| Umamo model and drawing | `crates/lightair-avatar/src/uma.rs`, `crates/lightair-engine/src/avatar_uma.rs` |
 | Models, face rig, body solve, posing | `crates/lightair-avatar/src/{vrm,glb,rig,body,pose,live2d,inochi2d}.rs` |
 | Trackers (C/C++/ObjC++) | `modules/lightair-effect-stack/src/{face-api.c,body-tracker.h}`, `src/tracker/body-*.{cpp,mm,hpp}` |
 | Models for the trackers | `modules/lightair-effect-stack/data/models/` (+ `NOTICE.md`); Core ML conversions by `tools/convert-coreml.py body` |
@@ -120,7 +130,11 @@ model file ──► loader (per format) ──► model ──► poser (per fo
   at rest: the model's own); Live2D `~/Downloads/mao_en/runtime/mao_pro.model3.json`; Inochi2D
   `~/Downloads/inochi2d-samples/Aka.inx`, `Midori.inx` (CC BY 4.0, from
   media.githubusercontent.com/media/Inochi2D/example-models/main/<name>.inx; the repository holds
-  only LFS pointers).
+  only LFS pointers); Umamo `~/Downloads/umamo-samples/mao_pro.uma` (one atlas page),
+  `mao_pro_t06.uma` (two pages), `mao_pro_t06_tiles.uma` (separate tiles), made from Live2D's Mao
+  by Umamo 0.5.0's own classes run headlessly (`java -cp umamo-macos-arm64-0.5.0.jar
+  MakeUma.java`; Umamo's CLI can't write `.uma`): Moc3 document → `UmaDocumentBridge.documentOf` →
+  `Uma.write`.
 - `LIGHTAIR_VRM=<.vrm> LIGHTAIR_VRM_OUT=<dir> cargo test -p lightair-avatar --release --test vrm`:
   loading, posing, software renders; `LIGHTAIR_LIVE2D=<.model3.json> cargo test -p lightair-avatar --release --test live2d`.
 - `LIGHTAIR_INOCHI2D=<.inx> LIGHTAIR_INOCHI2D_OUT=<dir> cargo test -p lightair-avatar --release --test inochi2d -- --nocapture`:
@@ -128,8 +142,11 @@ model file ──► loader (per format) ──► model ──► poser (per fo
   `LIGHTAIR_INOCHI2D_PROBE=x,y` lists the parts drawing that pixel, `LIGHTAIR_INOCHI2D_ONLY=<name>`
   draws only parts so named. `cargo run -p lightair-avatar --release --example inochi2d-dump <.inx>`
   prints a puppet's meta, parameters and vendor data (Inochi Session's bindings).
+- `LIGHTAIR_UMA=<.uma> LIGHTAIR_UMA_OUT=<dir> cargo test -p lightair-avatar --release --test uma -- --nocapture`:
+  poses drawn in software; `LIGHTAIR_UMA_LIVE2D=<model3.json>` draws the same poses from the moc3
+  through mocari, to compare.
 - Through real libobs: `cargo test -p lightair-preview --test preview avatar` with `LIGHTAIR_VRM`,
-  `LIGHTAIR_LIVE2D`, `LIGHTAIR_INOCHI2D`, `LIGHTAIR_VRM_OUT` (pictures), `LIGHTAIR_BODY_IMAGE` (the body tracker on a
+  `LIGHTAIR_LIVE2D`, `LIGHTAIR_INOCHI2D`, `LIGHTAIR_UMA`, `LIGHTAIR_VRM_OUT` (pictures), `LIGHTAIR_BODY_IMAGE` (the body tracker on a
   picture), `LIGHTAIR_BODY_JSON_OUT`.
 - Live tracking recorded: run Lightair with `LIGHTAIR_AVATAR_DUMP=<file>` (e.g.
   `open -g --env LIGHTAIR_AVATAR_DUMP=/tmp/body.jsonl /Applications/Lightair.app`), then
@@ -182,7 +199,9 @@ model file ──► loader (per format) ──► model ──► poser (per fo
    what puppets use. Sample puppets: nijigenerate's own.
 4. **Ayatsuri 2D**: read its own format with its Rust crates (GPL-3.0); its `.moc3` reader is a
    second opinion for Live2D models mocari draws wrongly.
-5. **Umamo**: its format, read in Rust (port from its Kotlin; GPL-3.0).
+5. **Umamo** (done; polish): try puppets made in Umamo from a PSD (only Mao imported into Umamo
+   so far); isolated parts' layers, flip channels, part-level and warp blend shapes are ported but
+   untested; Cubism 5.3's advanced blend modes.
 6. **VRM tracking jitter** (see "Known issues").
 7. **Windows**: compile and try the body tracker's ONNX path (`body-onnx.cpp`); body following
    is off there in the inspector's words until then.
