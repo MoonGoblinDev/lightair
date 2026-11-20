@@ -39,6 +39,9 @@ impl Receiver {
         })?;
         socket.set_nonblocking(true)?;
         let port = socket.local_addr()?.port();
+        // and the same port over IPv6, for a phone whose address for this computer is an IPv6
+        // one (a Bonjour host name, Android's NSD); none where the computer has no IPv6
+        let socket6 = ipv6_only(port).inspect_err(|e| tracing::info!(port, %e, "phone cameras: no SRT over IPv6")).ok();
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
         let (stop, stopped) = oneshot::channel();
         let (ready_tx, ready) = std::sync::mpsc::channel();
@@ -59,13 +62,28 @@ impl Receiver {
                         return;
                     }
                 };
+                let mut v6 = match socket6.map(tokio::net::UdpSocket::from_std) {
+                    Some(Ok(s)) => {
+                        let addr = std::net::SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port));
+                        SrtListener::builder().latency(latency).socket(s).bind(addr).await.ok()
+                    }
+                    _ => None,
+                };
                 let _ = ready_tx.send(Ok(()));
+                let mut none = futures::stream::pending();
+                let requests = match v6.as_mut() {
+                    Some((_, incoming6)) => {
+                        futures::stream::select(incoming.incoming(), incoming6.incoming()).left_stream()
+                    }
+                    None => futures::stream::select(incoming.incoming(), &mut none).right_stream(),
+                };
+                let mut requests = std::pin::pin!(requests);
                 // each source's current stream (its serial), and every stream task by serial
                 let current: Arc<Mutex<HashMap<String, u64>>> = Default::default();
                 let tasks: Arc<Mutex<HashMap<u64, tokio::task::AbortHandle>>> = Default::default();
                 let mut serial = 0u64;
                 let accept = async {
-                    while let Some(request) = incoming.incoming().next().await {
+                    while let Some(request) = requests.next().await {
                         let id = request.stream_id().map(|s| s.to_string()).unwrap_or_default();
                         let peer = request.remote();
                         let Some(source) = crate::source_of_stream_id(&id) else {
@@ -144,6 +162,9 @@ impl Receiver {
                     t.abort();
                 }
                 listener.close().await;
+                if let Some((mut l, _)) = v6 {
+                    l.close().await;
+                }
             });
         })?;
         match ready.recv_timeout(Duration::from_secs(5)) {
@@ -157,6 +178,16 @@ impl Receiver {
     pub fn port(&self) -> u16 {
         self.port
     }
+}
+
+/// A UDP socket on `port` for IPv6 alone (the IPv4 one has the port for IPv4).
+fn ipv6_only(port: u16) -> io::Result<UdpSocket> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let s = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
+    s.set_only_v6(true)?;
+    s.set_nonblocking(true)?;
+    s.bind(&std::net::SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port)).into())?;
+    Ok(s.into())
 }
 
 impl Drop for Receiver {

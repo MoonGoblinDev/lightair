@@ -130,3 +130,40 @@ fn a_phone_stream_reaches_the_decoder() {
     assert!(wait_for(|| desk.log.lock().iter().filter(|l| *l == "started cam-1").count() == 2));
     drop(receiver);
 }
+
+/// A phone whose address for this computer is an IPv6 one reaches the same port.
+#[test]
+fn a_stream_over_ipv6_gets_through_too() {
+    if UdpSocket::bind("[::1]:0").is_err() {
+        eprintln!("no IPv6 here; skipping");
+        return;
+    }
+    let decoder = UdpSocket::bind("127.0.0.1:0").unwrap();
+    decoder.set_nonblocking(true).unwrap();
+    let desk = Arc::new(Desk { to: decoder.local_addr().unwrap(), log: Mutex::new(vec![]) });
+    let receiver = Receiver::start(0, Duration::from_millis(40), desk.clone()).unwrap();
+    let addr = format!("[::1]:{}", receiver.port());
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    rt.block_on(async {
+        let mut phone = SrtSocket::builder()
+            .latency(Duration::from_millis(40))
+            .encryption(16, "correct horse battery")
+            .local_ip("::".parse().unwrap())
+            .call(addr.parse::<SocketAddr>().unwrap(), Some("#!::r=cam-1,m=publish"))
+            .await
+            .expect("the phone's call over IPv6");
+        let packet = Bytes::from(vec![0x47u8; 188 * 7]);
+        let mut buf = [0u8; 2048];
+        let mut n = 0;
+        for _ in 0..250 {
+            phone.send((Instant::now(), packet.clone())).await.unwrap();
+            if let Ok(got) = decoder.recv(&mut buf) {
+                n = got;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(n, 188 * 7);
+    });
+    assert!(wait_for(|| desk.log.lock().iter().any(|l| l == "started cam-1")));
+}

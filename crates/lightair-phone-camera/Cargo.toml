@@ -11,6 +11,7 @@ tracing.workspace = true
 parking_lot.workspace = true
 futures = "0.3"
 srt-tokio = "0.4.4"
+socket2 = "0.6"
 srt-protocol = "0.4.4"
 tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "macros", "sync"] }
 serde_json.workspace = true
