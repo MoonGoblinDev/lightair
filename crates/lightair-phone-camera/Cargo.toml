@@ -13,6 +13,14 @@ futures = "0.3"
 srt-tokio = "0.4.4"
 srt-protocol = "0.4.4"
 tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "macros", "sync"] }
+serde_json.workspace = true
+base64 = "0.22"
+getrandom = "0.3"
+# usbmuxd's messages are property lists
+plist = "1.8"
+# Android Open Accessory: pure Rust USB (no libusb, so nothing LGPL)
+nusb = "0.2"
 
 [dev-dependencies]
 bytes = "1"
+serde_json.workspace = true

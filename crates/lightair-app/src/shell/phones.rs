@@ -129,6 +129,7 @@ fn load_identity(id: &str) -> Result<Identity, String> {
 impl Phones {
     /// Lets go of the port (the server it shares a handler with is restarting).
     pub(super) fn stop_listening(&mut self) {
+        self.cameras.host.set_phones_port(0);
         self.listener = None;
         self.mdns = None;
     }
@@ -208,9 +209,12 @@ impl StudioWindow {
             let _ = std::fs::create_dir_all(folder());
             let _ = std::fs::write(folder().join("devices.json"), devices_to_json(devices));
         };
+        let pairing = Pairing::new(devices, confirm, save);
+        let desktop = desktop_info();
+        cameras.host.set_pairing(pairing.clone(), desktop.id.clone());
         Phones {
-            pairing: Pairing::new(devices, confirm, save),
-            desktop: desktop_info(),
+            pairing,
+            desktop,
             identity: None,
             reading_identity: false,
             listener: None,
@@ -244,6 +248,7 @@ impl StudioWindow {
         }
         let wanted = running && (!p.pairing.devices().is_empty() || p.offer.is_some() || p.cameras.wanted());
         if !wanted {
+            p.cameras.host.set_phones_port(0);
             p.listener = None;
             p.mdns = None;
             p.meters = None;
@@ -285,6 +290,7 @@ impl StudioWindow {
                 Some(Ok(l)) => {
                     // phone cameras' control channel (lightair-live's docs/05 §6)
                     l.cameras(p.cameras.host.clone());
+                    p.cameras.host.set_phones_port(l.addr().port());
                     p.listener = Some(l);
                     p.error = None;
                 }

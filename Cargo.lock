@@ -1482,7 +1482,7 @@ dependencies = [
  "jni 0.22.4",
  "js-sys",
  "libc",
- "mach2",
+ "mach2 0.6.0",
  "ndk",
  "ndk-context",
  "num-derive",
@@ -2936,7 +2936,7 @@ dependencies = [
  "image",
  "libc",
  "log",
- "mach2",
+ "mach2 0.6.0",
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -3986,6 +3986,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "io-kit-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06d3a048d09fbb6597dbf7c69f40d14df4a49487db1487191618c893fc3b1c26"
+dependencies = [
+ "core-foundation-sys",
+ "mach2 0.5.0",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4583,9 +4593,14 @@ dependencies = [
 name = "lightair-phone-camera"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bytes",
  "futures",
+ "getrandom 0.3.4",
+ "nusb",
  "parking_lot",
+ "plist",
+ "serde_json",
  "srt-protocol",
  "srt-tokio",
  "tokio",
@@ -4873,6 +4888,15 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "mach2"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a1b95cd5421ec55b445b5ae102f5ea0e768de1f82bd3001e11f426c269c3aea"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -5448,6 +5472,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "nusb"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1de8b6d15f559f50760dad6c1b56fde4041f99dc96a08e55c2b41f44c7417ad9"
+dependencies = [
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
+ "futures-core",
+ "io-kit-sys",
+ "js-sys",
+ "linux-raw-sys",
+ "log",
+ "once_cell",
+ "rustix",
+ "slab",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6209,6 +6255,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
+name = "plist"
+version = "1.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d86a77b7d9cdebd9643c180c158748db7d894b24a3935ed4b5843e698ae086eb"
+dependencies = [
+ "base64 0.23.1",
+ "indexmap",
+ "quick-xml 0.42.0",
+ "serde",
+ "time",
+]
+
+[[package]]
 name = "png"
 version = "0.17.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6426,6 +6485,15 @@ name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.42.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
  "memchr",
 ]
@@ -9163,7 +9231,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "338e30461b3a2b67d70eb30a6d89f8e0c93a833e07d2ae89085cd070c4a00ac0"
 dependencies = [
  "proc-macro2",
- "quick-xml",
+ "quick-xml 0.41.0",
  "quote",
 ]
 
@@ -10218,7 +10286,7 @@ checksum = "a6c2ad15e0e922856ee89afe862b8992334bbe7953adad56cd1199358cb30566"
 dependencies = [
  "bitflags 2.13.2",
  "libc",
- "quick-xml",
+ "quick-xml 0.41.0",
  "x11",
 ]
 

@@ -244,9 +244,26 @@ microphone and shows its pairing code.
 - **Tally** (MC-10): `program` (shown, visible, in the scene on air), `staged` (in the scene cued
   in studio mode), `live` (program while streaming or recording); sent to the phone and as the
   `source.tally` event on change.
+- **USB** (lightair-live's docs/05 §6, the wire in the kit's `lightair_link::usb`): one byte
+  stream per phone in frames (`u8` channel, `u32` big-endian length, ≤ 1 MiB): 0 link (`hello`
+  both ways, the phone first; `ping` every 2 s, 10 s of silence ends it), 1 control (the bytes of
+  a connection to the phones' TLS port, piped as they are, so the phone signs in exactly as on
+  Wi-Fi; a zero-length frame closes it), 2 media (MPEG-TS, taken only while the layer's camera
+  is signed in). While a link is up the phone is told `media {transport: "usb"}`.
+  `lightair-phone-camera` reaches phones three ways, while a Phone camera layer exists:
+  **iPhones** through usbmuxd (macOS's `/var/run/usbmuxd`, Windows's Apple Mobile Device Service
+  on 27015): every USB-attached iPhone's port 4457, tried every 2 s; **Android** as an accessory
+  (AOA 2 through nusb, pure Rust, so no libusb): phones from Android makers, or showing ADB or
+  MTP, are asked once per plug, and only while an Android phone is paired to a layer
+  (manufacturer `Lightair`, model `Lightair Camera`); not on Windows yet, where a phone's own
+  driver doesn't let other apps send it requests; and, for developers, **TCP addresses** in
+  `LIGHTAIR_PHONE_LINK` (`127.0.0.1:4457`: the iOS simulator, or `adb forward tcp:4457
+  tcp:4457`). The Inspector says "by USB".
 - **Remote API:** `object.add {kind: "phone_camera"}`, `camera.pair`, `camera.status`,
   `camera.control` (docs/remote-api.md).
 - **Tests:** `cargo test -p lightair-phone-camera` (srt-tokio's caller through the listener to
   the decoder's port; wrong passphrase and unknown layer refused; a reconnect takes over), and
   `lightair-engine`'s `phone_camera` test (an MPEG-TS stream from ffmpeg decoded by real libobs,
-  turned, counted gone, decoded again by a new decoder).
+  turned, counted gone, decoded again by a new decoder), and the link's tests (a stand-in phone:
+  hello, the control channel to the phones' port and back, media held until signed in, a phone
+  that isn't paired turned away; and the same through a stand-in usbmuxd).

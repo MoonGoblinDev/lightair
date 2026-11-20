@@ -80,6 +80,8 @@ struct Cam {
     /// What the phone was last told: `configure` and `tally`.
     configured: Value,
     tally: Value,
+    /// USB links up for it now.
+    usb: u32,
 }
 
 /// The app's side of the phones' camera channel and SRT feeds: shared with lightair-remote's
@@ -90,13 +92,43 @@ pub(crate) struct Host {
     srt_port: AtomicU16,
     /// Something the Inspector shows changed.
     changed: AtomicBool,
+    /// For USB links: who's paired, this desktop's id, and the phones' TLS port.
+    pairing: std::sync::OnceLock<Arc<lightair_remote::Pairing>>,
+    desktop_id: std::sync::OnceLock<String>,
+    phones_port: AtomicU16,
 }
 
 impl Host {
+    /// What the app gives the host once it has it (the phones' pairing and the desktop's id).
+    pub(crate) fn set_pairing(&self, pairing: Arc<lightair_remote::Pairing>, desktop_id: String) {
+        let _ = self.pairing.set(pairing);
+        let _ = self.desktop_id.set(desktop_id);
+    }
+
+    /// The phones' TLS port while it's open (0: closed), where USB links pipe their control channel.
+    pub(crate) fn set_phones_port(&self, port: u16) {
+        self.phones_port.store(port, Ordering::Release);
+    }
+
+    /// Where a layer's phone sends its pictures: over its USB link while one is up, else SRT.
     fn media(&self, cam: &Cam) -> Value {
+        if cam.usb > 0 {
+            return json!({"type": "media", "transport": "usb"});
+        }
         json!({
             "type": "media", "transport": "srt", "port": self.srt_port.load(Ordering::Acquire),
             "passphrase": cam.passphrase, "latency_ms": LATENCY_MS,
+        })
+    }
+
+    /// Whether an Android phone is paired to a layer (then phones plugged in by USB are asked to
+    /// be Lightair's accessory).
+    fn wants_android(&self) -> bool {
+        let Some(p) = self.pairing.get() else { return false };
+        let cams = self.cams.lock();
+        p.devices().iter().any(|d| {
+            d.platform.to_ascii_lowercase().contains("android")
+                && d.source.as_ref().is_some_and(|s| cams.contains_key(s))
         })
     }
 
@@ -173,6 +205,41 @@ impl CameraHost for Host {
     }
 }
 
+impl lightair_phone_camera::link::LinkHost for Host {
+    fn desktop_id(&self) -> String {
+        self.desktop_id.get().cloned().unwrap_or_default()
+    }
+
+    fn phones_port(&self) -> Option<u16> {
+        Some(self.phones_port.load(Ordering::Acquire)).filter(|p| *p != 0)
+    }
+
+    fn knows(&self, source: &str, device: &str) -> bool {
+        self.cams.lock().contains_key(source)
+            && self.pairing.get().is_some_and(|p| {
+                p.devices().iter().any(|d| {
+                    d.id == device && d.scope == lightair_remote::Scope::Camera && d.source.as_deref() == Some(source)
+                })
+            })
+    }
+
+    fn signed_in(&self, source: &str) -> bool {
+        self.cams.lock().get(source).is_some_and(|c| c.channel.is_some())
+    }
+
+    fn link(&self, source: &str, up: bool) {
+        let mut cams = self.cams.lock();
+        let Some(cam) = cams.get_mut(source) else { return };
+        cam.usb = if up { cam.usb + 1 } else { cam.usb.saturating_sub(1) };
+        // a phone signed in already (it moved from Wi-Fi) hears where to send now
+        if let Some(c) = &cam.channel {
+            c.send(self.media(cam));
+        }
+        drop(cams);
+        self.changed.store(true, Ordering::Release);
+    }
+}
+
 impl lightair_phone_camera::Feeds for Host {
     fn passphrase(&self, source: &str) -> Option<String> {
         self.cams.lock().get(source).map(|c| c.passphrase.clone()).filter(|p| !p.is_empty())
@@ -214,6 +281,9 @@ pub(crate) struct Cameras {
     rates: HashMap<Id, (u64, Instant, u32)>,
     ticking: Option<Task<()>>,
     error: Option<String>,
+    /// Phones by USB (iPhones through usbmuxd, Android accessories) and, for developers, at TCP
+    /// addresses (`LIGHTAIR_PHONE_LINK=127.0.0.1:4457`: the iOS simulator, `adb forward`).
+    usb: Vec<Box<dyn std::any::Any>>,
 }
 
 impl Cameras {
@@ -334,7 +404,11 @@ impl StudioWindow {
         let c = &mut self.remote.phones.cameras;
         if !wanted {
             c.receiver = None;
+            c.usb.clear();
             return;
+        }
+        if c.usb.is_empty() {
+            c.usb = usb_watchers(&c.host);
         }
         if c.receiver.is_some() {
             return;
@@ -508,6 +582,7 @@ impl StudioWindow {
                             "connected": c.is_some_and(|c| c.channel.is_some()),
                             "phone": c.and_then(|c| c.phone.as_ref()).map(|(n, m, p)| json!({"name": n, "model": m, "platform": p})),
                             "picture": feed.live(),
+                            "usb": c.is_some_and(|c| c.usb > 0),
                             "rotation": feed.rotation(),
                             "received_kbps": self.remote.phones.cameras.rates.get(id).map_or(0, |r| r.2),
                             "state": c.map_or(Value::Null, |c| c.state.clone()),
@@ -537,6 +612,7 @@ impl StudioWindow {
         let p = &self.remote.phones;
         let feed = lightair_engine::phone_camera::feed(&key);
         let live = feed.live();
+        let usb = p.cameras.host.cams.lock().get(&key).is_some_and(|c| c.usb > 0);
         let (channel, phone, hello, state, health, fresh) = {
             let cams = p.cameras.host.cams.lock();
             match cams.get(&key) {
@@ -566,8 +642,9 @@ impl StudioWindow {
             (
                 tok::ok(),
                 format!(
-                    "Live from {} · {:.1} Mb/s",
+                    "Live from {}{} · {:.1} Mb/s",
                     phone_name.as_deref().unwrap_or("the phone"),
+                    if usb { " by USB" } else { "" },
                     rate as f64 / 1000.0
                 ),
             )
@@ -834,6 +911,35 @@ impl StudioWindow {
             .when(channel, |d| d.child(label("Zoom")).child(zooms).child(label("Camera")).child(locks))
             .into_any_element()
     }
+}
+
+/// The watchers that keep USB links to phones (and to TCP addresses, for developers).
+fn usb_watchers(host: &Arc<Host>) -> Vec<Box<dyn std::any::Any>> {
+    use lightair_phone_camera::{aoa, tcp, usbmux};
+    let links: Arc<dyn lightair_phone_camera::link::LinkHost> = host.clone();
+    let mut out: Vec<Box<dyn std::any::Any>> = vec![];
+    match usbmux::Watcher::start(usbmux::Address::system(), links.clone()) {
+        Ok(w) => out.push(Box::new(w)),
+        Err(e) => tracing::warn!(%e, "phone cameras: iPhones by USB"),
+    }
+    let android = host.clone();
+    let serial = lightair_phone_camera::link::LinkHost::desktop_id(&**host);
+    match aoa::Watcher::start(links.clone(), serial, Arc::new(move || android.wants_android())) {
+        Ok(w) => out.push(Box::new(w)),
+        Err(e) => tracing::warn!(%e, "phone cameras: Android phones by USB"),
+    }
+    let addresses: Vec<std::net::SocketAddr> = std::env::var("LIGHTAIR_PHONE_LINK")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|a| a.trim().parse().ok())
+        .collect();
+    if !addresses.is_empty() {
+        match tcp::Watcher::start(&addresses, links) {
+            Ok(w) => out.push(Box::new(w)),
+            Err(e) => tracing::warn!(%e, "phone cameras: links to TCP addresses"),
+        }
+    }
+    out
 }
 
 fn with(settings: &Value, key: &str, value: Value) -> Value {

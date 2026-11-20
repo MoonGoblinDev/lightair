@@ -5,10 +5,19 @@
 //!   with a passphrase per session), each stream handed on as UDP datagrams to this machine's
 //!   decoder (libobs's FFmpeg has no SRT; `lightair_engine::phone_camera` decodes from UDP).
 //!
+//! - [`link`]: the USB link (Lightair Live's `lightair_link::usb`): control tunnelled to the
+//!   phones' TLS port, media on its own channel; reached through [`usbmux`] (iPhones), [`aoa`]
+//!   (Android accessories) or [`tcp`] (the iOS simulator, `adb forward`).
+//!
 //! Which phone may send for which source, and with which passphrase, is the app's: it answers
 //! through [`Feeds`].
 
+pub mod aoa;
+pub mod keep;
+pub mod link;
 pub mod srt;
+pub mod tcp;
+pub mod usbmux;
 
 use std::net::SocketAddr;
 
