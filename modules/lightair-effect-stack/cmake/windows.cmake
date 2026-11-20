@@ -43,6 +43,7 @@ file(WRITE "${GEN}/obsconfig.h" "#pragma once\n#define OBS_RELEASE_CANDIDATE 0\n
 
 add_library(lightair-effect-stack MODULE
   src/module-main.c
+  src/face-api.c
   src/beauty-filter.c
   src/face-geometry.c
   src/makeup.c
@@ -59,6 +60,9 @@ add_library(lightair-effect-stack MODULE
   src/tracker/backend-onnx.cpp
   src/tracker/onnx-common.cpp
   src/tracker/segmenter.cpp
+  src/tracker/body-mediapipe.cpp
+  src/tracker/body-tracker.cpp
+  src/tracker/body-onnx.cpp
 )
 target_compile_definitions(lightair-effect-stack PRIVATE BEAUTY_HAVE_LIBOBS PLUGIN_VERSION="${PROJECT_VERSION}"
   _USE_MATH_DEFINES NOMINMAX)

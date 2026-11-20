@@ -78,6 +78,7 @@ enum Kind {
     Timer,
     Web,
     Phone,
+    Avatar,
 }
 
 /// (kind, group, icon, name, what it is), in the order shown.
@@ -88,6 +89,7 @@ const KINDS: &[(Kind, Group, &str, &str, &str)] = &[
     (Kind::App, Group::Capture, "layout-grid", "App", "Every window of one app"),
     (Kind::Web, Group::Capture, "globe", "Browser", "A website, overlay or alert widget, live"),
     (Kind::Phone, Group::Capture, "smartphone", "iPhone or iPad", "Its screen and sound, by cable"),
+    (Kind::Avatar, Group::Capture, "scan-face", "Avatar", "A VRM or Live2D character that moves with you"),
     (Kind::Image, Group::Media, "image", "Image", "A picture or logo"),
     (Kind::Video, Group::Media, "clapperboard", "Video", "A video file, looped"),
     (Kind::Text, Group::Graphics, "type", "Text", "A title or caption"),
@@ -355,6 +357,7 @@ impl StudioWindow {
                 return;
             }
             Kind::Image => self.add_image(window, cx),
+            Kind::Avatar => self.add_avatar(window, cx),
             Kind::Video => self.add_video(window, cx),
             Kind::Text => self.add_text(cx),
             Kind::Colour => self.add_colour(cx),

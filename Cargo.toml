@@ -15,6 +15,9 @@ lightair-audio = { path = "crates/lightair-audio" }
 lightair-core = { path = "crates/lightair-core" }
 lightair-engine = { path = "crates/lightair-engine" }
 lightair-automation = { path = "crates/lightair-automation" }
+lightair-avatar = { path = "crates/lightair-avatar" }
+# Live2D models: mocari, a pure Rust runtime (Lightair's fork, third_party/mocari).
+mocari = { path = "third_party/mocari" }
 lightair-live = { path = "crates/lightair-live" }
 lightair-platform = { path = "crates/lightair-platform" }
 lightair-preview = { path = "crates/lightair-preview" }

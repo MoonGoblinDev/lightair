@@ -1,0 +1,18 @@
+[package]
+name = "lightair-avatar"
+description = "Lightair's avatars: VRM models, the face rig from tracking, posing, spring bones and skinning"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+glam = "0.30"
+mocari.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

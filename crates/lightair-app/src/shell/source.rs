@@ -29,6 +29,7 @@ fn file_key(kind: &str) -> Option<&'static str> {
     match kind {
         "image_source" => Some("file"),
         "ffmpeg_source" => Some("local_file"),
+        lightair_engine::avatar::KIND => Some("file"),
         _ => None,
     }
 }

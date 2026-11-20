@@ -32,6 +32,7 @@ file(WRITE "${GEN}/obsconfig.h" "#pragma once\n#define OBS_RELEASE_CANDIDATE 0\n
 
 add_library(lightair-effect-stack MODULE
   src/module-main.c
+  src/face-api.c
   src/beauty-filter.c
   src/face-geometry.c
   src/makeup.c
@@ -50,9 +51,12 @@ add_library(lightair-effect-stack MODULE
   src/tracker/segmenter-coreml.mm
   src/tracker/person-vision.mm
   src/virtualcam.m
+  src/tracker/body-mediapipe.cpp
+  src/tracker/body-tracker.cpp
+  src/tracker/body-coreml.mm
 )
 set_source_files_properties(src/tracker/backend-coreml.mm src/tracker/coreml-common.mm src/tracker/segmenter-coreml.mm
-  src/tracker/person-vision.mm src/virtualcam.m
+  src/tracker/person-vision.mm src/virtualcam.m src/tracker/body-coreml.mm
   PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 target_compile_definitions(lightair-effect-stack PRIVATE BEAUTY_TRACKER_COREML BEAUTY_HAVE_LIBOBS PLUGIN_VERSION="${PROJECT_VERSION}")
 target_include_directories(lightair-effect-stack PRIVATE "${OBS_SRC}/libobs" "${GEN}" "${SIMDE_DIR}" src src/tracker)
@@ -72,7 +76,8 @@ endforeach()
 # Core ML models, compiled to .mlmodelc and copied into Resources/models.
 set(COREML_OUT "${CMAKE_BINARY_DIR}/coreml")
 set(COREML_COMPILED "")
-foreach(m selfie_multiclass_256 face_detection_yunet face_landmarks_478)
+foreach(m selfie_multiclass_256 face_detection_yunet face_landmarks_478
+    person_detection_mediapipe_2023mar pose_estimation_mediapipe_2023mar handpose_estimation_mediapipe_2023feb)
   set(pkg "${CMAKE_SOURCE_DIR}/data/models/coreml/${m}.mlpackage")
   if(NOT EXISTS "${pkg}")
     message(FATAL_ERROR "missing ${pkg}: run tools/convert-coreml.py")

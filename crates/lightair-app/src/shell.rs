@@ -20,6 +20,7 @@ use serde_json::json;
 
 pub(crate) mod app_menu;
 mod add_object;
+mod avatar_props;
 mod remote;
 mod screen_pick;
 mod assets;
@@ -335,6 +336,9 @@ pub struct StudioWindow {
     effect_sheet: Option<effects::EffectSheet>,
     /// What each source's face effects see (polled while it's selected).
     presence: std::collections::HashMap<Id, effects::Presence>,
+    /// What each avatar is doing (polled while it's selected), and the last Calibrate's word.
+    avatar_status: std::collections::HashMap<Id, lightair_engine::avatar::Status>,
+    avatar_note: Option<(Id, String)>,
     /// Effect control groups toggled from their default (first open, the rest closed).
     fx_groups: std::collections::HashSet<String>,
     /// Colour pickers of the selected object's effects, by "effect:key".
@@ -519,6 +523,7 @@ impl StudioWindow {
                 if this
                     .update(cx, |this, cx| {
                         this.refresh_presence(cx);
+                        this.refresh_avatar(cx);
                         // (also when the window isn't drawing)
                         this.take_thumbnails(cx);
                     })
@@ -732,6 +737,8 @@ impl StudioWindow {
             number_edit: None,
             effect_sheet: None,
             presence: Default::default(),
+            avatar_status: Default::default(),
+            avatar_note: None,
             fx_groups: Default::default(),
             colour_pickers: Default::default(),
             colours: Default::default(),
@@ -1807,6 +1814,37 @@ impl StudioWindow {
             let _ = this.update(cx, |this, cx| {
                 this.add_source_object(&name, "image_source", json!({"file": path.to_string_lossy()}), (640.0, 360.0), cx)
             });
+        })
+        .detach();
+    }
+
+    /// Asks for a VRM or Live2D (.model3.json) model and adds it as an avatar, following the face a camera sees (the
+    /// camera the scenes already use, else the first one).
+    pub(super) fn add_avatar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_menu = false;
+        let paths = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Add avatar".into()) });
+        let workspace = self.studio.read(cx).workspace().clone();
+        // (an iPhone's or iPad's screen is a "camera" too, without a face in it)
+        let screens: Vec<String> = lightair_platform::devices::ios_screens().into_iter().map(|(_, uid)| uid).collect();
+        let face_camera = move |uid: &str| !uid.is_empty() && !crate::studio::is_virtual_camera(uid) && !screens.iter().any(|s| s == uid);
+        let in_use = workspace
+            .sources
+            .values()
+            .filter(|i| i.kind == lightair_core::kinds::CAMERA)
+            .filter_map(|i| i.settings["device"].as_str().map(str::to_string))
+            .find(|d| face_camera(d));
+        let connected: Vec<(String, String)> = self.connected.as_ref().map(|c| c.cameras.clone()).unwrap_or_default();
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(Ok(Some(paths))) = paths.await else { return };
+            let Some(path): Option<PathBuf> = paths.into_iter().next() else { return };
+            // (a Live2D model's file is <name>.model3.json)
+            let name = path.file_stem().map(|s| s.to_string_lossy().trim_end_matches(".model3").to_string()).unwrap_or_else(|| "Avatar".into());
+            // (Lightair's own virtual camera shows the program: never the face)
+            let device = in_use
+                .or_else(|| connected.iter().find(|(id, name)| face_camera(id) && !name.to_lowercase().contains("virtual")).map(|(id, _)| id.clone()))
+                .unwrap_or_default();
+            let settings = json!({"file": path.to_string_lossy(), "device": device, "width": 1080, "height": 1080, "framing": "bust", "mirror": true});
+            let _ = this.update(cx, |this, cx| this.add_source_object(&name, avatar_props::KIND, settings, (1080.0, 1080.0), cx));
         })
         .detach();
     }

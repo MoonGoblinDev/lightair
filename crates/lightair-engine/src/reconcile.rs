@@ -715,6 +715,17 @@ impl Reconciler {
     }
 
     /// Whether the source's face effects see a face right now (`None`: it has none running).
+    /// An avatar source's status (`None` for any other source).
+    pub fn avatar_status(&self, source: Id) -> Option<crate::avatar::Status> {
+        let src = self.sources.get(&source)?;
+        Some(crate::avatar::status(src.as_ptr()))
+    }
+
+    /// Takes the face an avatar sees now as its neutral one: the `calibration` setting.
+    pub fn avatar_calibrate(&self, source: Id) -> Option<String> {
+        crate::avatar::calibrate(self.sources.get(&source)?.as_ptr())
+    }
+
     pub fn face_present(&self, source: Id) -> Option<bool> {
         self.studio_query(source, c"face_present")
     }

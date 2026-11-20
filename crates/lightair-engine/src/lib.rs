@@ -7,6 +7,8 @@
 pub mod access;
 pub mod audio;
 pub mod audio_host;
+pub mod avatar;
+mod avatar2d;
 pub mod backdrop;
 pub mod pointer;
 #[cfg(target_os = "macos")]

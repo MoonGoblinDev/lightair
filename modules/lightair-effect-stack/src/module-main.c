@@ -17,6 +17,7 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("lightair-effect-stack", "en-US")
 
 extern struct obs_source_info beauty_filter_info;
+extern void face_api_register(void);
 
 const char *obs_module_name(void)
 {
@@ -49,6 +50,7 @@ bool obs_module_load(void)
 	obs_register_source(&shape_mask_info);
 	obs_register_source(&transform3d_info);
 	obs_register_source(&fx_filter_info);
+	face_api_register();
 #ifdef __APPLE__
 	obs_register_output(&lightair_virtualcam_info);
 #endif

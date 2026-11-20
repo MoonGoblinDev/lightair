@@ -367,6 +367,7 @@ unsafe fn load_modules(cfg: &EngineConfig, runtime: &Runtime) {
     crate::audio_host::register_types();
     crate::pointer::register();
     crate::backdrop::register();
+    crate::avatar::register();
     crate::web::register();
     crate::vcam::register();
     #[cfg(target_os = "macos")]

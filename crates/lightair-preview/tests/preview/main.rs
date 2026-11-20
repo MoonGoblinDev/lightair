@@ -2,6 +2,7 @@
 //! libobs runs once per process: a test that starts an engine runs in a process of its
 //! own (`lightair_engine::testing`).
 
+mod avatar;
 mod crop_view;
 mod effects;
 mod face_tracking;

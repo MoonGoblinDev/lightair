@@ -21,6 +21,7 @@ actions!(
         ZoomWindow,
         AddSceneMenu,
         AddImageObject,
+        AddAvatarObject,
         AddVideoObject,
         AddTextObject,
         AddColourObject,
@@ -100,6 +101,7 @@ pub fn menus() -> Vec<Menu> {
             MenuItem::separator(),
             act("Add Image…", AddImageObject),
             act("Add Video…", AddVideoObject),
+            act("Add Avatar…", AddAvatarObject),
             act("Add Text", AddTextObject),
             act("Add Colour", AddColourObject),
             act("Add Timer", AddTimerObject),
@@ -172,6 +174,7 @@ impl StudioWindow {
             .on_action(cx.listener(|_, _: &ZoomWindow, window, _| window.zoom_window()))
             .on_action(cx.listener(|this, _: &AddSceneMenu, _, cx| this.add_scene(cx)))
             .on_action(cx.listener(|this, _: &AddImageObject, window, cx| this.add_image(window, cx)))
+            .on_action(cx.listener(|this, _: &AddAvatarObject, window, cx| this.add_avatar(window, cx)))
             .on_action(cx.listener(|this, _: &AddVideoObject, window, cx| this.add_video(window, cx)))
             .on_action(cx.listener(|this, _: &AddTextObject, _, cx| this.add_text(cx)))
             .on_action(cx.listener(|this, _: &AddColourObject, _, cx| this.add_colour(cx)))

@@ -1,6 +1,7 @@
 # Bundled models
 
 The models below run on Core ML: `coreml/*.mlpackage` are fp16 conversions of these ONNX files
+(the person detector fp32: some of its raw scores pass fp16's range)
 (made by `tools/convert-coreml.py`; the segmenter has its softmax and class mix built in), compiled
 into the module at build time. The ONNX originals are only needed to re-run the conversion.
 
@@ -9,6 +10,9 @@ into the module at build time. The ONNX originals are only needed to re-run the 
 | `face_detection_yunet.onnx` | YuNet face detector (2023mar) | [OpenCV Zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) | MIT |
 | `face_landmarks_478.onnx` | Google MediaPipe Face Landmarker v2 (468 mesh + 10 iris points), ONNX conversion | [senty-au/face_landmarks_detector-ONNX](https://huggingface.co/senty-au/face_landmarks_detector-ONNX) | Apache-2.0 |
 | `selfie_multiclass_256.onnx` | Google MediaPipe selfie multiclass segmenter (hair, face skin, body skin, clothes) | [senty-au/selfie_multiclass_256x256-ONNX](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Apache-2.0 |
+| `person_detection_mediapipe_2023mar.onnx` | Google MediaPipe BlazePose person detector (avatars' body) | [opencv/person_detection_mediapipe](https://huggingface.co/opencv/person_detection_mediapipe) (OpenCV Zoo) | Apache-2.0 |
+| `pose_estimation_mediapipe_2023mar.onnx` | Google MediaPipe BlazePose full landmark model (33 + 6 points, world points in metres) | [opencv/pose_estimation_mediapipe](https://huggingface.co/opencv/pose_estimation_mediapipe) (OpenCV Zoo) | Apache-2.0 |
+| `handpose_estimation_mediapipe_2023feb.onnx` | Google MediaPipe hand landmark model (21 points) | [opencv/handpose_estimation_mediapipe](https://huggingface.co/opencv/handpose_estimation_mediapipe) (OpenCV Zoo) | Apache-2.0 |
 | `selfie_segmentation_landscape.onnx` | Google MediaPipe selfie segmentation (landscape), CPU fallback | [onnx-community/mediapipe_selfie_segmentation_landscape](https://huggingface.co/onnx-community/mediapipe_selfie_segmentation_landscape) | Apache-2.0 |
 
 Model weights © Google LLC / OpenCV contributors, used under their licenses.
