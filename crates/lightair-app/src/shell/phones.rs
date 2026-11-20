@@ -31,7 +31,7 @@ use crate::ui::tok;
 
 /// What phones are told this desktop answers (lightair-live's docs/05 §9).
 const FEATURES: &[&str] =
-    &["audio.levels", "preview.jpeg", "scene.thumbnails", "panic", "staging", "chat", "activity", "deck", "stream.info"];
+    &["audio.levels", "preview.jpeg", "scene.thumbnails", "panic", "staging", "chat", "activity", "deck", "stream.info", "outputs", "issues"];
 /// How often meters go out while a phone is connected.
 const METERS_EVERY: Duration = Duration::from_millis(50);
 const KEYCHAIN_SERVICE: &str = "Lightair remote TLS";
@@ -55,6 +55,11 @@ pub(crate) struct Phones {
     told_chat: u64,
     told_staging: Option<Value>,
     told_at: std::time::Instant,
+    /// Each destination's bytes sent when last looked at, and the bitrate worked out from them.
+    sent: std::collections::HashMap<lightair_model::Id, (u64, std::time::Instant, u32)>,
+    /// The issues phones were told about, and when outputs' health was last sent.
+    told_issues: Vec<Value>,
+    told_health: std::time::Instant,
 }
 
 fn folder() -> PathBuf {
@@ -174,6 +179,9 @@ impl StudioWindow {
             told_chat: u64::MAX,
             told_staging: None,
             told_at: std::time::Instant::now(),
+            sent: Default::default(),
+            told_issues: vec![],
+            told_health: std::time::Instant::now(),
         }
     }
 
@@ -834,6 +842,26 @@ impl StudioWindow {
             p.told_staging = Some(staging.clone());
             out.push(("staging.state", staging));
         }
+        // outputs' health once a second while live, and issues as they come and go
+        if self.remote.phones.told_health.elapsed() >= Duration::from_secs(1) {
+            self.remote.phones.told_health = std::time::Instant::now();
+            if runtime().any_stream_running() {
+                for d in self.outputs_json(cx)["destinations"].as_array().cloned().unwrap_or_default() {
+                    if d["enabled"].as_bool() == Some(true) {
+                        out.push(("output.health", d));
+                    }
+                }
+            }
+            let issues = self.issues_json(cx);
+            let p = &mut self.remote.phones;
+            for i in issues.iter().filter(|i| !p.told_issues.contains(i)) {
+                out.push(("issue.raised", i.clone()));
+            }
+            for gone in p.told_issues.iter().filter(|o| !issues.iter().any(|i| i["id"] == o["id"])) {
+                out.push(("issue.cleared", json!({"id": gone["id"]})));
+            }
+            p.told_issues = issues;
+        }
         if let Some(server) = self.remote.running() {
             for (event, data) in out {
                 server.emit(event, data);
@@ -879,6 +907,9 @@ impl StudioWindow {
                 self.remote_exec(call.client, &format!("Take {name}"), vec![Command::SetProgram { scene: Some(staged) }], cx)
                     .map(|_| self.staging_json(cx))
             }
+            "outputs.list" => Ok(self.outputs_json(cx)),
+            "issues.list" => Ok(json!({"issues": self.issues_json(cx)})),
+            "issues.fix" => Err(ApiError::state("This issue has no fix to run from a phone; fix it on the computer.")),
             "activity.history" => {
                 let limit = p.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize;
                 let items: Vec<_> = self.studio.read(cx).chat.history().into_iter().filter(|e| is_activity(&e.kind)).collect();
@@ -909,5 +940,129 @@ impl StudioWindow {
             }
             _ => return None,
         })
+    }
+}
+
+// ---------------------------------------------------------------- outputs and issues
+
+use lightair_engine::outputs::{OutputKey, OutputState, runtime};
+
+/// An output's state in phones' words (lightair-live's docs/05 §4.2, Outputs).
+fn output_state(s: &OutputState) -> &'static str {
+    match s {
+        OutputState::Idle | OutputState::Stopping => "off",
+        OutputState::Starting => "connecting",
+        OutputState::Active { .. } => "live",
+        OutputState::Reconnecting { .. } => "reconnecting",
+        OutputState::Failed(_) => "error",
+    }
+}
+
+impl StudioWindow {
+    /// `outputs.list`: each destination's state, bitrate and dropped frames, and the recording.
+    fn outputs_json(&mut self, cx: &App) -> Value {
+        let studio = self.studio.read(cx);
+        let w = studio.workspace().clone();
+        let recording = studio.is_recording();
+        let now = std::time::Instant::now();
+        let sent = &mut self.remote.phones.sent;
+        let destinations: Vec<Value> = w
+            .outputs
+            .destinations
+            .iter()
+            .map(|d| {
+                let st = runtime().get(OutputKey::Stream(d.id));
+                // bits since the last look, as the Stream panel works it out
+                let kbps = match sent.get(&d.id) {
+                    Some(&(_, at, kbps)) if now.duration_since(at) < Duration::from_millis(900) => kbps,
+                    Some(&(bytes, at, _)) if st.bytes >= bytes => {
+                        ((st.bytes - bytes) as f64 * 8.0 / 1000.0 / now.duration_since(at).as_secs_f64()) as u32
+                    }
+                    _ => 0,
+                };
+                if !sent.get(&d.id).is_some_and(|&(_, at, _)| now.duration_since(at) < Duration::from_millis(900)) {
+                    sent.insert(d.id, (st.bytes, now, kbps));
+                }
+                let running = st.state.is_running();
+                let canvas = d.canvas.and_then(|c| w.canvases.iter().find(|x| x.id == c)).unwrap_or(w.primary_canvas());
+                let dropped = if st.total_frames > 0 { st.dropped_frames as f64 * 100.0 / st.total_frames as f64 } else { 0.0 };
+                let mut v = json!({
+                    "id": d.id, "platform": d.platform.as_deref().unwrap_or("custom"), "name": d.name, "format": canvas.name,
+                    "enabled": d.enabled, "state": output_state(&st.state),
+                    "bitrate_kbps": if running { kbps } else { 0 }, "dropped_pct": (dropped * 10.0).round() / 10.0,
+                });
+                if let OutputState::Failed(m) = &st.state {
+                    v["message"] = m.clone().into();
+                }
+                v
+            })
+            .collect();
+        let rec = runtime().recording();
+        let elapsed = match rec.state {
+            OutputState::Active { since } | OutputState::Reconnecting { since } => rec.recorded(since).as_millis() as u64,
+            _ => 0,
+        };
+        json!({"destinations": destinations, "recording": {"active": recording, "paused": rec.paused, "elapsed_ms": elapsed}})
+    }
+
+    /// What's wrong now, worst first (lightair-live's docs/05 §4.2, Issues): outputs that failed
+    /// or are reconnecting, dropped and lagged frames, and a disk running out.
+    fn issues_json(&mut self, cx: &App) -> Vec<Value> {
+        let issue = |id: String, severity: &str, title: String, detail: String| {
+            json!({"id": id, "severity": severity, "title": title, "detail": detail, "fixes": []})
+        };
+        let mut out = vec![];
+        let outputs = self.outputs_json(cx);
+        for d in outputs["destinations"].as_array().into_iter().flatten() {
+            let name = d["name"].as_str().unwrap_or("A destination");
+            match d["state"].as_str() {
+                Some("error") => out.push(issue(
+                    format!("output-{}", d["id"]),
+                    "error",
+                    format!("{name} stopped"),
+                    d["message"].as_str().unwrap_or("The stream to it ended with an error.").to_owned(),
+                )),
+                Some("reconnecting") => out.push(issue(
+                    format!("output-{}", d["id"]),
+                    "warn",
+                    format!("{name} is reconnecting"),
+                    "The connection dropped; Lightair is trying again.".into(),
+                )),
+                Some("live") if d["dropped_pct"].as_f64().unwrap_or(0.0) >= 1.0 => out.push(issue(
+                    format!("dropped-{}", d["id"]),
+                    "warn",
+                    format!("{name} is dropping frames"),
+                    format!("{}% of frames didn't make it: the upload can't keep up. A lower bitrate helps.", d["dropped_pct"]),
+                )),
+                _ => {}
+            }
+        }
+        let studio = self.studio.read(cx);
+        if studio.recent_lagged > 2 {
+            out.push(issue(
+                "lagged".into(),
+                "warn",
+                "Frames are being skipped".into(),
+                "The computer can't draw every frame in time. Fewer sources or a lower frame rate helps.".into(),
+            ));
+        }
+        if let Some((free, _)) = lightair_platform::files::space(&studio.recording_folder()) {
+            let gb = free as f64 / (1u64 << 30) as f64;
+            if gb < 5.0 {
+                out.push(issue(
+                    "disk".into(),
+                    if gb < 1.0 { "error" } else { "warn" },
+                    "The disk is nearly full".into(),
+                    format!("{gb:.1} GB left where recordings are saved."),
+                ));
+            }
+        }
+        let rank = |v: &Value| match v["severity"].as_str() {
+            Some("error") => 0,
+            Some("warn") => 1,
+            _ => 2,
+        };
+        out.sort_by_key(rank);
+        out
     }
 }
