@@ -172,8 +172,10 @@ fn decoder_settings(port: u16) -> serde_json::Value {
         "close_when_inactive": false,
         "clear_on_media_end": true,
         "reconnect_delay_sec": 1,
-        // the phone puts parameter sets before every keyframe (at least one a second)
-        "ffmpeg_options": "probesize=1000000 analyzeduration=1500000",
+        // a short look before playing: what's read to learn the stream is played in real time
+        // afterwards, so a long look (it was 1.5 s) stays as delay for good. The phone puts
+        // parameter sets before every keyframe and sends one as soon as a stream starts.
+        "ffmpeg_options": "probesize=32768 analyzeduration=200000 fflags=nobuffer",
     })
 }
 
@@ -209,6 +211,9 @@ impl Shared {
             unsafe {
                 sys::obs_source_add_audio_capture_callback(child.as_ptr(), Some(sound), self.weak as *mut c_void)
             };
+            // the newest picture as soon as it's decoded: libobs otherwise holds a stream's
+            // frames back to their timestamps (the phone's mic is lined up by the track's offset)
+            unsafe { sys::obs_source_set_async_unbuffered(child.as_ptr(), true) };
             *self.decoder.lock() = Some(Child(child));
         }
         self.seen.store(generation, Ordering::Release);
