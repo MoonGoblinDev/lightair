@@ -49,7 +49,7 @@ qrcode = { version = "0.14", default-features = false }
 cpal = "0.18"
 rtrb = "0.3"
 # Library thumbnails (PNG); elsewhere than macOS, the preview's frames as images (frame_view.rs).
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # The window's native view (the preview under the UI on macOS).
 raw-window-handle = "0.6"

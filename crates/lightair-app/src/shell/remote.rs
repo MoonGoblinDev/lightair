@@ -201,6 +201,12 @@ impl StudioWindow {
                     let _ = reply.send(answer);
                     continue;
                 }
+                // phones' preview frames and scene thumbnails (phones.rs)
+                if matches!(call.method.as_str(), "preview.frame" | "scene.thumbnails") {
+                    let answer = Self::phone_picture(this.clone(), call, cx).await;
+                    let _ = reply.send(answer);
+                    continue;
+                }
                 let answer = this
                     .update(cx, |view, cx| view.remote_call(&call, cx))
                     .unwrap_or_else(|_| Err(ApiError::failed("Lightair's window is closed")));
@@ -396,7 +402,7 @@ impl StudioWindow {
     }
 
     /// Runs commands as one undoable change named for who asked.
-    fn remote_exec(&mut self, client: &str, label: &str, commands: Vec<Command>, cx: &mut Context<Self>) -> Result<(), ApiError> {
+    pub(super) fn remote_exec(&mut self, client: &str, label: &str, commands: Vec<Command>, cx: &mut Context<Self>) -> Result<(), ApiError> {
         if commands.is_empty() {
             return Ok(());
         }
@@ -419,9 +425,12 @@ impl StudioWindow {
         }
     }
 
-    fn remote_call(&mut self, call: &Call, cx: &mut Context<Self>) -> Reply {
+    pub(super) fn remote_call(&mut self, call: &Call, cx: &mut Context<Self>) -> Reply {
         // what this call changes is told against how things were before it
         self.tell_remote(cx);
+        if let Some(reply) = self.phone_call(call, cx) {
+            return reply;
+        }
         if let Some(reply) = self.live_call(call, cx) {
             return reply;
         }

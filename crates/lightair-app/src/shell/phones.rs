@@ -30,7 +30,7 @@ use super::StudioWindow;
 use crate::ui::tok;
 
 /// What phones are told this desktop answers (lightair-live's docs/05 §9).
-const FEATURES: &[&str] = &["audio.levels"];
+const FEATURES: &[&str] = &["audio.levels", "preview.jpeg", "scene.thumbnails", "panic"];
 /// How often meters go out while a phone is connected.
 const METERS_EVERY: Duration = Duration::from_millis(50);
 const KEYCHAIN_SERVICE: &str = "Lightair remote TLS";
@@ -46,6 +46,10 @@ pub(crate) struct Phones {
     pub offer: Option<(Offer, String)>,
     pub error: Option<String>,
     meters: Option<Task<()>>,
+    /// Previews for phones' pictures: the program's, and scenes' for thumbnails.
+    program_preview: Option<PhonePreview>,
+    scene_preview: Option<PhonePreview>,
+    panic: Panic,
 }
 
 fn folder() -> PathBuf {
@@ -159,6 +163,9 @@ impl StudioWindow {
             offer: None,
             error: None,
             meters: None,
+            program_preview: None,
+            scene_preview: None,
+            panic: Panic::default(),
         }
     }
 
@@ -476,4 +483,265 @@ fn pairing_code(link: &str, offer: &Offer) -> Div {
                 )
             }),
     )
+}
+
+// ---------------------------------------------------------------- pictures and panic for phones
+
+/// A preview kept for phones' pictures, let go of when they stop asking (it costs a render).
+pub(crate) struct PhonePreview {
+    preview: lightair_preview::Preview,
+    scene: Option<lightair_model::Id>,
+    used: std::time::Instant,
+}
+
+/// What panic controls changed, to put back (lightair-live's docs/05 §4.2, Panic).
+#[derive(Default)]
+pub(crate) struct Panic {
+    /// Tracks muted by "mute all", to unmute.
+    muted: Vec<lightair_model::Id>,
+    /// The scene before privacy, to restore.
+    before_privacy: Option<lightair_model::Id>,
+}
+
+/// JPEG of an RGB picture, off the main thread.
+fn jpeg(w: usize, h: usize, rgba: Vec<u8>, quality: u8) -> Result<Vec<u8>, String> {
+    let img = image::RgbaImage::from_raw(w as u32, h as u32, rgba).ok_or("bad picture")?;
+    let rgb = image::DynamicImage::ImageRgba8(img).to_rgb8();
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality)
+        .encode_image(&rgb)
+        .map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+/// A microphone, by its source's kind.
+fn is_microphone(kind: &str) -> bool {
+    let k = kind.to_ascii_lowercase();
+    k.contains("input_capture") || k.contains("microphone") || k.contains("mic")
+}
+
+impl StudioWindow {
+    /// `preview.frame` (the program, for the preview stream) and `scene.thumbnails`: pictures
+    /// from previews of their own, encoded as JPEG off the main thread.
+    pub(super) async fn phone_picture(
+        this: WeakEntity<Self>,
+        call: lightair_remote::Call,
+        cx: &mut AsyncWindowContext,
+    ) -> lightair_remote::Reply {
+        use lightair_remote::ApiError;
+        let p = &call.params;
+        match call.method.as_str() {
+            "preview.frame" => {
+                let width = p.get("max_width").and_then(Value::as_u64).unwrap_or(720).clamp(64, 1920) as usize;
+                let (w, h, rgba) = Self::phone_frame(this, true, None, width, cx).await?;
+                let data = cx
+                    .background_executor()
+                    .spawn(async move { jpeg(w, h, rgba, 70) })
+                    .await
+                    .map_err(ApiError::failed)?;
+                Ok(
+                    json!({"mime": "image/jpeg", "width": w, "height": h, "data": base64::engine::general_purpose::STANDARD.encode(data)}),
+                )
+            }
+            "scene.thumbnails" => {
+                let width = p.get("width").and_then(Value::as_u64).unwrap_or(240).clamp(64, 640) as usize;
+                let wanted: Option<Vec<String>> = p
+                    .get("scenes")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_owned)).collect());
+                let scenes: Vec<(lightair_model::Id, String)> = this
+                    .update(cx, |view, cx| {
+                        view.studio.read(cx).workspace().scenes.iter().map(|s| (s.id, s.name.clone())).collect()
+                    })
+                    .map_err(|_| ApiError::failed("Lightair's window is closed"))?;
+                let mut out = vec![];
+                for (id, name) in scenes {
+                    let key = id.to_string();
+                    if wanted.as_ref().is_some_and(|w| !w.iter().any(|x| *x == key || *x == name)) {
+                        continue;
+                    }
+                    let Ok((w, h, rgba)) = Self::phone_frame(this.clone(), false, Some(id), width, cx).await else {
+                        continue;
+                    };
+                    let Ok(data) = cx.background_executor().spawn(async move { jpeg(w, h, rgba, 65) }).await else {
+                        continue;
+                    };
+                    out.push(json!({"scene": id, "mime": "image/jpeg", "width": w, "height": h, "data": base64::engine::general_purpose::STANDARD.encode(data)}));
+                }
+                Ok(json!({"thumbnails": out}))
+            }
+            _ => Err(ApiError::new(lightair_remote::ErrorKind::Unknown, "no such method")),
+        }
+    }
+
+    /// The latest picture of the program (`program`) or of `scene`, at most `width` wide.
+    async fn phone_frame(
+        this: WeakEntity<Self>,
+        program: bool,
+        scene: Option<lightair_model::Id>,
+        width: usize,
+        cx: &mut AsyncWindowContext,
+    ) -> Result<(usize, usize, Vec<u8>), lightair_remote::ApiError> {
+        use lightair_remote::ApiError;
+        let start = this
+            .update(cx, |view, cx| {
+                let studio = view.studio.read(cx);
+                let w = studio.workspace().clone();
+                let canvas = w.primary_canvas().id;
+                let engine = studio.engine().clone();
+                let p = &mut view.remote.phones;
+                let slot = if program { &mut p.program_preview } else { &mut p.scene_preview };
+                let shot = slot.get_or_insert_with(|| PhonePreview {
+                    preview: lightair_preview::Preview::attach(),
+                    scene: None,
+                    used: std::time::Instant::now(),
+                });
+                shot.used = std::time::Instant::now();
+                // the program scene is the program's own picture
+                let scene = scene.filter(|s| Some(*s) != w.program);
+                if shot.scene != scene {
+                    let source = scene.and_then(|s| {
+                        engine.call(move |e| e.reconciler.scene_source_ref(s, canvas).map(|p| p as usize))
+                    });
+                    shot.preview.set_source(source.map(|p| p as *mut lightair_engine::sys::obs_source_t));
+                    shot.scene = scene;
+                    return shot.preview.frames() + 3;
+                }
+                shot.preview.frames().max(if program { 2 } else { 6 })
+            })
+            .map_err(|_| ApiError::failed("Lightair's window is closed"))?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let frame = this
+                .update(cx, |view, _| {
+                    let p = &view.remote.phones;
+                    let shot = if program { p.program_preview.as_ref() } else { p.scene_preview.as_ref() }?;
+                    (shot.preview.frames() >= start).then(|| shot.preview.latest_frame()).flatten()
+                })
+                .ok()
+                .flatten();
+            if let Some(frame) = frame {
+                let picture =
+                    lightair_preview::frame_rgba(&frame, width).ok_or_else(|| ApiError::failed("no picture"))?;
+                // let go of the previews once phones stop asking
+                let weak = this.clone();
+                cx.spawn(async move |cx| {
+                    cx.background_executor().timer(Duration::from_secs(10)).await;
+                    let _ = weak.update(cx, |view, _| {
+                        let p = &mut view.remote.phones;
+                        for slot in [&mut p.program_preview, &mut p.scene_preview] {
+                            if slot.as_ref().is_some_and(|s| s.used.elapsed() >= Duration::from_secs(9)) {
+                                *slot = None;
+                            }
+                        }
+                    });
+                })
+                .detach();
+                return Ok(picture);
+            }
+            if std::time::Instant::now() > deadline {
+                return Err(ApiError::failed("the picture didn't come in time"));
+            }
+            cx.background_executor().timer(Duration::from_millis(15)).await;
+        }
+    }
+
+    /// Panic controls (lightair-live's docs/05 §4.2): `panic.mute_all`, `panic.privacy`,
+    /// `panic.stop_all`, `panic.get`. Each is one undoable step named after the phone.
+    pub(super) fn phone_call(
+        &mut self,
+        call: &lightair_remote::Call,
+        cx: &mut Context<Self>,
+    ) -> Option<lightair_remote::Reply> {
+        use lightair_model::Command;
+        use lightair_remote::{ApiError, Call};
+        let on = call.params.get("on").and_then(Value::as_bool).unwrap_or(true);
+        let who = call.client;
+        let w = self.studio.read(cx).workspace().clone();
+        let mics: Vec<lightair_model::Id> = w
+            .tracks
+            .iter()
+            .filter(|t| w.sources.get(&t.source).is_some_and(|s| is_microphone(&s.kind)))
+            .map(|t| t.id)
+            .collect();
+        let reply = match call.method.as_str() {
+            "panic.get" => Ok(json!({})),
+            "panic.mute_all" => {
+                let cmds: Vec<Command> = if on {
+                    let to_mute: Vec<_> =
+                        mics.iter().copied().filter(|id| w.tracks.iter().any(|t| t.id == *id && !t.muted)).collect();
+                    self.remote.phones.panic.muted = to_mute.clone();
+                    to_mute.into_iter().map(|track| Command::SetTrackMuted { track, muted: true }).collect()
+                } else {
+                    std::mem::take(&mut self.remote.phones.panic.muted)
+                        .into_iter()
+                        .map(|track| Command::SetTrackMuted { track, muted: false })
+                        .collect()
+                };
+                self.remote_exec(who, if on { "Mute all microphones" } else { "Unmute microphones" }, cmds, cx)
+                    .map(|_| json!({}))
+            }
+            "panic.privacy" => {
+                if on {
+                    let named = call.params.get("scene").and_then(Value::as_str);
+                    let privacy = w
+                        .scenes
+                        .iter()
+                        .find(|s| named.is_some_and(|n| s.name == n || s.id.to_string() == n))
+                        .or_else(|| {
+                            w.scenes.iter().find(|s| {
+                                let n = s.name.to_ascii_lowercase();
+                                n.contains("be right back") || n == "brb" || n.contains("privacy")
+                            })
+                        })
+                        .map(|s| s.id);
+                    match privacy {
+                        None => Err(ApiError::state("Make a \"Be right back\" scene to use privacy mode.")),
+                        Some(scene) => {
+                            self.remote.phones.panic.before_privacy = w.program.filter(|p| *p != scene);
+                            let to_mute: Vec<_> = mics
+                                .iter()
+                                .copied()
+                                .filter(|id| w.tracks.iter().any(|t| t.id == *id && !t.muted))
+                                .collect();
+                            self.remote.phones.panic.muted.extend(to_mute.iter().copied());
+                            let mut cmds = vec![Command::SetProgram { scene: Some(scene) }];
+                            cmds.extend(to_mute.into_iter().map(|track| Command::SetTrackMuted { track, muted: true }));
+                            self.remote_exec(who, "Privacy", cmds, cx).map(|_| json!({}))
+                        }
+                    }
+                } else {
+                    let mut cmds: Vec<Command> = self
+                        .remote
+                        .phones
+                        .panic
+                        .before_privacy
+                        .take()
+                        .map(|s| Command::SetProgram { scene: Some(s) })
+                        .into_iter()
+                        .collect();
+                    cmds.extend(
+                        std::mem::take(&mut self.remote.phones.panic.muted)
+                            .into_iter()
+                            .map(|track| Command::SetTrackMuted { track, muted: false }),
+                    );
+                    self.remote_exec(who, "End privacy", cmds, cx).map(|_| json!({}))
+                }
+            }
+            "panic.stop_all" => {
+                for method in ["stream.stop", "record.stop", "vcam.stop"] {
+                    // "not live" and the like: nothing to stop
+                    let _ = self.remote_call(&Call { method: method.into(), params: json!({}), client: who }, cx);
+                }
+                Ok(json!({}))
+            }
+            _ => return None,
+        };
+        let p = &self.remote.phones.panic;
+        let state = json!({"muted_all": !p.muted.is_empty() && p.before_privacy.is_none(), "privacy": p.before_privacy.is_some()});
+        if let Some(server) = self.remote.running() {
+            server.emit("panic.state", state.clone());
+        }
+        Some(reply.map(|r| if call.method == "panic.get" { state } else { r }))
+    }
 }
