@@ -147,10 +147,46 @@ fn kind_name(k: Kind) -> &'static str {
     }
 }
 
+/// A still for a list, about 320 px wide (JPEG), so a long list stays light.
 fn thumbnail(path: Option<&PathBuf>) -> Value {
-    let Some(bytes) = path.and_then(|p| std::fs::read(p).ok()) else { return Value::Null };
-    let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) { "image/png" } else { "image/jpeg" };
-    json!({"mime": mime, "data": base64::engine::general_purpose::STANDARD.encode(bytes)})
+    const WIDE: u32 = 320;
+    let Some(img) = path.and_then(|p| image::open(p).ok()) else { return Value::Null };
+    let img = if img.width() > WIDE { img.resize(WIDE, u32::MAX, image::imageops::FilterType::Triangle) } else { img };
+    let mut out = std::io::Cursor::new(Vec::new());
+    let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
+    if image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80).encode_image(&rgb).is_err() {
+        return Value::Null;
+    }
+    json!({"mime": "image/jpeg", "width": rgb.width(), "height": rgb.height(),
+        "data": base64::engine::general_purpose::STANDARD.encode(out.into_inner())})
+}
+
+/// A take's screen (else its first video) as its take.json says: (width, height, fps), and
+/// whether it recorded a camera.
+fn take_shape(folder: &Path) -> (Option<u64>, Option<u64>, Option<f64>, bool) {
+    let Some(t) = std::fs::read(folder.join("take.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+    else {
+        return (None, None, None, false);
+    };
+    let videos = t["video"].as_array().cloned().unwrap_or_default();
+    let named = |n: &str| videos.iter().find(|v| v["name"].as_str().is_some_and(|x| x.eq_ignore_ascii_case(n)));
+    let screen = named("Screen").or(videos.first());
+    let fps = screen.and_then(|v| v["fps"].as_f64()).or(t["fps"].as_f64());
+    let camera = named("Camera").is_some() || folder.join("camera.mp4").is_file();
+    (screen.and_then(|v| v["width"].as_u64()), screen.and_then(|v| v["height"].as_u64()), fps, camera)
+}
+
+/// Adds each file's desktop path (and more) to a transfer's manifest, by name.
+fn annotate(transfer: &mut Value, about: &HashMap<String, Value>) {
+    if let Some(entries) = transfer["manifest"].as_array_mut() {
+        for e in entries {
+            if let Some(Value::Object(extra)) = e["name"].as_str().and_then(|n| about.get(n)) {
+                for (k, v) in extra {
+                    e[k] = v.clone();
+                }
+            }
+        }
+    }
 }
 
 impl EditorSync {
@@ -262,6 +298,9 @@ impl EditorSync {
                     return None;
                 }
                 let videos: Vec<&Path> = i.files.iter().map(|f| f.path.as_path()).filter(|p| is_video(p)).collect();
+                let proxies: Vec<PathBuf> = videos.iter().filter_map(|v| proxy_of(v)).collect();
+                let proxy_bytes: u64 = proxies.iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+                let (width, height, fps, has_camera) = folder.as_deref().map_or((None, None, None, false), take_shape);
                 let formats: Vec<String> = i.files.iter().filter_map(|f| f.canvas.clone().or(f.track.clone())).collect();
                 Some(json!({
                     "id": i.id,
@@ -273,7 +312,12 @@ impl EditorSync {
                     "formats": formats,
                     "size_bytes": i.bytes(),
                     "revision": edit.as_deref().map(revision).unwrap_or_default(),
-                    "has_proxies": videos.iter().any(|v| proxy_of(v).is_some()),
+                    "has_proxies": !proxies.is_empty(),
+                    "proxy_bytes": proxy_bytes,
+                    "width": width,
+                    "height": height,
+                    "fps": fps,
+                    "has_camera": has_camera,
                     "thumbnail": thumbnail(i.thumbnail.as_ref()),
                     "markers": i.markers.iter().map(|m| json!({"at_ms": m.at_ms, "label": m.label})).collect::<Vec<_>>(),
                     "missing": !i.missing().is_empty(),
@@ -343,7 +387,10 @@ impl EditorSync {
             for f in files_in(&folder) {
                 let proxy = is_video(&f).then(|| proxy_of(&f)).flatten();
                 if let Some(px) = &proxy {
-                    files.push((px.file_name().unwrap_or_default().to_string_lossy().into_owned(), px.clone()));
+                    let name = px.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                    if !files.iter().any(|(n, _)| *n == name) {
+                        files.push((name, px.clone()));
+                    }
                 }
                 if proxies_only && proxy.is_some() {
                     continue;
@@ -365,9 +412,13 @@ impl EditorSync {
         if files.is_empty() {
             return Err(ApiError::not_found("Its files aren't on this computer any more."));
         }
+        // each file's desktop path, for the phone's path map
+        let about: HashMap<String, Value> = files.iter().map(|(n, p)| (n.clone(), json!({"path": p}))).collect();
         let t = self.transfers()?.offer_download(device, files).map_err(failed)?;
+        let mut out = t.to_json();
+        annotate(&mut out, &about);
         let revision = take_folder(&item).map(|f| revision(&f.join("edit.json"))).unwrap_or_default();
-        Ok(json!({"transfer": t.to_json(), "revision": revision}))
+        Ok(json!({"transfer": out, "revision": revision}))
     }
 
     fn fetch_project(&self, device: &str, p: &Value) -> Reply {
@@ -376,32 +427,60 @@ impl EditorSync {
         let path = lightair_render::sequence::Project::dir(&ws).join(format!("{key}.json"));
         let bytes = std::fs::read(&path).map_err(|_| ApiError::not_found(format!("no project {key}")))?;
         let project: lightair_render::sequence::Project = serde_json::from_slice(&bytes).map_err(failed)?;
+        let proxies_only = p.get("proxies_only").and_then(Value::as_bool) == Some(true);
         let mut files: Vec<(String, PathBuf)> = vec![("project.json".into(), path.clone())];
-        // each medium's files: `media/<n>-<file>`, a take's folder whole
-        let mut about: HashMap<String, (usize, PathBuf)> = HashMap::new();
+        let mut about: HashMap<String, Value> = HashMap::new();
+        about.insert("project.json".into(), json!({"path": path}));
+        // each medium's files, `media/<n>-<file>` (a take's folder whole, its own names kept),
+        // each with the path the document has for it, and the medium's id
         for (n, m) in project.sequence.media.iter().enumerate() {
-            let mut add = |name: String, file: PathBuf, desktop: &Path| {
+            let mut add = |name: String, file: &Path, extra: Value| {
                 if file.is_file() && !files.iter().any(|(x, _)| *x == name) {
-                    about.insert(name.clone(), (n, desktop.to_path_buf()));
-                    files.push((name, file));
+                    let mut e = json!({"path": file, "medium": m.id});
+                    if let (Some(e), Value::Object(x)) = (e.as_object_mut(), extra) {
+                        e.extend(x);
+                    }
+                    about.insert(name.clone(), e);
+                    files.push((name, file.to_path_buf()));
                 }
             };
+            let named = |f: &Path| format!("media/{n}-{}", f.file_name().unwrap_or_default().to_string_lossy());
+            let mut videos: Vec<PathBuf> = vec![];
             match &m.studio_take {
                 Some(folder) => {
-                    let base = format!("media/{n}-{}", folder.file_name().unwrap_or_default().to_string_lossy());
+                    let base = named(folder);
                     for f in files_in(folder) {
-                        let name = format!("{base}/{}", f.file_name().unwrap_or_default().to_string_lossy());
-                        add(name, f.clone(), folder);
+                        let has_proxy = is_video(&f) && proxy_of(&f).is_some();
+                        if is_video(&f) {
+                            videos.push(f.clone());
+                        }
+                        if proxies_only && has_proxy {
+                            continue;
+                        }
+                        add(format!("{base}/{}", f.file_name().unwrap_or_default().to_string_lossy()), &f, json!({}));
                     }
                 }
                 None => {
-                    let name = format!("media/{n}-{}", m.path.file_name().unwrap_or_default().to_string_lossy());
-                    add(name, m.path.clone(), &m.path);
+                    let has_proxy = is_video(&m.path) && proxy_of(&m.path).is_some();
+                    if is_video(&m.path) {
+                        videos.push(m.path.clone());
+                    }
+                    if !(proxies_only && has_proxy) {
+                        add(named(&m.path), &m.path, json!({}));
+                    }
                 }
             }
-            if let Some(px) = is_video(&m.path).then(|| proxy_of(&m.path)).flatten() {
-                let name = px.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                add(name, px.clone(), &m.path);
+            for a in &m.audio {
+                add(named(a), a, json!({}));
+            }
+            if let Some(look) = &m.look {
+                add(named(look), look, json!({}));
+            }
+            for v in videos {
+                if let Some(px) = proxy_of(&v) {
+                    let name = px.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                    add(name, &px, json!({"proxy_for": v}));
+                }
             }
         }
         if let Some(only) = p.get("files").and_then(Value::as_array) {
@@ -410,15 +489,7 @@ impl EditorSync {
         }
         let t = self.transfers()?.offer_download(device, files).map_err(failed)?;
         let mut out = t.to_json();
-        // which medium each file is, and its path here (for the phone's path map)
-        if let Some(entries) = out["manifest"].as_array_mut() {
-            for e in entries {
-                if let Some((n, desktop)) = e["name"].as_str().and_then(|n| about.get(n)) {
-                    e["medium"] = json!(n);
-                    e["path"] = json!(desktop);
-                }
-            }
-        }
+        annotate(&mut out, &about);
         Ok(json!({"transfer": out, "revision": revision_of(&bytes)}))
     }
 
@@ -703,7 +774,7 @@ mod round_trip {
         let ws = std::env::temp_dir().join(format!("lightair-editor-sync-{}-{}", std::process::id(), Id::new()));
         let take = ws.join("recordings/Studio take 10.32.lightair-take");
         std::fs::create_dir_all(&take).unwrap();
-        std::fs::write(take.join("take.json"), json!({"video": [{"name": "Screen", "file": "screen.mp4"}], "audio": ["mic.wav"], "started_ms": 1000, "duration_ms": 5000}).to_string()).unwrap();
+        std::fs::write(take.join("take.json"), json!({"video": [{"name": "Screen", "file": "screen.mp4", "width": 2560, "height": 1440}], "audio": ["mic.wav"], "started_ms": 1000, "duration_ms": 5000}).to_string()).unwrap();
         std::fs::write(take.join("screen.mp4"), vec![1u8; 4096]).unwrap();
         std::fs::write(take.join("mic.wav"), vec![2u8; 512]).unwrap();
         std::fs::write(take.join("edit.json"), serde_json::to_vec(&lightair_render::edit::Edit::new(5000)).unwrap())
@@ -740,6 +811,11 @@ mod round_trip {
         assert_eq!(items.len(), 1, "takes, recordings and exports only: {list}");
         let t = &items[0];
         assert_eq!((t["kind"].as_str(), t["name"].as_str()), (Some("take"), Some("Studio take 10.32")));
+        assert_eq!(
+            (t["width"].as_u64(), t["height"].as_u64(), t["has_camera"].as_bool()),
+            (Some(2560), Some(1440), Some(false))
+        );
+        assert_eq!(t["proxy_bytes"], 0);
         let edit = ws.join("recordings/Studio take 10.32.lightair-take/edit.json");
         assert_eq!(t["revision"].as_str().unwrap(), revision(&edit));
         assert!(list["cursor"].as_i64().unwrap() > 0);
@@ -764,6 +840,16 @@ mod round_trip {
             ]
         );
         assert_eq!(f["transfer"]["token"].as_str().unwrap().len(), 22);
+        let screen = f["transfer"]["manifest"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["name"] == "Studio take 10.32.lightair-take/screen.mp4")
+            .unwrap();
+        assert!(screen["path"].as_str().unwrap().ends_with("Studio take 10.32.lightair-take/screen.mp4"));
+        // the same names and SHA when fetched again (a new token resumes the same .partial files)
+        let again = call(&sync, "takes.fetch", json!({"take": take})).unwrap();
+        assert_eq!(again["transfer"]["manifest"], f["transfer"]["manifest"]);
 
         // an edit back from the revision it started at: taken
         let base = t["revision"].as_str().unwrap().to_owned();
@@ -796,6 +882,18 @@ mod round_trip {
     }
 
     #[test]
+    fn thumbnails_are_small() {
+        let path = std::env::temp_dir().join(format!("lightair-thumb-{}.png", Id::new()));
+        image::RgbImage::from_pixel(1280, 720, image::Rgb([200, 30, 30])).save(&path).unwrap();
+        let t = super::thumbnail(Some(&path));
+        assert_eq!(
+            (t["mime"].as_str(), t["width"].as_u64(), t["height"].as_u64()),
+            (Some("image/jpeg"), Some(320), Some(180))
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn projects_go_out_and_come_back() {
         let (ws, _, _, project) = workspace();
         let (sync, transfers) = sync_for(&ws);
@@ -810,10 +908,11 @@ mod round_trip {
         let manifest = f["transfer"]["manifest"].as_array().unwrap();
         assert_eq!(manifest[0]["name"], "project.json");
         let m = manifest.iter().find(|m| m["name"] == "media/0-Clip 1.mp4").expect("the clip");
-        assert_eq!(
-            (m["medium"].as_u64(), m["path"].as_str().map(|p| p.ends_with("recordings/Clip 1.mp4"))),
-            (Some(0), Some(true))
-        );
+        let doc: Value =
+            serde_json::from_slice(&std::fs::read(Project::dir(&ws).join(format!("{project}.json"))).unwrap()).unwrap();
+        assert_eq!(m["medium"], doc["sequence"]["media"][0]["id"]);
+        assert_eq!(m["path"], doc["sequence"]["media"][0]["path"], "the path as the document has it");
+        assert_eq!(manifest[0]["path"].as_str().map(|p| p.ends_with(".json")), Some(true));
 
         // back with changes: taken; again from the old revision: a copy
         let path = Project::dir(&ws).join(format!("{project}.json"));
