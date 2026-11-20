@@ -99,7 +99,8 @@ impl Receiver {
                             // handshake the phone gave up on can still be accepted here, and
                             // never sends anything)
                             let mut to = None;
-                            let mut dump: Option<std::fs::File> = None;
+                            let mut dump: Option<crate::Dump> = None;
+                            let mut demux = crate::ts::Demuxer::new();
                             let out = UdpSocket::bind(("127.0.0.1", 0)).ok();
                             while let Some(Ok((_, data))) = socket.next().await {
                                 if current.lock().get(&source) != Some(&me) {
@@ -116,7 +117,10 @@ impl Receiver {
                                     let _ = out.send_to(&data, to);
                                 }
                                 if let Some(f) = dump.as_mut() {
-                                    let _ = std::io::Write::write_all(f, &data);
+                                    f.write(&data);
+                                }
+                                for u in demux.push(&data) {
+                                    feeds.unit(&source, u);
                                 }
                                 feeds.data(&source, data.len());
                             }

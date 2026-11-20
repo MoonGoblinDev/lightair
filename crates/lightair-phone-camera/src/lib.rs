@@ -17,6 +17,7 @@ pub mod keep;
 pub mod link;
 pub mod srt;
 pub mod tcp;
+pub mod ts;
 pub mod usbmux;
 
 use std::net::SocketAddr;
@@ -37,16 +38,40 @@ pub trait Feeds: Send + Sync {
     fn data(&self, source: &str, n: usize);
     /// The stream for `source` ended (the phone left, or another stream took its place).
     fn ended(&self, source: &str);
+    /// A whole access unit (a video frame, AAC frames) of `source`'s stream, the moment it's
+    /// complete: for a decoder of the app's own, and to time its arrival.
+    fn unit(&self, _source: &str, _unit: ts::Unit) {}
 }
 
 /// For looking into a phone's stream: with `LIGHTAIR_PHONE_FEED_DUMP=<folder>`, each stream
-/// that starts is also written to `<folder>/<source>-<ms>.ts` as it came.
-pub fn dump_file(source: &str) -> Option<std::fs::File> {
+/// that starts is also written to `<folder>/<source>-<ms>.ts` as it came, and beside it
+/// `….times`: a line per piece, its byte offset in the file and when it arrived (Unix ms), so a
+/// frame's arrival can be set against what it shows (latency).
+pub fn dump_file(source: &str) -> Option<Dump> {
     let dir = std::path::PathBuf::from(std::env::var_os("LIGHTAIR_PHONE_FEED_DUMP")?);
     std::fs::create_dir_all(&dir).ok()?;
     let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
     let name: String = source.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
-    std::fs::File::create(dir.join(format!("{name}-{ms}.ts"))).ok()
+    let ts = std::fs::File::create(dir.join(format!("{name}-{ms}.ts"))).ok()?;
+    let times = std::fs::File::create(dir.join(format!("{name}-{ms}.times"))).ok()?;
+    Some(Dump { ts, times, at: 0 })
+}
+
+/// A stream being written for looking into ([`dump_file`]).
+pub struct Dump {
+    ts: std::fs::File,
+    times: std::fs::File,
+    at: u64,
+}
+
+impl Dump {
+    pub fn write(&mut self, data: &[u8]) {
+        use std::io::Write;
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+        let _ = writeln!(self.times, "{} {ms}", self.at);
+        let _ = self.ts.write_all(data);
+        self.at += data.len() as u64;
+    }
 }
 
 /// The source a stream is for, from its SRT stream id: `#!::r=<source>,m=publish` (the access

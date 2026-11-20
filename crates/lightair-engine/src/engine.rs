@@ -372,6 +372,8 @@ unsafe fn load_modules(cfg: &EngineConfig, runtime: &Runtime) {
     crate::vcam::register();
     crate::phone_camera::register();
     #[cfg(target_os = "macos")]
+    crate::phone_decode::register();
+    #[cfg(target_os = "macos")]
     crate::media_source::register();
     #[cfg(target_os = "macos")]
     crate::on_screen::register();

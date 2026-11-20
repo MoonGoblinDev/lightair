@@ -231,7 +231,8 @@ where
 
         let out = UdpSocket::bind(("127.0.0.1", 0))?;
         let mut media_to: Option<Option<SocketAddr>> = None;
-        let mut dump: Option<std::fs::File> = None;
+        let mut dump: Option<crate::Dump> = None;
+        let mut demux = crate::ts::Demuxer::new();
         let ended = loop {
             while let Some((channel, payload)) = frames.next_frame()? {
                 *heard.lock() = Instant::now();
@@ -266,7 +267,10 @@ where
                         let to = *media_to
                             .get_or_insert_with(|| host.started(&source, "127.0.0.1:0".parse().expect("an address")));
                         if let Some(f) = dump.as_mut() {
-                            let _ = f.write_all(&payload);
+                            f.write(&payload);
+                        }
+                        for u in demux.push(&payload) {
+                            host.unit(&source, u);
                         }
                         if let Some(to) = to {
                             // in datagrams of seven packets, as SRT carries them (macOS takes no

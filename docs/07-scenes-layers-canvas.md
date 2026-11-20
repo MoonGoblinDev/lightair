@@ -227,12 +227,25 @@ microphone and shows its pairing code.
   The phones' port runs while a Phone camera layer exists (as well as while a phone is paired).
 - **Pictures:** phones send MPEG-TS over SRT (srt-tokio, as the phones use) to **UDP 4461**, one
   port for every phone camera; the stream id (`#!::r=<source id>,m=publish`) says which layer, and
-  each layer has its own AES-128 passphrase (made once per run). libobs's FFmpeg has no SRT, so
-  `lightair-phone-camera` hands each datagram to `127.0.0.1:<port>`, where a private
-  `ffmpeg_source` (UDP, `mpegts`, no buffering, hardware decoding) inside the engine's
-  `lightair_phone_camera` source decodes it. A new stream from the phone gets a new decoder, so
-  nothing of the last one is kept; the phone is asked for a keyframe at once and again 0.6 s
-  later.
+  each layer has its own AES-128 passphrase (made from the desktop's identity, so it survives
+  restarts). `lightair-phone-camera` splits the stream into access units as it arrives
+  (`ts.rs`).
+- **Decoding, macOS:** each video frame goes straight to VideoToolbox and each AAC frame to
+  AudioToolbox (the engine's `phone_decode.rs`), and the picture to a private async source that
+  libobs shows unbuffered: no demuxer probing, no pacing, no queue. A change of parameter sets
+  (another codec or size) makes a new session. **Elsewhere** (Windows, for now): the stream is
+  handed on over UDP to a private `ffmpeg_source` (UDP, `mpegts`, a look only until the
+  parameter sets are seen, unbuffered), in datagrams of seven packets (macOS's loopback refuses
+  datagrams over 9,216 bytes). A Media Foundation decoder like the Mac's is still to come.
+- **Latency, measured:** the phone's frames carry their capture time (its capture clock), and
+  the clock sync on the control channel (lightair-core passes each sample to the app,
+  `CameraHost::clock`) puts that clock on the desktop's: the smallest of the last 16 samples'
+  differences is the offset. Each frame is then timed from capture to arriving whole, decoded,
+  and drawn in the output; the Inspector shows the medians ("From the camera: here 90 ms ·
+  decoded 92 ms · on screen 104 ms") and `camera.status` gives median, min and max per stage.
+  An iPhone 15 by cable: 90 / 92 / 104 ms, where the media player before it took 1.65 s (also
+  read off a filmed millisecond clock: 100–105 ms). A frame's arrival is known when the next one
+  starts (the phone leaves a video PES's length open), one frame (33 ms) of the 90.
 - **Placeholder and recovery:** with nothing from the phone for 0.7 s the layer shows a dark slate
   with one line ("Waiting for Sam's iPhone"), at the size it had; when the phone comes back
   (it reconnects by itself) pictures return without anyone touching the desktop.

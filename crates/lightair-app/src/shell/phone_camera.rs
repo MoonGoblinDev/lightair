@@ -196,6 +196,15 @@ impl CameraHost for Host {
         self.changed.store(true, Ordering::Release);
     }
 
+    /// The clock frames are timed on (the sync answers on it too).
+    fn now_us(&self) -> u64 {
+        lightair_engine::phone_camera::clock_us()
+    }
+
+    fn clock(&self, source: &str, phone_us: u64, host_us: u64) {
+        lightair_engine::phone_camera::feed(source).clock_sample(phone_us, host_us);
+    }
+
     fn disconnected(&self, source: &str) {
         if let Some(cam) = self.cams.lock().get_mut(source) {
             tracing::info!(source, "phone camera left");
@@ -258,11 +267,29 @@ impl lightair_phone_camera::Feeds for Host {
             });
         }
         self.changed.store(true, Ordering::Release);
-        Some(feed.addr())
+        (!lightair_engine::phone_camera::DECODES_DIRECTLY).then(|| feed.addr())
     }
 
     fn data(&self, source: &str, n: usize) {
         lightair_engine::phone_camera::feed(source).data(n);
+    }
+
+    fn unit(&self, source: &str, unit: lightair_phone_camera::ts::Unit) {
+        use lightair_engine::phone_camera::{DECODES_DIRECTLY, Unit, UnitKind};
+        use lightair_phone_camera::ts::{Codec, Kind};
+        let feed = lightair_engine::phone_camera::feed(source);
+        let kind = match unit.kind {
+            Kind::Video(Codec::H264) => UnitKind::H264,
+            Kind::Video(Codec::Hevc) => UnitKind::Hevc,
+            Kind::Audio => UnitKind::Aac,
+        };
+        if kind != UnitKind::Aac {
+            feed.arrived(unit.pts);
+        }
+        // macOS: decoded in the engine straight away (elsewhere libobs reads the UDP port)
+        if DECODES_DIRECTLY {
+            feed.push(Unit { kind, pts: unit.pts, data: unit.data });
+        }
     }
 
     fn ended(&self, _source: &str) {
@@ -584,6 +611,7 @@ impl StudioWindow {
                             "picture": feed.live(),
                             "usb": c.is_some_and(|c| c.usb > 0),
                             "rotation": feed.rotation(),
+                            "latency": latency_json(&feed.latency()),
                             "received_kbps": self.remote.phones.cameras.rates.get(id).map_or(0, |r| r.2),
                             "state": c.map_or(Value::Null, |c| c.state.clone()),
                             "health": c.map_or(Value::Null, |c| c.health.clone()),
@@ -897,6 +925,9 @@ impl StudioWindow {
         self.section("Phone camera", None, cx)
             .child(status)
             .children(health_line)
+            .children(live.then(|| latency_line(&feed.latency())).flatten().map(|l| {
+                div().pl(px(15.)).text_size(px(11.)).text_color(tok::text_tertiary()).child(l)
+            }))
             .child(pairing)
             .child(label("Picture"))
             .child(self.segmented("phone-camera-format", formats, cx))
@@ -940,6 +971,28 @@ fn usb_watchers(host: &Arc<Host>) -> Vec<Box<dyn std::any::Any>> {
         }
     }
     out
+}
+
+/// Each stage's time from capture (ms), for `camera.status`.
+fn latency_json(l: &lightair_engine::phone_camera::Latency) -> Value {
+    let stage = |s: Option<lightair_engine::phone_camera::Stage>| {
+        s.map_or(
+            Value::Null,
+            |s| json!({"median_ms": s.median_ms, "min_ms": s.min_ms, "max_ms": s.max_ms, "frames": s.frames}),
+        )
+    };
+    json!({"arrived": stage(l.arrived), "decoded": stage(l.decoded), "drawn": stage(l.drawn), "clock_offset_us": l.offset_us})
+}
+
+/// The Inspector's line: how long frames take from the phone's camera to each stage here.
+fn latency_line(l: &lightair_engine::phone_camera::Latency) -> Option<String> {
+    let mut parts = vec![];
+    for (name, s) in [("here", l.arrived), ("decoded", l.decoded), ("on screen", l.drawn)] {
+        if let Some(s) = s {
+            parts.push(format!("{name} {:.0} ms", s.median_ms));
+        }
+    }
+    (!parts.is_empty()).then(|| format!("From the camera: {}", parts.join(" · ")))
 }
 
 fn with(settings: &Value, key: &str, value: Value) -> Value {

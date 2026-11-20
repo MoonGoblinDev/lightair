@@ -51,7 +51,7 @@ Scenes, objects, sources and tracks are named by id or by name. Positions are ca
 | `commands.execute` | `commands` (Lightair commands, as in the journal), `label?` | |
 | `ui.select` | `scene?`, `object?` | selects it in the window |
 | `camera.pair` | `source` (a Phone camera layer) | `link` (the pairing code's link, for Lightair Live), `expires_at`; the person still allows the phone in Lightair |
-| `camera.status` | `source?` | `cameras: [{source, connected, phone, picture, rotation, received_kbps, state, health, tally}]`, `srt_port` |
+| `camera.status` | `source?` | `cameras: [{source, connected, phone, picture, usb, rotation, received_kbps, latency: {arrived, decoded, drawn: {median_ms, min_ms, max_ms, frames}, clock_offset_us}, state, health, tally}]`, `srt_port` (latency: each stage from the frame's capture on the phone) |
 | `camera.control` | `source`, `control` (`zoom`, `torch`, `focus`, `exposure`, `white_balance`, as lightair-live's docs/05 §6) | sent to the layer's phone |
 | `takes.list` / `clips.list` | `since?` (a `cursor` from before), `kind?` (take, recording, export) | `items` (or `clips`): `{id, kind, name, created, modified (what \`since\` compares), duration_ms, formats, width, height, fps (a take's screen), has_camera, size_bytes, proxy_bytes, revision, has_proxies, thumbnail {mime, width, height, data} (≤ 320 px wide), markers, missing, checked_out}`, `cursor` |
 | `takes.fetch` / `clips.fetch` | `take` (or `clip`), `files?`, `proxies_only?` | `transfer {token, manifest: [{name, size, sha256, path}]}` (the same names and SHA-256 each time, so a new token resumes the same partial files), `revision`: a take's folder's files (its name kept: `….lightair-take/screen.mp4`) and the proxies the desktop made (`proxy-<content>.mp4`) |

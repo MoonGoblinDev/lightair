@@ -43,6 +43,111 @@ const FACE: &str = "Helvetica Neue";
 /// The size shown before any picture came (a 1080p landscape camera).
 const DEFAULT_SIZE: (u32, u32) = (1920, 1080);
 
+/// The desktop's clock for phone cameras, in microseconds: what the phones' clock sync answers
+/// on, and what every stage of a frame's way is timed on.
+pub fn clock_us() -> u64 {
+    now_us()
+}
+
+/// How far ahead of the capture time Lightair Live's muxer puts a frame's PTS (100 ms, so a
+/// decoder that paces by the PCR has it in time; `lightair-feed`'s `DELAY_90K`).
+pub const PTS_LEAD_90K: u64 = 9_000;
+
+/// What an access unit holds (from the app's demuxer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitKind {
+    H264,
+    Hevc,
+    /// AAC in ADTS.
+    Aac,
+}
+
+/// One access unit of a phone's stream: a video frame (Annex B) or AAC frames (ADTS), with its
+/// PTS on the 90 kHz clock.
+#[derive(Debug, Clone)]
+pub struct Unit {
+    pub kind: UnitKind,
+    pub pts: u64,
+    pub data: Vec<u8>,
+}
+
+/// Whether this platform decodes phone feeds itself (macOS: VideoToolbox, `Feed::push`), not
+/// through libobs's media source over UDP (`Feed::addr`).
+pub const DECODES_DIRECTLY: bool = cfg!(target_os = "macos");
+
+/// How long a frame took to get somewhere, over the last few seconds (milliseconds).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Stage {
+    pub median_ms: f32,
+    pub min_ms: f32,
+    pub max_ms: f32,
+    pub frames: usize,
+}
+
+/// A frame's way, each stage from its capture on the phone (milliseconds): arrived here, decoded,
+/// drawn in the output. `None` for a stage not timed (yet).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Latency {
+    pub arrived: Option<Stage>,
+    pub decoded: Option<Stage>,
+    pub drawn: Option<Stage>,
+    /// The phone's clock less this one's, as worked out from the sync (µs), and the samples used.
+    pub offset_us: Option<i64>,
+}
+
+/// Clock sync and the stages' recent times.
+#[derive(Default)]
+struct Timing {
+    /// Recent sync samples: this clock at arrival less the phone's when sent (µs).
+    samples: std::collections::VecDeque<i64>,
+    /// The phone's clock in the last sample (to unwrap 33-bit PTS).
+    phone_us: u64,
+    stages: [std::collections::VecDeque<(u64, f32)>; 3],
+}
+
+const SAMPLES: usize = 16;
+/// Stage times are kept this long (µs).
+const KEEP_US: u64 = 5_000_000;
+
+impl Timing {
+    /// The clocks' offset: the smallest recent difference (the trip one way is never negative,
+    /// and the shortest is closest to none).
+    fn offset(&self) -> Option<i64> {
+        self.samples.iter().copied().min()
+    }
+
+    /// A PTS (90 kHz, the phone's capture clock plus its lead) on this clock (µs).
+    fn captured(&self, pts_90k: u64) -> Option<i64> {
+        let offset = self.offset()?;
+        const WRAP: i64 = 1 << 33;
+        let reference = (self.phone_us as i64 * 9 / 100) & (WRAP - 1);
+        let pts = (pts_90k as i64 - PTS_LEAD_90K as i64).rem_euclid(WRAP);
+        let diff = (pts - reference + WRAP / 2).rem_euclid(WRAP) - WRAP / 2;
+        let phone = self.phone_us as i64 + diff * 100 / 9;
+        Some(phone + offset)
+    }
+
+    fn record(&mut self, stage: usize, pts_90k: u64) {
+        let now = now_us();
+        let Some(captured) = self.captured(pts_90k) else { return };
+        let ms = (now as i64 - captured) as f32 / 1000.0;
+        let q = &mut self.stages[stage];
+        q.push_back((now, ms));
+        while q.front().is_some_and(|(t, _)| now.saturating_sub(*t) > KEEP_US) {
+            q.pop_front();
+        }
+    }
+
+    fn stage(&self, stage: usize) -> Option<Stage> {
+        let mut v: Vec<f32> = self.stages[stage].iter().map(|(_, ms)| *ms).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_by(|a, b| a.total_cmp(b));
+        Some(Stage { median_ms: v[v.len() / 2], min_ms: v[0], max_ms: v[v.len() - 1], frames: v.len() })
+    }
+}
+
 fn now_us() -> u64 {
     static START: OnceLock<Instant> = OnceLock::new();
     // (+1: zero means "never")
@@ -64,6 +169,12 @@ pub struct Feed {
     message: Mutex<String>,
     /// Bytes received, for the Inspector's rate.
     bytes: AtomicU64,
+    /// Clock sync and each stage's times.
+    timing: Mutex<Timing>,
+    /// Where units go to be decoded (macOS), while a decoder runs.
+    units: Mutex<Option<crossbeam_channel::Sender<Unit>>>,
+    /// The PTS (+1) of the last frame decoded and not yet drawn; 0 for none.
+    undrawn: AtomicU64,
     /// Data came since the decoder was last made.
     streamed: AtomicBool,
 }
@@ -80,6 +191,9 @@ impl Feed {
             message: Mutex::new("Waiting for the phone".into()),
             bytes: AtomicU64::new(0),
             streamed: AtomicBool::new(false),
+            timing: Mutex::new(Timing::default()),
+            units: Mutex::new(None),
+            undrawn: AtomicU64::new(0),
         }
     }
 
@@ -109,6 +223,58 @@ impl Feed {
     }
 
     /// Bytes received so far.
+    /// A clock sync sample: the phone's capture clock when it sent it, this clock (`clock_us`)
+    /// when it came.
+    pub fn clock_sample(&self, phone_us: u64, host_us: u64) {
+        let mut t = self.timing.lock();
+        t.samples.push_back(host_us as i64 - phone_us as i64);
+        while t.samples.len() > SAMPLES {
+            t.samples.pop_front();
+        }
+        t.phone_us = phone_us;
+    }
+
+    /// A video frame (its PTS) arrived whole.
+    pub fn arrived(&self, pts_90k: u64) {
+        self.timing.lock().record(0, pts_90k);
+    }
+
+    /// A video frame was decoded.
+    pub fn decoded(&self, pts_90k: u64) {
+        self.timing.lock().record(1, pts_90k);
+    }
+
+    /// A video frame was drawn in the output.
+    pub fn drawn(&self, pts_90k: u64) {
+        self.timing.lock().record(2, pts_90k);
+    }
+
+    /// A unit to decode (macOS; dropped while no decoder runs, or when it's behind).
+    pub fn push(&self, unit: Unit) {
+        if let Some(tx) = self.units.lock().as_ref() {
+            let _ = tx.try_send(unit);
+        }
+    }
+
+    /// The decoder handed a frame to libobs: it's drawn next time the layer draws.
+    pub(crate) fn shown_next(&self, pts_90k: u64) {
+        self.undrawn.store(pts_90k + 1, Ordering::Release);
+    }
+
+    /// The layer drew: the frame decoded last, if not yet timed, is on screen now.
+    fn on_draw(&self) {
+        let p = self.undrawn.swap(0, Ordering::AcqRel);
+        if p != 0 {
+            self.drawn(p - 1);
+        }
+    }
+
+    /// Each stage's recent times, from capture.
+    pub fn latency(&self) -> Latency {
+        let t = self.timing.lock();
+        Latency { arrived: t.stage(0), decoded: t.stage(1), drawn: t.stage(2), offset_us: t.offset() }
+    }
+
     pub fn bytes(&self) -> u64 {
         self.bytes.load(Ordering::Relaxed)
     }
@@ -172,10 +338,13 @@ fn decoder_settings(port: u16) -> serde_json::Value {
         "close_when_inactive": false,
         "clear_on_media_end": true,
         "reconnect_delay_sec": 1,
-        // a short look before playing: what's read to learn the stream is played in real time
-        // afterwards, so a long look (it was 1.5 s) stays as delay for good. The phone puts
-        // parameter sets before every keyframe and sends one as soon as a stream starts.
-        "ffmpeg_options": "probesize=32768 analyzeduration=200000 fflags=nobuffer",
+        // what's read to learn the stream is played in real time afterwards, so the look must be
+        // short (it was 1.5 s, which stayed as delay for good) yet long enough to see the
+        // parameter sets the phone puts before each keyframe (a 32 KB look missed them at
+        // 25 Mb/s: no size, no picture). So: as long as it takes to see them, and not a frame
+        // more (fpsprobesize=0: the frame rate isn't measured). The phone sends a keyframe as
+        // soon as a stream starts.
+        "ffmpeg_options": "probesize=5000000 analyzeduration=3000000 fpsprobesize=0 fflags=nobuffer",
     })
 }
 
@@ -204,16 +373,30 @@ impl Shared {
         let name = unsafe { CStr::from_ptr(sys::obs_source_get_name(self.source as *mut sys::obs_source_t)) }
             .to_string_lossy()
             .into_owned();
-        let settings = Data::from_json(&decoder_settings(self.feed.port));
-        if let Some(child) =
+        // macOS: frames decoded here (VideoToolbox) into a private async source; elsewhere
+        // libobs's media source reading the feed's UDP port
+        let child = if DECODES_DIRECTLY {
+            ObsSource::create_private("lightair_phone_frames", &format!("{name} (phone frames)"), None)
+        } else {
+            let settings = Data::from_json(&decoder_settings(self.feed.port));
             ObsSource::create_private("ffmpeg_source", &format!("{name} (phone feed)"), Some(&settings))
-        {
+        };
+        if let Some(child) = child {
             unsafe {
                 sys::obs_source_add_audio_capture_callback(child.as_ptr(), Some(sound), self.weak as *mut c_void)
             };
             // the newest picture as soon as it's decoded: libobs otherwise holds a stream's
             // frames back to their timestamps (the phone's mic is lined up by the track's offset)
             unsafe { sys::obs_source_set_async_unbuffered(child.as_ptr(), true) };
+            #[cfg(target_os = "macos")]
+            if let Some(frames) = unsafe { ObsSource::from_borrowed(child.as_ptr()) } {
+                let (tx, rx) = crossbeam_channel::bounded(256);
+                *self.feed.units.lock() = Some(tx);
+                let feed = self.feed.clone();
+                let _ = std::thread::Builder::new()
+                    .name("lightair-phone-decode".into())
+                    .spawn(move || crate::phone_decode::run(frames, feed, rx));
+            }
             *self.decoder.lock() = Some(Child(child));
         }
         self.seen.store(generation, Ordering::Release);
@@ -221,6 +404,8 @@ impl Shared {
     }
 
     fn drop_decoder(&self) {
+        // (the decoding thread ends once its units stop)
+        self.feed.units.lock().take();
         if let Some(Child(c)) = self.decoder.lock().take() {
             unsafe { sys::obs_source_remove_audio_capture_callback(c.as_ptr(), Some(sound), self.weak as *mut c_void) };
         }
@@ -477,6 +662,7 @@ unsafe extern "C" fn video_render(data: *mut c_void, _effect: *mut sys::gs_effec
             sys::obs_source_video_render(c.as_ptr());
             sys::gs_matrix_pop();
         }
+        s.feed.on_draw();
         return;
     }
     // the placeholder: a dark slate, the line in the middle (at most 80 % of the width)
@@ -546,6 +732,25 @@ pub fn waiting_for(phone: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frames_are_timed_from_their_capture() {
+        let f = Feed::new();
+        // the phone's clock is 10 s ahead of this one; its samples take 1–3 ms to come
+        let now = clock_us();
+        let phone_now = now + 10_000_000;
+        for trip in [3_000u64, 1_000, 2_000] {
+            f.clock_sample(phone_now - trip, now);
+        }
+        // the shortest trip (1 ms) is in the offset
+        assert_eq!(f.latency().offset_us, Some(-10_000_000 + 1_000));
+        // a frame captured 50 ms ago on the phone (PTS = capture + the 100 ms lead)
+        let pts = ((phone_now - 50_000) * 9 / 100 + PTS_LEAD_90K) & ((1 << 33) - 1);
+        f.arrived(pts);
+        let a = f.latency().arrived.expect("timed");
+        // 50 ms less the 1 ms the offset carries (and a little rounding)
+        assert!((a.median_ms - 49.0).abs() < 1.5, "{a:?}");
+    }
 
     #[test]
     fn rotation_snaps_to_quarter_turns() {

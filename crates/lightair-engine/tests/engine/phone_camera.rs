@@ -35,13 +35,30 @@ fn stream(dir: &Path) -> Option<Vec<u8>> {
     made.success().then(|| std::fs::read(&out).ok()).flatten()
 }
 
-/// Sends the stream to the feed in seven-packet datagrams over about `seconds`.
+/// Sends the stream to the feed as the app does, over about `seconds`: in seven-packet
+/// datagrams to its UDP port, or (macOS, decoded here) as access units.
 fn send(ts: &[u8], feed: &phone_camera::Feed, seconds: f64) {
+    use lightair_phone_camera::ts::{Codec, Demuxer, Kind};
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let mut demux = Demuxer::new();
     let chunks: Vec<&[u8]> = ts.chunks(188 * 7).collect();
     let gap = Duration::from_secs_f64(seconds / chunks.len() as f64);
     for c in chunks {
-        let _ = socket.send_to(c, feed.addr());
+        if phone_camera::DECODES_DIRECTLY {
+            for u in demux.push(c) {
+                let kind = match u.kind {
+                    Kind::Video(Codec::H264) => phone_camera::UnitKind::H264,
+                    Kind::Video(Codec::Hevc) => phone_camera::UnitKind::Hevc,
+                    Kind::Audio => phone_camera::UnitKind::Aac,
+                };
+                if kind != phone_camera::UnitKind::Aac {
+                    feed.arrived(u.pts);
+                }
+                feed.push(phone_camera::Unit { kind, pts: u.pts, data: u.data });
+            }
+        } else {
+            let _ = socket.send_to(c, feed.addr());
+        }
         feed.data(c.len());
         std::thread::sleep(gap);
     }
@@ -94,6 +111,8 @@ fn phone_camera_decodes_turns_and_recovers() {
     assert!(wait_for(|| size() == Some((1280, 720)), Duration::from_secs(3)), "placeholder size {:?}", size());
 
     let feed = phone_camera::feed(&id.to_string());
+    // (a clock sample, so each stage is timed: the stream's PTS clock taken as starting now)
+    feed.clock_sample(0, phone_camera::clock_us());
     let sending = {
         let (ts, feed) = (ts.clone(), feed.clone());
         std::thread::spawn(move || send(&ts, &feed, 8.0))
@@ -121,6 +140,12 @@ fn phone_camera_decodes_turns_and_recovers() {
         size()
     );
     sending.join().unwrap();
+    // every stage was timed (decoded and drawn: macOS, decoded here)
+    let l = feed.latency();
+    assert!(l.arrived.is_some_and(|s| s.frames > 10), "{l:?}");
+    if phone_camera::DECODES_DIRECTLY {
+        assert!(l.decoded.is_some_and(|s| s.frames > 10) && l.drawn.is_some_and(|s| s.frames > 10), "{l:?}");
+    }
 
     drop(engine);
     let _ = std::fs::remove_dir_all(dir);

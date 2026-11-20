@@ -43,6 +43,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphic
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation", "Win32_System_Com"] }
 
 [dev-dependencies]
+lightair-phone-camera.workspace = true
 rtrb = "0.3"
 hound = "3"
 tracing-subscriber.workspace = true
