@@ -18,7 +18,15 @@ fn a_live2d_model_follows_a_face() {
     };
     let t = std::time::Instant::now();
     let mut p = Puppet::load(&path).unwrap();
-    eprintln!("loaded in {:?}: {} meshes, {} textures, expressions {:?}, bounds {:?}", t.elapsed(), p.meshes().len(), p.textures().len(), p.expression_names(), p.bounds);
+    eprintln!(
+        "loaded in {:?}: {} meshes, {} textures, expressions {:?}, {} idle motions, bounds {:?}",
+        t.elapsed(),
+        p.meshes().len(),
+        p.textures().len(),
+        p.expression_names(),
+        p.idle_motions(),
+        p.bounds
+    );
     let centre = |p: &Puppet, name_has: &str| -> Option<f32> {
         let _ = name_has;
         let m = p.meshes().iter().filter(|m| m.opacity() > 0.5).max_by_key(|m| m.vertices().len())?;
@@ -33,7 +41,11 @@ fn a_live2d_model_follows_a_face() {
         p.update(&face, None, 1.0 / 60.0);
     }
     eprintln!("30 frames in {:?}", t.elapsed());
-    assert!(p.meshes().iter().all(|m| m.vertices().iter().all(|v| v.position()[0].is_finite() && v.position()[1].is_finite())));
+    assert!(
+        p.meshes()
+            .iter()
+            .all(|m| m.vertices().iter().all(|v| v.position()[0].is_finite() && v.position()[1].is_finite()))
+    );
     let turned = centre(&p, "").unwrap();
     eprintln!("the largest mesh's centre: {rest:.4} → {turned:.4}");
     assert!((turned - rest).abs() > 1e-4, "the model moved");

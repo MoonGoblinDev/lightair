@@ -15,9 +15,11 @@ use glam::Vec2;
 use mocari::assets::{DecodedTexture, RuntimeModel, load_model_runtime};
 use mocari::expression::load_expression;
 use mocari::json::Expression3;
+use mocari::json::Motion3;
 use mocari::moc3::Moc3DrawableMesh;
+use mocari::motion::load_motion;
 use mocari::render::common::{DrawableInfo, draw_order_indices};
-use mocari::ExpressionManager;
+use mocari::{ExpressionManager, MotionPlayer};
 
 use crate::Error;
 use crate::rig::Face;
@@ -43,6 +45,10 @@ pub struct Puppet {
     expressions: Vec<(String, Expression3)>,
     manager: ExpressionManager,
     playing: Option<String>,
+    /// The model's Idle motions, played one after another under the face (which wins where both
+    /// move a parameter: the head, eyes, mouth).
+    idle: Vec<Motion3>,
+    idle_player: Option<(usize, MotionPlayer)>,
     time: f32,
     /// The model at rest: its lowest and highest corner (model units, y up).
     pub bounds: (Vec2, Vec2),
@@ -62,10 +68,24 @@ impl Puppet {
             .iter()
             .filter_map(|e| load_expression(dir.join(e.file())).ok().map(|x| (e.name().to_string(), x)))
             .collect();
+        let idle: Vec<Motion3> = model
+            .runtime()
+            .model()
+            .motions()
+            .iter()
+            .filter(|(group, _)| group.eq_ignore_ascii_case("idle"))
+            .flat_map(|(_, list)| list.iter())
+            .filter_map(|m| load_motion(dir.join(m.file())).ok())
+            .collect();
         let rt = model.runtime_mut();
         let find = |id: &str| rt.parameter_index(id);
         let group = |name: &str| -> Vec<usize> {
-            rt.model().groups().iter().filter(|g| g.name() == name && g.target() == "Parameter").flat_map(|g| g.ids().iter().filter_map(|id| rt.parameter_index(id))).collect()
+            rt.model()
+                .groups()
+                .iter()
+                .filter(|g| g.name() == name && g.target() == "Parameter")
+                .flat_map(|g| g.ids().iter().filter_map(|id| rt.parameter_index(id)))
+                .collect()
         };
         let vowels = ["ParamA", "ParamI", "ParamU", "ParamE", "ParamO"].map(find);
         let mut mouth_open = group("LipSync");
@@ -80,7 +100,11 @@ impl Puppet {
         let eye = |id: &str| -> Vec<usize> {
             let mut v: Vec<usize> = find(id).into_iter().collect();
             if v.is_empty() {
-                v = blink.iter().copied().filter(|&i| rt.parameter_ids()[i].contains(if id.contains('L') { "L" } else { "R" })).collect();
+                v = blink
+                    .iter()
+                    .copied()
+                    .filter(|&i| rt.parameter_ids()[i].contains(if id.contains('L') { "L" } else { "R" }))
+                    .collect();
             }
             v
         };
@@ -110,7 +134,18 @@ impl Puppet {
             }
         }
         let centre_x = if n > 0 { sum / n as f32 } else { (bounds.0.x + bounds.1.x) * 0.5 };
-        Ok(Puppet { model, params, expressions, manager: ExpressionManager::new(), playing: None, time: 0.0, bounds, centre_x })
+        Ok(Puppet {
+            model,
+            params,
+            expressions,
+            manager: ExpressionManager::new(),
+            playing: None,
+            idle,
+            idle_player: None,
+            time: 0.0,
+            bounds,
+            centre_x,
+        })
     }
 
     pub fn textures(&self) -> &[DecodedTexture] {
@@ -144,6 +179,11 @@ impl Puppet {
         (self.centre_x - w * 0.5, self.centre_x + w * 0.5, top, top - h)
     }
 
+    /// How many Idle motions the model has (played under the face).
+    pub fn idle_motions(&self) -> usize {
+        self.idle.len()
+    }
+
     /// The model's expressions, by name.
     pub fn expression_names(&self) -> Vec<String> {
         self.expressions.iter().map(|(n, _)| n.clone()).collect()
@@ -163,8 +203,17 @@ impl Puppet {
         }
         let p = self.params.clone();
         let (yaw, pitch, roll) = face.angles();
+        // the next Idle motion when one ends
+        if !self.idle.is_empty() && self.idle_player.as_ref().is_none_or(|(_, m)| m.is_finished()) {
+            let next = self.idle_player.as_ref().map_or(0, |(i, _)| (i + 1) % self.idle.len());
+            self.idle_player = Some((next, MotionPlayer::new_once(self.idle[next].clone())));
+        }
         let rt = self.model.runtime_mut();
         rt.reset_parameters();
+        if let Some((_, m)) = self.idle_player.as_mut() {
+            m.tick(dt);
+            m.apply(rt);
+        }
         let mut set = |i: Option<usize>, v: f32| {
             if let Some(i) = i {
                 rt.set_parameter_by_index(i, v);
