@@ -9,8 +9,10 @@
 //! Lightair Live, which shouldn't happen to every phone that charges here. On Windows a phone's
 //! default driver doesn't let other apps send it requests, so this is macOS and Linux for now.
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::collections::HashSet;
 use std::sync::Arc;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::time::Duration;
 
 use crate::keep::Stop;

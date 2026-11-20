@@ -73,7 +73,7 @@ pub struct Unit {
 
 /// Whether this platform decodes phone feeds itself (macOS: VideoToolbox, `Feed::push`), not
 /// through libobs's media source over UDP (`Feed::addr`).
-pub const DECODES_DIRECTLY: bool = cfg!(target_os = "macos");
+pub const DECODES_DIRECTLY: bool = cfg!(any(target_os = "macos", windows));
 
 /// How long a frame took to get somewhere, over the last few seconds (milliseconds).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -171,7 +171,7 @@ pub struct Feed {
     bytes: AtomicU64,
     /// Clock sync and each stage's times.
     timing: Mutex<Timing>,
-    /// Where units go to be decoded (macOS), while a decoder runs.
+    /// Where units go to be decoded (macOS, Windows), while a decoder runs.
     units: Mutex<Option<crossbeam_channel::Sender<Unit>>>,
     /// The PTS (+1) of the last frame decoded and not yet drawn; 0 for none.
     undrawn: AtomicU64,
@@ -373,8 +373,8 @@ impl Shared {
         let name = unsafe { CStr::from_ptr(sys::obs_source_get_name(self.source as *mut sys::obs_source_t)) }
             .to_string_lossy()
             .into_owned();
-        // macOS: frames decoded here (VideoToolbox) into a private async source; elsewhere
-        // libobs's media source reading the feed's UDP port
+        // macOS and Windows: frames decoded here (VideoToolbox, Media Foundation) into a
+        // private async source; elsewhere libobs's media source reading the feed's UDP port
         let child = if DECODES_DIRECTLY {
             ObsSource::create_private("lightair_phone_frames", &format!("{name} (phone frames)"), None)
         } else {
@@ -388,14 +388,16 @@ impl Shared {
             // the newest picture as soon as it's decoded: libobs otherwise holds a stream's
             // frames back to their timestamps (the phone's mic is lined up by the track's offset)
             unsafe { sys::obs_source_set_async_unbuffered(child.as_ptr(), true) };
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             if let Some(frames) = unsafe { ObsSource::from_borrowed(child.as_ptr()) } {
                 let (tx, rx) = crossbeam_channel::bounded(256);
                 *self.feed.units.lock() = Some(tx);
                 let feed = self.feed.clone();
-                let _ = std::thread::Builder::new()
-                    .name("lightair-phone-decode".into())
-                    .spawn(move || crate::phone_decode::run(frames, feed, rx));
+                #[cfg(target_os = "macos")]
+                let run = crate::phone_decode::run;
+                #[cfg(windows)]
+                let run = crate::phone_decode_win::run;
+                let _ = std::thread::Builder::new().name("lightair-phone-decode".into()).spawn(move || run(frames, feed, rx));
             }
             *self.decoder.lock() = Some(Child(child));
         }

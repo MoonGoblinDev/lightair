@@ -233,10 +233,15 @@ microphone and shows its pairing code.
 - **Decoding, macOS:** each video frame goes straight to VideoToolbox and each AAC frame to
   AudioToolbox (the engine's `phone_decode.rs`), and the picture to a private async source that
   libobs shows unbuffered: no demuxer probing, no pacing, no queue. A change of parameter sets
-  (another codec or size) makes a new session. **Elsewhere** (Windows, for now): the stream is
-  handed on over UDP to a private `ffmpeg_source` (UDP, `mpegts`, a look only until the
-  parameter sets are seen, unbuffered), in datagrams of seven packets (macOS's loopback refuses
-  datagrams over 9,216 bytes). A Media Foundation decoder like the Mac's is still to come.
+  (another codec or size) makes a new session. **Windows:** the same, through Media Foundation
+  (`phone_decode_win.rs`): its own H.264 / HEVC decoder (hardware-backed first, as it sorts
+  them) in low-latency mode, given each access unit as it came (Annex B, parameter sets in
+  band), NV12 out; AAC through its AAC decoder (raw frames, the AudioSpecificConfig made from
+  the ADTS header), float out. Checked by Windows clippy from a Mac; not yet run on a Windows
+  PC. **Elsewhere** (Linux): the stream is handed on over UDP to a private `ffmpeg_source`
+  (UDP, `mpegts`, a look only until the parameter sets are seen, unbuffered), in datagrams of
+  seven packets. What both decoders share (splitting units, BT.709, the frames source) is
+  `phone_units.rs`.
 - **Latency, measured:** the phone's frames carry their capture time (its capture clock), and
   the clock sync on the control channel (lightair-core passes each sample to the app,
   `CameraHost::clock`) puts that clock on the desktop's: the smallest of the last 16 samples'

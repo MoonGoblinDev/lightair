@@ -31,6 +31,10 @@ pub mod outputs;
 pub mod phone_camera;
 #[cfg(target_os = "macos")]
 mod phone_decode;
+#[cfg(windows)]
+mod phone_decode_win;
+#[cfg(any(target_os = "macos", windows))]
+mod phone_units;
 pub mod player;
 pub mod plugins;
 pub mod pointer;

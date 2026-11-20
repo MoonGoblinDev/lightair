@@ -6,7 +6,7 @@ Every desktop and lightair-core item in lightair-live's `docs/12-roadmap.md` (ph
 own. Items the roadmap puts after phase 4 (looks MR-19, the relay MR-23, the camera over the
 internet MC-17, remote control of a phone's Studio MS-26) are listed last and not counted.
 
-✅ done · ⬜ not yet. Where a choice wasn't in the spec, what was chosen is said on the line.
+✅ done · 🟨 built, not yet tried where it runs · ⬜ not yet. Where a choice wasn't in the spec, what was chosen is said on the line.
 
 ## Phase 0 · Groundwork
 
@@ -58,7 +58,7 @@ internet MC-17, remote control of a phone's Studio MS-26) are listed last and no
 40. ✅ The phone's mic as the layer's track; rotation applied; placeholder within a second, recovery by itself
 41. ✅ USB: usbmuxd (iPhone) and AOA 2 (Android) (desktop `acac816`, `1455ae1`); tried on an iPhone 15, AOA not yet on a real phone
 42. ✅ Decoding straight through VideoToolbox / AudioToolbox on macOS (desktop `e8bc5a2`)
-43. ⬜ Decoding straight through Media Foundation on Windows (today: libobs's media source over UDP, the slow path)
+43. 🟨 Decoding straight through Media Foundation on Windows (`phone_decode_win.rs`): built and clean under Windows clippy from this Mac, the shared parts tested on macOS; **not yet run on a Windows PC** (none here). Until it is, it isn't counted as done
 44. ✅ Latency measured per frame, camera to screen, shown in the Inspector (desktop `e8bc5a2`, `01a237a`; lightair-core `ce1481d`)
 45. ✅ "Lowest latency (needs good light)": the exposure cap switch (`configure.low_latency`; `state.low_latency` says whether the phone took it; the phone half is Live's)
 
@@ -83,4 +83,4 @@ remote control of a phone's Studio (MS-26).
 
 ## Count
 
-52 of 53 done.
+52 of 53 done; the 53rd (43, Windows decoding) built and waiting for a run on a Windows PC.
