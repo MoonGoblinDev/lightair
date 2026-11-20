@@ -42,7 +42,9 @@ static void shape_mask_update(void *data, obs_data_t *settings)
 	f->radius = (float)obs_data_get_double(settings, "radius");
 	f->feather = (float)obs_data_get_double(settings, "feather");
 	f->border = (float)obs_data_get_double(settings, "border");
-	vec4_from_rgba(&f->border_color, (uint32_t)obs_data_get_int(settings, "border_color"));
+	/* The picture is drawn in linear light: the colour as chosen (sRGB) made linear too, or
+	 * the border shows lighter than picked. */
+	vec4_from_rgba_srgb(&f->border_color, (uint32_t)obs_data_get_int(settings, "border_color"));
 	f->window[0] = (float)obs_data_get_double(settings, "window_left");
 	f->window[1] = (float)obs_data_get_double(settings, "window_top");
 	f->window[2] = (float)obs_data_get_double(settings, "window_right");
