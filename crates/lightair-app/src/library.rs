@@ -54,6 +54,9 @@ pub struct Library {
     /// `None`: All recordings.
     selected: Option<PathBuf>,
     indexes: HashMap<PathBuf, Index>,
+    /// Items Lightair Editor has checked out, per workspace: item id → the device's name
+    /// (`checkouts.json`, shell/editor_sync.rs).
+    checkouts: HashMap<PathBuf, HashMap<String, String>>,
     /// Bytes per workspace (counted on reload).
     sizes: HashMap<PathBuf, u64>,
     seen_version: Option<u64>,
@@ -181,6 +184,7 @@ impl Library {
             workspaces: Vec::new(),
             selected,
             indexes: HashMap::new(),
+            checkouts: HashMap::new(),
             sizes: HashMap::new(),
             seen_version: None,
             search,
@@ -212,6 +216,7 @@ impl Library {
         self.workspaces = list_workspaces(current.as_deref());
         self.indexes = self.workspaces.iter().map(|p| (p.dir.clone(), Index::load(&p.dir))).collect();
         self.sizes = self.indexes.iter().map(|(d, i)| (d.clone(), i.bytes())).collect();
+        self.checkouts = self.workspaces.iter().map(|p| (p.dir.clone(), checkouts(&p.dir))).collect();
         if self.selected.as_ref().is_some_and(|s| !self.workspaces.iter().any(|p| &p.dir == s)) {
             self.selected = None;
         }
@@ -625,6 +630,7 @@ impl Library {
 
     fn card(&self, workspace: &Path, item: &Item, n: usize, cx: &mut Context<Self>) -> AnyElement {
         let (dir, id) = (workspace.to_path_buf(), item.id);
+        let checked_out = self.checkouts.get(workspace).and_then(|c| c.get(&item.id.to_string())).cloned();
         let missing = !item.missing().is_empty();
         let thumbnail = item.thumbnail.clone().filter(|t| t.exists());
         let when = Local.timestamp_millis_opt(item.started_ms).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
@@ -812,6 +818,18 @@ impl Library {
                         None => detail.join(" · "),
                     }),
             )
+            .when_some(checked_out, |d, device| {
+                d.child(
+                    div()
+                        .px_0p5()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .text_size(px(11.))
+                        .text_color(tok::warn())
+                        .child(format!("Being edited on {device}")),
+                )
+            })
             .when(item.kind == Kind::StudioTake, |d| {
                 let open = self.inside_open.contains(&item.id);
                 let it = item.clone();
@@ -1245,4 +1263,17 @@ mod tests {
         assert_eq!(bytes_label(3_400_000_000), "3.4 GB");
         assert_eq!(day_label(Local::now().timestamp_millis()), "Today");
     }
+}
+
+/// What Lightair Editor has checked out in a workspace: item id → the device's name, those seen
+/// in the last 7 days (`checkouts.json`, written by shell/editor_sync.rs).
+fn checkouts(workspace: &Path) -> HashMap<String, String> {
+    let all: HashMap<String, serde_json::Value> =
+        std::fs::read(workspace.join("checkouts.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    let week = 7 * 24 * 3600 * 1000;
+    all.into_iter()
+        .filter(|(_, v)| v["seen_ms"].as_i64().unwrap_or(0) > now - week)
+        .filter_map(|(k, v)| Some((k, v["device_name"].as_str()?.to_owned())))
+        .collect()
 }
