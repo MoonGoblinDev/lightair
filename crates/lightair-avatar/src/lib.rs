@@ -2,6 +2,7 @@
 //!
 //! - [`vrm`]: VRM 0.x and 1.0 models.
 //! - [`live2d`]: Live2D models (on mocari, Lightair's fork of a pure Rust runtime).
+//! - [`inochi2d`]: Inochi2D puppets (on Inox2D, Lightair's fork).
 //! - [`rig`]: from face landmarks to the head's turn, eyes, gaze, brows and mouth.
 //! - [`pose`]: a model posed by a face: bones, expressions, look-at, spring bones, then
 //!   skinned and morphed on the CPU, ready to draw.
@@ -9,6 +10,7 @@
 pub mod body;
 mod canonical;
 mod glb;
+pub mod inochi2d;
 pub mod live2d;
 pub mod pose;
 pub mod rig;
@@ -25,8 +27,8 @@ pub enum Error {
 }
 
 pub use body::{BodyFrame, BodyMode, BodyState};
+/// The Live2D runtime (Lightair's fork of mocari), for drawing its meshes.
+pub use mocari;
 pub use pose::{Avatar, Controls, Framing};
 pub use rig::{Calibration, Face, Landmarks, Measures, Smoother};
 pub use vrm::Model;
-/// The Live2D runtime (Lightair's fork of mocari), for drawing its meshes.
-pub use mocari;

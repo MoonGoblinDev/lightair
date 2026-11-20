@@ -15,6 +15,8 @@ lightair-engine = { path = "crates/lightair-engine" }
 lightair-avatar = { path = "crates/lightair-avatar" }
 # Live2D models: mocari, a pure Rust runtime (Lightair's fork, third_party/mocari).
 mocari = { path = "third_party/mocari" }
+# Inochi2D puppets: Inox2D (Lightair's fork, third_party/inox2d).
+inox2d = { path = "third_party/inox2d/inox2d" }
 lightair-preview = { path = "crates/lightair-preview" }
 lightair-ui = { path = "crates/lightair-ui" }
 lightair-web = { path = "crates/lightair-web" }
