@@ -3,6 +3,7 @@
 //! - [`vrm`]: VRM 0.x and 1.0 models.
 //! - [`live2d`]: Live2D models (on mocari, Lightair's fork of a pure Rust runtime).
 //! - [`inochi2d`]: Inochi2D puppets (on Inox2D, Lightair's fork).
+//! - [`uma`]: Umamo puppets (`.uma`), evaluated the way Umamo's runtime does.
 //! - [`rig`]: from face landmarks to the head's turn, eyes, gaze, brows and mouth.
 //! - [`pose`]: a model posed by a face: bones, expressions, look-at, spring bones, then
 //!   skinned and morphed on the CPU, ready to draw.
@@ -14,6 +15,7 @@ pub mod inochi2d;
 pub mod live2d;
 pub mod pose;
 pub mod rig;
+pub mod uma;
 pub mod vrm;
 
 #[derive(Debug, thiserror::Error)]

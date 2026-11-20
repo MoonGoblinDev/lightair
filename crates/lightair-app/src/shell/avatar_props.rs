@@ -158,9 +158,9 @@ impl StudioWindow {
             })
             .collect();
         let expression = s["expression"].as_str().unwrap_or("");
-        // a flat model's own expressions (Live2D; an Inochi2D puppet has none); a VRM's standard ones
+        // a flat model's own expressions (Live2D; Inochi2D and Umamo puppets have none); a VRM's standard ones
         let lower = file.to_ascii_lowercase();
-        let flat = [".model3.json", ".inp", ".inx"].iter().any(|e| lower.ends_with(e));
+        let flat = [".model3.json", ".inp", ".inx", ".uma"].iter().any(|e| lower.ends_with(e));
         let no_expressions = flat && status.expressions.is_empty();
         let choices: Vec<(String, String)> = if flat {
             std::iter::once((String::new(), "None".to_string()))

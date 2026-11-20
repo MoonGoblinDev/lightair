@@ -1,5 +1,5 @@
-//! An avatar drawn by libobs: a VRM model (or a Live2D or Inochi2D one), transparent around it.
-//! Needs a model: LIGHTAIR_VRM, LIGHTAIR_LIVE2D, LIGHTAIR_INOCHI2D (not checked in); skipped otherwise. LIGHTAIR_VRM_OUT (a folder) keeps the picture.
+//! An avatar drawn by libobs: a VRM model (or a Live2D, Inochi2D or Umamo one), transparent around it.
+//! Needs a model: LIGHTAIR_VRM, LIGHTAIR_LIVE2D, LIGHTAIR_INOCHI2D, LIGHTAIR_UMA (not checked in); skipped otherwise. LIGHTAIR_VRM_OUT (a folder) keeps the picture.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -55,6 +55,20 @@ fn an_inochi2d_avatar_is_drawn() {
         return;
     };
     drawn(file, "libobs_inochi2d.png");
+}
+
+/// An Umamo puppet the same way (LIGHTAIR_UMA: a .uma, not checked in).
+#[test]
+fn an_umamo_avatar_is_drawn() {
+    if lightair_engine::testing::ran_in_own_process() {
+        return;
+    }
+    let _ = tracing_subscriber::fmt().with_env_filter("warn").with_test_writer().try_init();
+    let Some(file) = std::env::var_os("LIGHTAIR_UMA").map(PathBuf::from) else {
+        eprintln!("LIGHTAIR_UMA not set; skipping");
+        return;
+    };
+    drawn(file, "libobs_uma.png");
 }
 
 fn drawn(file: PathBuf, picture: &str) {

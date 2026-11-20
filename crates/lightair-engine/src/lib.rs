@@ -10,6 +10,7 @@ pub mod audio_host;
 pub mod avatar;
 mod avatar2d;
 mod avatar_inochi2d;
+mod avatar_uma;
 pub mod backdrop;
 pub mod devices;
 pub mod displays;

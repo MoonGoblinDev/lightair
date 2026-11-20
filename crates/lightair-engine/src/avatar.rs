@@ -6,10 +6,11 @@
 //! shader close to VRM's MToon, with outlines, into a texture with depth, transparent around
 //! the character.
 //!
-//! Flat (2D) avatars, Live2D models (`.model3.json`) and Inochi2D puppets (`.inp`, `.inx`), are
-//! drawn by [`crate::avatar2d`] and [`crate::avatar_inochi2d`], posed by the same face.
+//! Flat (2D) avatars, Live2D models (`.model3.json`), Inochi2D puppets (`.inp`, `.inx`) and Umamo
+//! puppets (`.uma`), are drawn by [`crate::avatar2d`], [`crate::avatar_inochi2d`] and
+//! [`crate::avatar_uma`], posed by the same face.
 //!
-//! Settings: `file` (a .vrm, a Live2D .model3.json or an Inochi2D .inp/.inx), `device` (the camera's unique id; none: no tracking), `mirror`
+//! Settings: `file` (a .vrm, a Live2D .model3.json, an Inochi2D .inp/.inx or an Umamo .uma), `device` (the camera's unique id; none: no tracking), `mirror`
 //! (bool, on by default), `framing` ("head", "bust", "half", "full"), `zoom`, `width`,
 //! `height`, `calibration` (JSON from the `calibrate` proc), `expression` (an expression's
 //! name, e.g. "happy") and `expression_weight`; `body` ("off", "upper", "full"): how much of the
@@ -1207,7 +1208,7 @@ unsafe extern "C" fn proc_status(data: *mut c_void, cd: *mut sys::calldata_t) {
 fn model_name(path: &str) -> String {
     let file = std::path::Path::new(path).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     let lower = file.to_ascii_lowercase();
-    for ext in [".model3.json", ".vrm", ".inp", ".inx"] {
+    for ext in [".model3.json", ".vrm", ".inp", ".inx", ".uma"] {
         if lower.ends_with(ext) {
             return file[..file.len() - ext.len()].to_string();
         }
