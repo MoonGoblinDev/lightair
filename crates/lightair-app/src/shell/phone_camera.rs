@@ -61,6 +61,13 @@ fn configure(settings: &Value) -> Value {
     })
 }
 
+/// The exposure cap as the phone takes it (a `control`, lightair-live's docs/05 §6), when its
+/// hello lists it: on with the layer's "Lowest latency".
+fn exposure_cap(cam: &Cam) -> Option<Value> {
+    let offered = cam.hello["capabilities"]["controls"].as_array()?.iter().any(|c| c == "exposure_cap");
+    offered.then(|| json!({"type": "control", "exposure_cap": cam.configured["low_latency"].as_bool().unwrap_or(false)}))
+}
+
 /// Whether two configurations need a new decoder (another codec or picture size).
 fn new_stream(a: &Value, b: &Value) -> bool {
     a["codec"] != b["codec"] || a["format"] != b["format"]
@@ -177,7 +184,12 @@ impl CameraHost for Host {
         let mut cams = self.cams.lock();
         let Some(cam) = cams.get_mut(source) else { return };
         match message["type"].as_str() {
-            Some("hello") => cam.hello = message.clone(),
+            Some("hello") => {
+                cam.hello = message.clone();
+                if let (Some(c), Some(cap)) = (&cam.channel, exposure_cap(cam)) {
+                    c.send(cap);
+                }
+            }
             Some("state") => {
                 if let Some(r) = message["rotation"].as_i64() {
                     lightair_engine::phone_camera::feed(source).set_rotation(r);
@@ -372,9 +384,15 @@ impl StudioWindow {
                 let wanted = configure(settings);
                 if cam.configured != wanted {
                     let restart = !cam.configured.is_null() && new_stream(&cam.configured, &wanted);
+                    let cap_was = cam.configured["low_latency"].clone();
                     cam.configured = wanted.clone();
                     if let Some(c) = &cam.channel {
                         c.send(wanted);
+                        if cam.configured["low_latency"] != cap_was
+                            && let Some(cap) = exposure_cap(cam)
+                        {
+                            c.send(cap);
+                        }
                         if restart {
                             lightair_engine::phone_camera::feed(&key).restart();
                             c.send(json!({"type": "keyframe"}));
@@ -890,6 +908,18 @@ impl StudioWindow {
                 cx,
             ));
         }
+        let stab = state["stabilisation"].as_str().unwrap_or("off").to_string();
+        let mut stabilisation = div().flex().flex_wrap().gap_1();
+        for (i, (l, v)) in [("Off", "off"), ("Standard", "standard"), ("Cinematic", "cinematic")].into_iter().enumerate() {
+            stabilisation = stabilisation.child(chip(
+                "phone-camera-stabilisation",
+                i,
+                l.into(),
+                stab == v,
+                json!({"stabilisation": v}),
+                cx,
+            ));
+        }
         let mut locks = div().flex().flex_wrap().gap_1();
         for (i, (name, key, on)) in [
             ("Focus", "focus", locked("focus")),
@@ -940,11 +970,11 @@ impl StudioWindow {
                 "As held: the picture turns with the phone. Landscape or Portrait: it stays that way however the phone is held.",
             )))
             .child(self.segmented("phone-camera-orientation", orientations, cx))
-            .child({
+            .when(!channel || controls.contains(&"exposure_cap"), |d| d.child({
                 let on = s["low_latency"].as_bool().unwrap_or(false);
                 let cmd = set("low_latency", json!(!on));
                 // the phone says whether it took it
-                let took = state["low_latency"].as_bool();
+                let took = state["exposure_cap"].as_bool();
                 div()
                     .flex()
                     .items_center()
@@ -967,6 +997,13 @@ impl StudioWindow {
                             )),
                     )
                     .child(super::settings::switch("phone-camera-low-latency", on).on_click(cx.listener(move |this, _, _, cx| this.exec(cmd.clone(), cx))))
+            }))
+            .when(channel && controls.contains(&"stabilisation"), |d| {
+                d.child(div().flex().items_center().gap_1().child(label("Stabilisation")).child(ui::info(
+                    "phone-camera-stabilisation-info",
+                    "Steadies a hand-held picture. Standard and Cinematic both add latency (Cinematic the most).",
+                )))
+                .child(stabilisation)
             })
             .when(!lenses.is_empty(), |d| d.child(row("Lens", lens_menu.into_any_element())))
             .when(channel, |d| d.child(label("Zoom")).child(zooms).child(label("Camera")).child(locks))
