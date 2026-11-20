@@ -402,6 +402,8 @@ pub struct StudioWindow {
     /// The source picker, and fetched source lists per (source, setting).
     source_picker: Option<source::SourcePicker>,
     source_cache: RefCell<HashMap<(Id, &'static str), SourceOptions>>,
+    /// Lists asked of the engine and not answered yet (they come in the background).
+    source_asked: RefCell<HashSet<(Id, &'static str)>>,
     /// The Add Object picker, while open.
     add_object: Option<add_object::AddObject>,
     /// Camera devices (label, id), refreshed when the Add Object menu opens.
@@ -766,6 +768,7 @@ impl StudioWindow {
             sizes: RefCell::default(),
             source_picker: None,
             source_cache: RefCell::default(),
+            source_asked: RefCell::default(),
             camera_devices: vec![],
             renaming: None,
             cue_scenes: false,
@@ -3059,12 +3062,31 @@ impl StudioWindow {
             })
     }
 
+    /// The sources' sizes, asked for again every quarter second: without waiting (the engine
+    /// may be busy), the last ones meanwhile, a redraw when they come.
     fn refresh_sizes(&self, cx: &mut Context<Self>) {
-        let stale = self.sizes.borrow().0.is_none_or(|t| t.elapsed().as_millis() > 250);
-        if stale {
-            let sizes = self.studio.read(cx).engine().call(|s| s.reconciler.source_sizes());
-            *self.sizes.borrow_mut() = (Some(Instant::now()), sizes);
+        let mut cache = self.sizes.borrow_mut();
+        if cache.0.is_some_and(|t| t.elapsed().as_millis() <= 250) {
+            return;
         }
+        // (asked now: not again until this is a quarter second old)
+        cache.0 = Some(Instant::now());
+        drop(cache);
+        let (tx, rx) = futures_channel::oneshot::channel();
+        self.studio.read(cx).engine().post(move |s| {
+            let _ = tx.send(s.reconciler.source_sizes());
+        });
+        cx.spawn(async move |this, cx| {
+            let Ok(sizes) = rx.await else { return };
+            let _ = this.update(cx, |this, cx| {
+                let changed = this.sizes.borrow().1 != sizes;
+                this.sizes.borrow_mut().1 = sizes;
+                if changed {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// Where a object's picture actually is in a canvas: its box, narrowed to the picture in Fit

@@ -159,7 +159,12 @@ impl EngineState {
     }
 }
 
-type Job = Box<dyn FnOnce(&mut EngineState) + Send>;
+/// A piece of work for the engine thread, and where it was asked for (named when it's slow).
+type Job = (Box<dyn FnOnce(&mut EngineState) + Send>, &'static std::panic::Location<'static>);
+
+/// A job (or a wait for one) longer than this is logged with where it came from: the UI waits
+/// on the engine's jobs, so a slow one is a frozen window.
+const SLOW_MS: u128 = 60;
 
 /// Owner of libobs. Dropping it shuts the engine down on its thread.
 pub struct Engine {
@@ -181,8 +186,13 @@ impl Engine {
                 Ok(ready) => {
                     let _ = ready_tx.send(Ok(ready));
                     let mut state = EngineState::default();
-                    for job in rx {
+                    for (job, at) in rx {
+                        let t = std::time::Instant::now();
                         job(&mut state);
+                        let ms = t.elapsed().as_millis();
+                        if ms >= SLOW_MS {
+                            tracing::warn!(ms, at = %at, "slow engine job");
+                        }
                     }
                     unsafe { shutdown(state) };
                 }
@@ -201,19 +211,34 @@ impl Engine {
     }
 
     /// Runs `f` on the engine thread without waiting.
+    #[track_caller]
     pub fn post(&self, f: impl FnOnce(&mut EngineState) + Send + 'static) {
         if let Some(tx) = &self.tx {
-            let _ = tx.send(Box::new(f));
+            let _ = tx.send((Box::new(f), std::panic::Location::caller()));
         }
     }
 
-    /// Runs `f` on the engine thread and returns its result.
+    /// Runs `f` on the engine thread and returns its result (the caller waits: behind whatever
+    /// the engine is doing first, too).
+    #[track_caller]
     pub fn call<R: Send + 'static>(&self, f: impl FnOnce(&mut EngineState) -> R + Send + 'static) -> R {
+        let at = std::panic::Location::caller();
+        let t = std::time::Instant::now();
         let (tx, rx) = bounded(1);
-        self.post(move |s| {
-            let _ = tx.send(f(s));
-        });
-        rx.recv().expect("engine thread stopped")
+        if let Some(q) = &self.tx {
+            let _ = q.send((
+                Box::new(move |s: &mut EngineState| {
+                    let _ = tx.send(f(s));
+                }),
+                at,
+            ));
+        }
+        let r = rx.recv().expect("engine thread stopped");
+        let ms = t.elapsed().as_millis();
+        if ms >= SLOW_MS {
+            tracing::warn!(ms, at = %at, thread = std::thread::current().name().unwrap_or("?"), "waited on the engine");
+        }
+        r
     }
 }
 

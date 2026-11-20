@@ -8,6 +8,7 @@ mod assets;
 mod automations_panel;
 mod browser_import;
 mod console;
+mod stall_watch;
 mod triggers;
 mod updater;
 mod camera_studio;
@@ -202,7 +203,8 @@ fn main() {
 
         let on_quit = studio.clone();
         cx.on_app_quit(move |cx| {
-            on_quit.update(cx, |s, _| s.compact());
+            // (saved before quitting: the package writes on a thread of its own)
+            on_quit.update(cx, |s, _| s.save_and_wait());
             async {}
         })
         .detach();
@@ -218,6 +220,8 @@ fn main() {
 
         // A copy started by a test or screenshot hook stays in the background: it must never take
         // the keyboard from the app someone is typing in.
+        // LIGHTAIR_STALLS=1: where the UI thread is when the window stops answering
+        stall_watch::start(cx);
         let background = std::env::var_os("LIGHTAIR_OPEN").is_some();
         // its size; a screenshot hook can ask for another ("900x700")
         let (w, h) = std::env::var("LIGHTAIR_WINDOW")

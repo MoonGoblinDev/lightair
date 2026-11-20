@@ -125,3 +125,91 @@ fn a_workspace_saved_as_a_project_opens_and_is_renamed() {
     assert_eq!(load_snapshot(dir.path()).unwrap(), workspace);
     assert!(dir.path().join("workspace.json").exists() && !dir.path().join("project.json").exists());
 }
+
+/// Compaction writes on the package's own thread; commands recorded meanwhile go to the next
+/// journal and aren't lost.
+#[test]
+fn compaction_in_the_background_keeps_what_comes_meanwhile() {
+    let dir = tempfile::tempdir().unwrap();
+    let (initial, cmds) = sample();
+    let mut expected = initial.clone();
+    {
+        let mut opened = Package::open(dir.path(), || initial.clone()).unwrap();
+        let (first, rest) = cmds.split_at(1);
+        for c in first {
+            c.apply(&mut expected).unwrap();
+            opened.package.record(c).unwrap();
+        }
+        opened.package.compact(&expected).unwrap();
+        // recorded while the snapshot may still be being written
+        for c in rest {
+            c.apply(&mut expected).unwrap();
+            opened.package.record(c).unwrap();
+        }
+        opened.package.flush().unwrap();
+        opened.package.wait();
+        assert_eq!(load_snapshot(dir.path()).unwrap().sources.len(), 1, "the snapshot has the first command");
+    }
+    let reopened = Package::open(dir.path(), || unreachable!()).unwrap();
+    assert_eq!(reopened.recovered, 2, "the rest come from the journal");
+    assert_eq!(reopened.workspace, expected);
+}
+
+/// A crash before a compaction's snapshot was written: the rotated journal is replayed, then
+/// the current one.
+#[test]
+fn a_rotated_journal_not_yet_saved_is_replayed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (initial, cmds) = sample();
+    let mut expected = initial.clone();
+    {
+        let mut opened = Package::open(dir.path(), || initial.clone()).unwrap();
+        for c in &cmds {
+            c.apply(&mut expected).unwrap();
+            opened.package.record(c).unwrap();
+        }
+        opened.package.flush().unwrap();
+        opened.package.wait();
+    }
+    // as the writer would have left it, had the app died before the snapshot: the first two
+    // commands in a rotated journal, the last in the current one
+    let journal = dir.path().join("journal");
+    let text = std::fs::read_to_string(journal.join("current.log")).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    std::fs::write(journal.join("1.log"), format!("{}
+{}
+", lines[0], lines[1])).unwrap();
+    std::fs::write(journal.join("current.log"), format!("{}
+", lines[2])).unwrap();
+    let reopened = Package::open(dir.path(), || unreachable!()).unwrap();
+    assert_eq!(reopened.recovered, 3);
+    assert_eq!(reopened.workspace, expected);
+    drop(reopened);
+    assert!(!journal.join("1.log").exists(), "saved, then deleted");
+    assert_eq!(Package::open(dir.path(), || unreachable!()).unwrap().recovered, 0);
+}
+
+/// A crash after a compaction's snapshot but before its journal was deleted: not replayed
+/// again (the manifest says the snapshot has it).
+#[test]
+fn a_rotated_journal_already_saved_is_not_replayed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (initial, cmds) = sample();
+    let mut expected = initial.clone();
+    {
+        let mut opened = Package::open(dir.path(), || initial.clone()).unwrap();
+        for c in &cmds {
+            c.apply(&mut expected).unwrap();
+            opened.package.record(c).unwrap();
+        }
+        let journal = dir.path().join("journal");
+        let text = std::fs::read_to_string(journal.join("current.log")).unwrap();
+        opened.package.compact(&expected).unwrap();
+        opened.package.wait();
+        // the deleted journal back, as if the delete never happened
+        std::fs::write(journal.join("1.log"), text).unwrap();
+    }
+    let reopened = Package::open(dir.path(), || unreachable!()).unwrap();
+    assert_eq!(reopened.recovered, 0);
+    assert_eq!(reopened.workspace, expected);
+}

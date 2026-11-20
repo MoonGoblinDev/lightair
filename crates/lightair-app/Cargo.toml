@@ -104,7 +104,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_ProcessStatus",
     "Win32_Security_Cryptography",
     "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Kernel",
 ] }
+# LIGHTAIR_STALLS: naming the stalled UI thread's frames (stall_watch.rs)
+backtrace = "0.3"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(lightair_cross_check)'] }

@@ -14,11 +14,9 @@ use crate::ui::{self, tok};
 impl StudioWindow {
     /// Looks at what's connected every few seconds (off the UI thread), from launch on.
     pub(super) fn watch_devices(&mut self, cx: &mut Context<Self>) {
-        let engine = self.studio.read(cx).engine().clone();
         cx.spawn(async move |this, cx| {
             loop {
-                let e = engine.clone();
-                let now = cx.background_executor().spawn(async move { console::Connected::now(&e) }).await;
+                let now = cx.background_executor().spawn(async move { console::Connected::now() }).await;
                 tracing::debug!(mics = now.mics.len(), cameras = now.cameras.len(), "connected devices");
                 let alive = this
                     .update(cx, |this, cx| {
@@ -31,7 +29,7 @@ impl StudioWindow {
                 if !alive {
                     break;
                 }
-                cx.background_executor().timer(std::time::Duration::from_secs(3)).await;
+                cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
             }
         })
         .detach();

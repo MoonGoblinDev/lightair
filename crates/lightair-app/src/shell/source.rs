@@ -111,8 +111,9 @@ impl StudioWindow {
         cx: &mut Context<Self>,
     ) -> Vec<(String, Value)> {
         let cache_key = (source, key);
-        if !refresh && let Some(list) = self.source_cache.borrow().get(&cache_key) {
-            return list.clone();
+        let cached = self.source_cache.borrow().get(&cache_key).cloned();
+        if !refresh && let Some(list) = cached {
+            return list;
         }
         // the setting's name in the platform's libobs source
         let obs_key = self
@@ -123,9 +124,24 @@ impl StudioWindow {
             .get(&source)
             .and_then(|i| lightair_engine::kinds::libobs_key(&i.kind, key))
             .unwrap_or(key);
-        let list = self.studio.read(cx).engine().call(move |s| s.reconciler.source_options(source, obs_key));
-        self.source_cache.borrow_mut().insert(cache_key, list.clone());
-        list
+        // asked in the background: a camera's devices take DirectShow a while, and the engine
+        // may be busy (opening a camera): what's known meanwhile, then a redraw with the list
+        if self.source_asked.borrow_mut().insert(cache_key) {
+            let (tx, rx) = futures_channel::oneshot::channel();
+            self.studio.read(cx).engine().post(move |s| {
+                let _ = tx.send(s.reconciler.source_options(source, obs_key));
+            });
+            cx.spawn(async move |this, cx| {
+                let list = rx.await.unwrap_or_default();
+                let _ = this.update(cx, |this, cx| {
+                    this.source_asked.borrow_mut().remove(&cache_key);
+                    this.source_cache.borrow_mut().insert(cache_key, list);
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+        cached.unwrap_or_default()
     }
 
     fn replace_file(&mut self, source: Id, key: &'static str, window: &mut Window, cx: &mut Context<Self>) {
@@ -174,6 +190,10 @@ impl StudioWindow {
         let key = device_key(&source.kind, &source.settings)?;
         let current = source.settings[key].clone();
         let list = choices(key, &self.source_options(source.id, key, false, cx), |v| lightair_platform::apps::hide_window(&value_text(v)));
+        // the list still coming (asked in the background): not "Not available" meanwhile
+        if list.is_empty() && self.source_asked.borrow().contains(&(source.id, key)) {
+            return Some(("…".into(), String::new()));
+        }
         Some(match list.into_iter().find(|c| c.value == current) {
             Some(c) => (c.title, c.detail),
             None if current.is_null() || current == json!("") || current == json!(0) => {

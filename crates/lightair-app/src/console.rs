@@ -14,11 +14,13 @@ pub struct Connected {
 }
 
 impl Connected {
-    /// Asks the system (cameras through the engine's thread). Not on the UI thread.
-    pub fn now(engine: &lightair_engine::Engine) -> Connected {
+    /// Asks the system. Not on the UI thread, nor the engine's: listing cameras takes a
+    /// while (DirectShow: 150–550 ms), and the UI waits on the engine's thread for little things
+    /// all the time (libobs lists them from any thread, as OBS's own dialogs do).
+    pub fn now() -> Connected {
         let mics = lightair_engine::devices::input_devices().into_iter().map(|d| (d.id, d.name)).collect();
-        // (name, id) from the engine
-        let cameras = engine.call(|_| lightair_engine::kinds::cameras()).into_iter().map(|(name, id)| (id, name)).collect();
+        // (name, id)
+        let cameras = lightair_engine::kinds::cameras().into_iter().map(|(name, id)| (id, name)).collect();
         Connected { mics, cameras }
     }
 }

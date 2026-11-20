@@ -152,6 +152,8 @@ pub struct Studio {
     mic_history: std::collections::HashMap<Id, std::collections::VecDeque<f32>>,
     /// Imported objects whose size was guessed, waiting for their sources to report a size.
     refit: Option<(Vec<lightair_store::EstimatedObject>, std::time::Instant)>,
+    /// The engine was asked which countdowns ended, and hasn't answered yet.
+    timers_asked: bool,
     /// The recording on its way into the Library.
     pending: Option<Pending>,
     /// The Studio studio_take being recorded.
@@ -204,6 +206,7 @@ impl Studio {
             clips_seen: 0,
             recent_lagged: 0,
             refit: None,
+            timers_asked: false,
             pending: None,
             studio_take: None,
             last_studio_take: None,
@@ -407,9 +410,29 @@ impl Studio {
         }
     }
 
-    /// Runs the end action of countdowns that just ended ("Then go to" a scene).
+    /// Runs the end action of countdowns that just ended ("Then go to" a scene). Asked without
+    /// waiting (on every tick: the engine may be busy opening a camera, and the window would
+    /// freeze meanwhile); acted on as the answer comes.
     pub fn run_timer_ends(&mut self, cx: &mut Context<Self>) {
-        let ended = self.engine.call(|s| s.reconciler.take_ended_timers());
+        if self.timers_asked {
+            return;
+        }
+        self.timers_asked = true;
+        let (tx, rx) = futures_channel::oneshot::channel();
+        self.engine.post(move |s| {
+            let _ = tx.send(s.reconciler.take_ended_timers());
+        });
+        cx.spawn(async move |this, cx| {
+            let ended = rx.await.unwrap_or_default();
+            let _ = this.update(cx, |this, cx| {
+                this.timers_asked = false;
+                this.timers_ended(ended, cx);
+            });
+        })
+        .detach();
+    }
+
+    fn timers_ended(&mut self, ended: Vec<Id>, cx: &mut Context<Self>) {
         for id in ended {
             let target = self
                 .workspace()
@@ -564,6 +587,14 @@ impl Studio {
             && let Err(e) = pkg.compact(self.doc.workspace())
         {
             tracing::error!(%e, "compaction failed");
+        }
+    }
+
+    /// Compacts and waits for it to be on disk (the package writes on its own thread): on quit.
+    pub fn save_and_wait(&mut self) {
+        self.compact();
+        if let Some(pkg) = &self.package {
+            pkg.wait();
         }
     }
 
