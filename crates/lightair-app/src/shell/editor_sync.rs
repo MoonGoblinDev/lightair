@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 /// What the desktop answers for (`session.hello`'s features).
-pub(crate) const FEATURES: &[&str] = &["takes", "clips", "edits", "transfer"];
+pub(crate) const FEATURES: &[&str] = &["takes", "clips", "edits", "transfer", "project.export"];
 
 /// A checkout lasts this long without word from the device.
 const CHECKOUT_FOR: Duration = Duration::from_secs(7 * 24 * 3600);
@@ -237,7 +237,7 @@ impl EditorSync {
     /// Answers a call this file is for (`None`: another's).
     pub(crate) fn call(&self, call: &Call) -> Option<Reply> {
         let family = call.method.split('.').next().unwrap_or("");
-        if !matches!(family, "takes" | "clips" | "edits" | "transfer") {
+        if !matches!(family, "takes" | "clips" | "edits" | "transfer" | "project") {
             return None;
         }
         let p = &call.params;
@@ -260,6 +260,8 @@ impl EditorSync {
             "edits.put" => paired().and_then(|d| self.put_project(d, p)),
             "transfer.upload" => paired().and_then(|d| self.upload(d, p)),
             "transfer.status" => self.status(p),
+            "project.list" => Ok(self.list_workspaces()),
+            "project.export" => paired().and_then(|d| self.export_workspace(d, p)),
             m => Err(ApiError::new(ErrorKind::Unknown, format!("no method {m}"))),
         })
     }
@@ -491,6 +493,67 @@ impl EditorSync {
         let mut out = t.to_json();
         annotate(&mut out, &about);
         Ok(json!({"transfer": out, "revision": revision_of(&bytes)}))
+    }
+
+    // ------------------------------------------------------------------ projects (MS-01)
+
+    /// `project.list`: the workspaces on this computer (Lightair Live calls them projects).
+    fn list_workspaces(&self) -> Value {
+        let current = self.workspace.lock().clone();
+        let projects: Vec<Value> = crate::library::list_workspaces(current.as_deref())
+            .into_iter()
+            .filter_map(|w| {
+                let manifest = lightair_store::manifest(&w.dir);
+                let v: Value = serde_json::from_slice(&std::fs::read(&manifest).ok()?).ok()?;
+                let modified = [manifest, w.dir.join("journal").join("current.log"), w.dir.join("scenes")]
+                    .iter()
+                    .map(|p| modified_ms(p))
+                    .max()
+                    .unwrap_or(0);
+                let formats: Vec<Value> = v["canvases"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|c| json!({"id": c["id"], "name": c["name"], "width": c["width"], "height": c["height"]}))
+                    .collect();
+                Some(json!({
+                    "id": v["id"],
+                    "name": w.name,
+                    "modified": modified,
+                    "scenes": v["scenes"].as_array().map_or(0, Vec::len),
+                    "formats": formats,
+                    "open": current.as_deref() == Some(w.dir.as_path()),
+                }))
+            })
+            .collect();
+        json!({"projects": projects})
+    }
+
+    /// `project.export {project}`: a portable copy of the workspace (as it is now, its media
+    /// collected, nothing secret: lightair-store's `portable`), offered as a transfer. Copies
+    /// are kept a day (as long as the transfer's token), in the cache.
+    fn export_workspace(&self, device: &str, p: &Value) -> Reply {
+        let id = need(p, "project")?;
+        let current = self.workspace.lock().clone();
+        let dir = crate::library::list_workspaces(current.as_deref())
+            .into_iter()
+            .map(|w| w.dir)
+            .find(|d| {
+                std::fs::read(lightair_store::manifest(d))
+                    .ok()
+                    .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                    .is_some_and(|v| v["id"].as_str() == Some(id))
+            })
+            .ok_or_else(|| ApiError::not_found(format!("no project {id}")))?;
+        let exports = lightair_platform::paths::data_dir().join("cache").join("project-export");
+        std::fs::create_dir_all(&exports).map_err(failed)?;
+        let _ = lightair_store::portable::remove_old(&exports, Duration::from_secs(24 * 3600));
+        let to = exports.join(format!("{id}-{}", now_ms()));
+        let done = lightair_store::portable::export(&dir, &to).map_err(failed)?;
+        let files: Vec<(String, PathBuf)> = done.files.iter().map(|n| (n.clone(), to.join(n))).collect();
+        let t = self.transfers()?.offer_download(device, files).map_err(failed)?;
+        let name = crate::library::list_workspaces(current.as_deref()).into_iter().find(|w| w.dir == dir).map(|w| w.name);
+        Ok(json!({"transfer": t.to_json(), "name": name, "assets": done.assets, "secrets_removed": done.secrets_removed}))
     }
 
     // ------------------------------------------------------------------ edits back
@@ -799,6 +862,46 @@ mod round_trip {
         sync.connect(transfers.clone(), pairing);
         sync.set_workspace(Some(ws.to_path_buf()));
         (sync, transfers)
+    }
+
+    #[test]
+    fn a_workspace_is_listed_and_exported_portable() {
+        let root = std::env::temp_dir().join(format!("lightair-project-export-{}-{}", std::process::id(), Id::new()));
+        let dir = root.join("Show.lightair");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("logo.png"), b"png").unwrap();
+        let mut w = lightair_model::Workspace::new("Show");
+        let logo = lightair_model::Source {
+            id: Id::new(),
+            name: "Logo".into(),
+            kind: "image_source".into(),
+            settings: json!({"file": root.join("logo.png"), "token": "nope"}),
+            effects: vec![],
+        };
+        w.sources.insert(logo.id, Arc::new(logo));
+        lightair_store::save(&dir, &w).unwrap();
+        let (sync, _) = sync_for(&dir);
+
+        let list = call(&sync, "project.list", json!({})).unwrap();
+        let me = list["projects"].as_array().unwrap().iter().find(|p| p["id"] == json!(w.id)).expect("listed").clone();
+        assert_eq!(me["name"], "Show");
+        assert_eq!(me["open"], true);
+        assert_eq!(me["formats"].as_array().unwrap().len(), w.canvases.len());
+
+        let out = call(&sync, "project.export", json!({"project": w.id})).unwrap();
+        let names: Vec<&str> = out["transfer"]["manifest"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"workspace.json") && names.contains(&"sources.json") && names.contains(&"assets/logo.png"), "{names:?}");
+        assert_eq!(out["assets"], 1);
+        assert_eq!(out["secrets_removed"], 1);
+        assert!(call(&sync, "project.export", json!({"project": Id::new()})).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+        // (the copy went to the app's cache)
+        let exports = lightair_platform::paths::data_dir().join("cache").join("project-export");
+        for e in std::fs::read_dir(&exports).into_iter().flatten().flatten() {
+            if e.file_name().to_string_lossy().starts_with(&w.id.to_string()) {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
     }
 
     #[test]

@@ -74,7 +74,7 @@ internet MC-17, remote control of a phone's Studio MS-26) are listed last and no
 ## Phase 4 · Studio
 
 52. ⬜ `lightair-render`'s scene renderer: a whole `lightair-model` scene per frame, shared with the desktop Editor and its golden-frame tests
-53. ⬜ Project transfer (MS-01): `project.list`, `project.export` (a portable package: assets collected, secrets out)
+53. ✅ Project transfer (MS-01): `project.list`, `project.export` (a portable package: assets collected, secrets out; lightair-store `portable`). The package is the workspace's files plus `assets/`, sent file by file over the transfer, not zipped (the phone needs no unzip); a phone opens it, marking layers it can't show (its half)
 
 ## After phase 4 (designed, not scheduled; not counted)
 
@@ -83,4 +83,4 @@ remote control of a phone's Studio (MS-26).
 
 ## Count
 
-48 of 53 done.
+49 of 53 done.
