@@ -1,8 +1,9 @@
 # Avatars (VTubing)
 
-Status (2026-11-20): **VRM**, **Live2D** and **Inochi2D** avatars work, following the face; VRM
-also follows the body and hands (macOS), still jittery. Next: nijigenerate (nijilive) puppets,
-then Ayatsuri 2D and Umamo. **To continue in another session, start at "Handoff" below.**
+Status (2026-11-21): **VRM**, **Live2D**, **Inochi2D**, **nijilive** (nijigenerate) and **Umamo**
+avatars work, following the face; VRM also follows the body and hands (macOS), still jittery.
+Next: Ayatsuri 2D, then polish (see "Next, in order"). **To continue in another session, start at
+"Handoff" below.**
 
 An **Avatar** is an object like a camera: a character model that moves with the person in front
 of a camera. The camera's picture is never shown; only the character is. Any camera works
@@ -15,7 +16,7 @@ of a camera. The camera's picture is never shown; only the character is. Any cam
 | 1 | **VRM** 0.x and 1.0 | `.vrm` (glTF) | Ours | Open; humanoid bones, expressions, MToon, spring bones |
 | 2 | **Live2D** Cubism 3–5 | `.model3.json`, `.moc3`, textures, `.physics3.json`, `.exp3.json`, `.motion3.json` | mocari (pure Rust, MIT; Lightair's fork at third_party/mocari, github.com/MoonGoblinDev/Mocari) — no Cubism Core or SDK | In: face → standard parameters (angles, body, eyes, gaze, brows, vowels or mouth, breath), the model's own EyeBlink and LipSync groups, physics, pose, expressions; drawn with clip masks, blend modes, multiply and screen colours (`lightair-engine::avatar2d`). See "Licensing" |
 | 3 | **Inochi2D** | `.inp`, `.inx` | Inox2D (Rust, BSD-2; Lightair's fork at third_party/inox2d, github.com/MoonGoblinDev/inox2d), with Inochi2D 0.8's MeshGroups added | Done: parameters found by name from the face (head, body, eyes, gaze, brows, mouth, breath), physics, MeshGroups, masks, composites, blend modes (`lightair-avatar::inochi2d`, drawn by `lightair-engine::avatar_inochi2d`) |
-| 4 | **nijigenerate** | nijilive puppets (`.inp`/`.inx`, derived from Inochi2D 0.8) | the Inox2D fork, extended for nijilive's differences (reference: github.com/nijigenerate/nijilive, D, BSD-2) | MeshGroups (shared with Inochi2D 0.8) done; nijilive's own nodes not started |
+| 4 | **nijigenerate** | nijilive puppets (`.inp`/`.inx`, derived from Inochi2D 0.8) | the Inox2D fork, extended for nijilive's differences (references: github.com/nijigenerate/nijilive, D, and its C++ port github.com/nijigenerate/nicxlive, both BSD-2) | Done: PathDeformers (with pendulum physics), DynamicComposites, Mask nodes, welded vertices, nijilive's MeshGroup rules; not yet GridDeformers, `pinToMesh`, auto-sized DynamicComposites |
 | 5 | **Ayatsuri 2D** | its own models (it also reads `.moc3` v3 to v5.3) | github.com/Ayatsuri2D/ayatsuri_2d (Rust, GPL-3.0: fine for Lightair) | Not started |
 | 6 | **Umamo** | `.uma` (its native format: a ZIP with the puppet graph as JSON, buffers, the texture atlas); it also exports `.moc3`, which Live2D's path reads | github.com/umamoorg/umamo (Kotlin, GPL-3.0; future2d/umamo is an old fork without `.uma`): reader and evaluator ported to Rust | Done: `lightair-avatar::uma` (keyform grids, warp and rotation deformers, blend shapes, glue, clip masks), drawn by `lightair-engine::avatar_uma` |
 
@@ -78,6 +79,18 @@ model file ──► loader (per format) ──► model ──► poser (per fo
 - **VRM** (`crates/lightair-avatar/src/vrm.rs`, `glb.rs`, `pose.rs`): 0.x and 1.0, humanoid,
   expressions, look-at, spring bones, MToon-like toon shader with outlines, drawn by
   `crates/lightair-engine/src/avatar.rs`. Only VRoid 1.0 exports have been tried (0.x untested).
+- **nijilive** (nijigenerate's puppets, `.inx`/`.inp` like Inochi2D's): the same path as Inochi2D,
+  the fork's `inox2d/src/nijilive.rs`, `nijilive/curve.rs`, `nijilive/path.rs` adding
+  PathDeformers (Bezier/Spline curves deformed by params and by the deformers above; pendulum and
+  spring drivers), which deformer reaches which node in nijilive's order, DynamicComposites (ops
+  `BeginDynamic`/`EndDynamic`: children into a layer, laid onto the composite's own mesh through
+  a `TextureFrame`), Mask nodes (meshes only for masks, a 1×1 white texture) and welded vertices.
+  A mask source's own masks are left out (`MaskPhase` in `inochi2d.rs`), so mask sets never nest.
+  In libobs's Metal shaders the `frame` uniform read as zero in the Dynamic technique: the layer
+  coordinates are computed on the CPU and the frame passed again as `dyn_frame`. Tried on
+  nijigenerate's example Midori 1.6 (`~/Downloads/nijilive-samples/Midori-20250426-1.6.inx`,
+  CC BY, linked from nijigenerate's v0.9.0 release): correct, through libobs too; Aka and
+  Inochi2D Midori byte-identical to before.
 - **Umamo** (`crates/lightair-avatar/src/uma.rs`, drawn by `crates/lightair-engine/src/avatar_uma.rs`):
   `.uma` read (manifest, `model/puppet.json` + `model/buffers.bin`, textures as atlas pages or
   separate tiles) and evaluated as Umamo's runtime does (ported from its Kotlin at commit
@@ -171,7 +184,7 @@ model file ──► loader (per format) ──► model ──► poser (per fo
 - Same arrangement as mocari: `third_party/inox2d` (origin MoonGoblinDev/inox2d, upstream
   Inochi2D/inox2d, branch `main`); Lightair depends on `third_party/inox2d/inox2d`. Upstream:
   `git -C third_party/inox2d fetch upstream && git -C third_party/inox2d merge upstream/main`.
-- Lightair's commit `37bc27a` on upstream d4dd9dd: MeshGroups (ported from inochi2d v0.8.7's
+- Lightair's commits on upstream d4dd9dd: `ad041e8` nijilive (above); `37bc27a`: MeshGroups (ported from inochi2d v0.8.7's
   `core/nodes/meshgroup`: fixed and dynamic groups, translated children, propagating
   composites; a node follows the nearest group reached through Parts), params applied at (0, 0)
   too, `Puppet::params()`, `Puppet::textured_meshes()`, `ParamCtx::get()`,
@@ -192,11 +205,10 @@ model file ──► loader (per format) ──► model ──► poser (per fo
    parameter names (`by_name` in `inochi2d.rs`); Inochi Session's ExpressionBindings (Lua-like
    expressions) and its Blendshape sources beyond the ones read; opacity and tint bindings (Inox2D
    ignores them: `BindingValues::Opacity`); disabled nodes (`enabled: false`, drawn today).
-3. **nijigenerate / nijilive**: compare nijilive's puppet format with Inochi2D 0.8 and extend
-   the Inox2D fork for the differences. MeshGroups (from nijigenerate's author, in Inochi2D
-   0.8) are in already; nijilive adds deformers (`core/nodes/deformer`: grid, path/curve,
-   physics drivers), filters and more node types: read `source/nijilive/core/nodes/` and port
-   what puppets use. Sample puppets: nijigenerate's own.
+3. **nijilive** (done for what Midori 1.6 uses): GridDeformers (load as plain nodes today),
+   `pinToMesh`, auto-sized DynamicComposites (drawn as ordinary composites), `physics_only`,
+   `merge_mode` (parsed, unused); compare with nijigenerate's own render (judged by eye so far:
+   faint low-alpha streaks near the shoulders may be in the art or not); more puppets.
 4. **Ayatsuri 2D**: read its own format with its Rust crates (GPL-3.0); its `.moc3` reader is a
    second opinion for Live2D models mocari draws wrongly.
 5. **Umamo** (done; polish): try puppets made in Umamo from a PSD (only Mao imported into Umamo
