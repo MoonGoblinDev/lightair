@@ -74,6 +74,8 @@ pub(crate) struct Phones {
     told_health: std::time::Instant,
     /// Phone camera layers (`phone_camera`).
     pub cameras: super::phone_camera::Cameras,
+    /// Lightair Editor's round trip (`editor_sync`).
+    pub editor_sync: Arc<super::editor_sync::EditorSync>,
 }
 
 fn folder() -> PathBuf {
@@ -232,6 +234,7 @@ impl StudioWindow {
             told_issues: vec![],
             told_health: std::time::Instant::now(),
             cameras,
+            editor_sync: Default::default(),
         }
     }
 
@@ -240,6 +243,8 @@ impl StudioWindow {
     pub(super) fn sync_phones(&mut self, cx: &mut Context<Self>) {
         // Phone camera layers want the port too
         self.sync_phone_cameras(cx);
+        // the Editor's round trip answers from the workspace open now
+        self.remote.phones.editor_sync.set_workspace(self.studio.read(cx).workspace_dir());
         let running = self.remote.running().is_some();
         let p = &mut self.remote.phones;
         if p.offer.as_ref().is_some_and(|(o, _)| !p.pairing.open() && o.expires_at > 0) {
@@ -282,14 +287,18 @@ impl StudioWindow {
                 port,
                 identity: identity.clone(),
                 desktop: p.desktop.clone(),
-                features: FEATURES.iter().map(|f| f.to_string()).collect(),
+                features: FEATURES.iter().chain(super::editor_sync::FEATURES).map(|f| f.to_string()).collect(),
             };
             let started = self.remote.running().map(|s| s.start_secure(config, self.remote.phones.pairing.clone()));
+            let transfers = self.remote.running().map(|s| s.transfers());
             let p = &mut self.remote.phones;
             match started {
                 Some(Ok(l)) => {
                     // phone cameras' control channel (lightair-live's docs/05 §6)
                     l.cameras(p.cameras.host.clone());
+                    if let Some(t) = transfers {
+                        p.editor_sync.connect(t, p.pairing.clone());
+                    }
                     p.cameras.host.set_phones_port(l.addr().port());
                     p.listener = Some(l);
                     p.error = None;
@@ -814,7 +823,7 @@ impl StudioWindow {
             "panic.stop_all" => {
                 for method in ["stream.stop", "record.stop", "vcam.stop"] {
                     // "not live" and the like: nothing to stop
-                    let _ = self.remote_call(&Call { method: method.into(), params: json!({}), client: who }, cx);
+                    let _ = self.remote_call(&Call { method: method.into(), params: json!({}), client: who, device: None }, cx);
                 }
                 Ok(json!({}))
             }
@@ -879,7 +888,7 @@ impl StudioWindow {
     fn tell_phones(&mut self, cx: &mut Context<Self>) {
         let hub = self.studio.read(cx).chat.clone();
         let staging = self.staging_json(cx);
-        let mut out: Vec<(&str, Value)> = vec![];
+        let mut out: Vec<(&str, Value)> = self.remote.phones.editor_sync.take_events();
         let p = &mut self.remote.phones;
         // the first look only notes where chat is: history comes from chat.history
         let events = if p.told_chat == u64::MAX { vec![] } else { hub.since(p.told_chat) };

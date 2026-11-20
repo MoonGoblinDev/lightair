@@ -53,8 +53,19 @@ Scenes, objects, sources and tracks are named by id or by name. Positions are ca
 | `camera.pair` | `source` (a Phone camera layer) | `link` (the pairing code's link, for Lightair Live), `expires_at`; the person still allows the phone in Lightair |
 | `camera.status` | `source?` | `cameras: [{source, connected, phone, picture, rotation, received_kbps, state, health, tally}]`, `srt_port` |
 | `camera.control` | `source`, `control` (`zoom`, `torch`, `focus`, `exposure`, `white_balance`, as lightair-live's docs/05 §6) | sent to the layer's phone |
+| `takes.list` / `clips.list` | `since?` (a `cursor` from before), `kind?` (take, recording, export) | `items` (or `clips`): `{id, kind, name, created, modified, duration_ms, formats, size_bytes, revision, has_proxies, thumbnail {mime, data}, markers, missing, checked_out}`, `cursor` |
+| `takes.fetch` / `clips.fetch` | `take` (or `clip`), `files?`, `proxies_only?` | `transfer {token, manifest: [{name, size, sha256}]}`, `revision`: a take's folder's files (its name kept: `….lightair-take/screen.mp4`) and the proxies the desktop made (`proxy-<content>.mp4`) |
+| `takes.put_edit` | `take`, `edit` (its `edit.json`), `base_revision` | `revision`, or `{conflict: true, revision, copy}` (the phone's kept beside the take's as `edit (edited on …).json`) |
+| `takes.checkout` / `takes.checkin` | `item`, `device_name?` | "Being edited on …" for 7 days without word (`checkouts.json`) |
+| `edits.list` | `since?` | `projects: [{id, name, created, modified, revision, size, aspect, fps, duration_ms, media, thumbnail, checked_out}]`, `cursor` |
+| `edits.fetch` | `project`, `files?` | `transfer` of `project.json` and its media (`media/<n>-<file>`, each with its `medium` and desktop `path`), `revision` |
+| `edits.put` | `project` (the document), `base_revision?` (none: new here) | `revision`, or `{conflict: true, revision, copy}` (a copy "… (edited on …)") |
+| `transfer.upload` | `files: [{name, size, sha256}]`, `kind` (export, project), `project?` | `transfer`; when it's all here, an export is in the Library (`from` the project) and a project in `edits/` with its media in `edits/media/<id>/` (`media/…` paths pointed there); event `transfer.done {token, kind, item}` |
+| `transfer.status` | `token` | `{done, kind, files: [{name, size, received}], item?}` |
 | `auth.login` | `password` | (when not sent as `Authorization: Bearer`) |
 | `events.subscribe` | `events` (names; absent: all) | |
+
+The `takes`, `clips`, `edits` and `transfer` methods are for Lightair Editor on a paired phone or tablet (the phones' TLS port, lightair-live's docs/05 §4.2 and §7): their files move as `GET`/`PUT`/`HEAD https://host:4456/transfer/<token>/<name>`, ranged and resumable, the token (128 bits, 24 hours, for that device while it's paired) the only sign-in; a piece of an upload goes at the offset received so far (`Lightair-Received`), and the last is checked against its SHA-256. A revision is the start of the stored document's SHA-256; a document sent from an older revision isn't merged but kept as a copy.
 
 Events arrive as `{"method": "event", "params": {"name", "data"}}`: `scene.program`, `scene.list`, `record.state`, `stream.state`, `vcam.state`, `clip.saved`, `audio.mute`, `audio.volume`, `object.visible`, `workspace.changed`, `source.tally` (a Phone camera layer's `source`, `program`, `staged`, `live`, on change).
 

@@ -284,7 +284,12 @@ impl StudioWindow {
         let jobs = self.remote.jobs.clone();
         let engine = self.studio.read(cx).engine().clone();
         let chat = self.studio.read(cx).chat.clone();
+        let editor_sync = self.remote.phones.editor_sync.clone();
         let handler: Handler = Arc::new(move |call: Call| {
+            // Lightair Editor's takes, projects and transfers: files, on the server's thread
+            if let Some(reply) = editor_sync.call(&call) {
+                return reply;
+            }
             // sending takes a moment: on the server's thread, not the main one
             if call.method == "chat.send" {
                 return crate::chat_send::send(&chat, &call.params).map_err(|e| ApiError::new(ErrorKind::State, e));
