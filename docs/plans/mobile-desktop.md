@@ -78,7 +78,7 @@ internet MC-17, remote control of a phone's Studio MS-26) are listed last and no
 
 ## After phase 4 (designed, not scheduled; not counted)
 
-Looks `look.list` / `look.set` (MR-19); the relay (MR-23); the camera over the internet (MC-17);
+Looks `look.list` / `look.set` (MR-19): dropped by the user ("Leave MR-19 off"; the desktop removed whole-stack looks, 2359662). The relay (MR-23); the camera over the internet (MC-17);
 remote control of a phone's Studio (MS-26).
 
 ## Count
