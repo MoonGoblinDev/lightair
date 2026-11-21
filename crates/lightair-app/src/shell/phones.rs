@@ -125,6 +125,21 @@ fn computer_name() -> String {
 /// The TLS identity from the Keychain, made (and saved) the first time.
 fn load_identity(id: &str) -> Result<Identity, String> {
     let b64 = base64::engine::general_purpose::STANDARD;
+    // a dev build (LIGHTAIR_DEV_PAIRING): its own identity in a file, not the Keychain
+    if dev_pairing() {
+        let file = folder().join("dev-identity.txt");
+        if let Ok(saved) = std::fs::read_to_string(&file)
+            && let Some((cert, key)) = saved.trim().split_once('.')
+            && let (Ok(cert_der), Ok(key_der)) = (b64.decode(cert), b64.decode(key))
+        {
+            return Ok(Identity { cert_der, key_der });
+        }
+        let identity = Identity::generate(id)?;
+        let _ = std::fs::create_dir_all(folder());
+        std::fs::write(&file, format!("{}.{}", b64.encode(&identity.cert_der), b64.encode(&identity.key_der)))
+            .map_err(|e| e.to_string())?;
+        return Ok(identity);
+    }
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, "identity").map_err(|e| e.to_string())?;
     if let Ok(saved) = entry.get_password()
         && let Some((cert, key)) = saved.split_once('.')
@@ -173,11 +188,7 @@ impl Phones {
     }
 }
 
-/// Debug builds only, with `LIGHTAIR_DEV_PAIRING=1`: phones pair with no one at the computer
-/// (a simulator testing the round trip). Release builds never do.
-fn dev_pairing() -> bool {
-    cfg!(debug_assertions) && std::env::var("LIGHTAIR_DEV_PAIRING").is_ok_and(|v| v == "1")
-}
+use crate::secrets::dev_pairing;
 
 /// Whether `peer` is this computer (a simulator runs on it).
 fn from_this_computer(peer: std::net::IpAddr) -> bool {

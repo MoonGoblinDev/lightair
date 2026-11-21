@@ -29,8 +29,25 @@ fn remote_entry() -> Option<keyring::Entry> {
     keyring::Entry::new(REMOTE, "password").ok()
 }
 
+/// Debug builds only, with `LIGHTAIR_DEV_PAIRING=1`: phones pair with no one at the computer
+/// (a simulator testing the round trip), and nothing is read from the Keychain (an unsigned
+/// debug build can't read the signed app's items without asking). Release builds never do.
+pub fn dev_pairing() -> bool {
+    cfg!(debug_assertions) && std::env::var("LIGHTAIR_DEV_PAIRING").is_ok_and(|v| v == "1")
+}
+
+/// `dev_pairing`'s remote API password: `LIGHTAIR_REMOTE_PASSWORD`, else one made for this run.
+fn dev_password() -> String {
+    static P: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    P.get_or_init(|| std::env::var("LIGHTAIR_REMOTE_PASSWORD").unwrap_or_else(|_| lightair_remote::new_password()))
+        .clone()
+}
+
 /// The remote API's password, made (and saved) the first time it's asked for.
 pub fn remote_password() -> Option<String> {
+    if dev_pairing() {
+        return Some(dev_password());
+    }
     let entry = remote_entry()?;
     if let Ok(p) = entry.get_password() {
         return Some(p);
@@ -57,6 +74,9 @@ pub fn early_remote_password() -> Option<Option<String>> {
 
 /// A new remote API password (clients with the old one must reconnect with this).
 pub fn new_remote_password() -> Option<String> {
+    if dev_pairing() {
+        return Some(dev_password());
+    }
     let p = lightair_remote::new_password();
     remote_entry()?.set_password(&p).ok()?;
     Some(p)
