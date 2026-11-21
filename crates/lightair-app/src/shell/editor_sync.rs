@@ -161,6 +161,31 @@ fn thumbnail(path: Option<&PathBuf>) -> Value {
         "data": base64::engine::general_purpose::STANDARD.encode(out.into_inner())})
 }
 
+/// An item's thumbnail: the one made as it was recorded, else (a take or clip copied in) a frame
+/// of its first video a second in, made once and kept with the Library's thumbnails.
+fn thumbnail_of(ws: &Path, item: &Item) -> Option<PathBuf> {
+    if let Some(t) = item.thumbnail.as_ref().filter(|t| t.is_file()) {
+        return Some(t.clone());
+    }
+    let made = recordings::thumbnails_dir(ws).join(format!("{}.png", item.id));
+    if made.is_file() {
+        return Some(made);
+    }
+    let video = match take_folder(item) {
+        Some(folder) => files_in(&folder).into_iter().find(|f| is_video(f)),
+        None => item.files.iter().map(|f| f.path.clone()).find(|p| is_video(p) && p.is_file()),
+    }?;
+    let probe = lightair_render::media::probe(&video).ok()?;
+    let width = 320u32.min(probe.width.max(2)) & !1;
+    let height = ((probe.height as u64 * width as u64 / probe.width.max(1) as u64) as u32).max(2) & !1;
+    let at = (probe.duration_ms / 2).min(1_000);
+    let rgba = lightair_render::media::frame_at(&video, at, (width, height)).ok()?;
+    let img = image::RgbaImage::from_raw(width, height, rgba)?;
+    std::fs::create_dir_all(made.parent()?).ok()?;
+    img.save(&made).ok()?;
+    Some(made)
+}
+
 /// A take's screen (else its first video) as its take.json says: (width, height, fps), and
 /// whether it recorded a camera.
 fn take_shape(folder: &Path) -> (Option<u64>, Option<u64>, Option<f64>, bool) {
@@ -247,7 +272,7 @@ impl EditorSync {
                 ApiError::new(ErrorKind::State, "Only a paired phone or tablet can do this (on the phones' port).")
             })
         };
-        Some(match call.method.as_str() {
+        let reply = match call.method.as_str() {
             "takes.list" => self.list(p, &[Kind::StudioTake, Kind::Recording, Kind::Export], "items"),
             "clips.list" => self.list(p, &[Kind::Clip], "clips"),
             "takes.fetch" => paired().and_then(|d| self.fetch_item(d, need(p, "take")?, p)),
@@ -263,7 +288,15 @@ impl EditorSync {
             "project.list" => Ok(self.list_workspaces()),
             "project.export" => paired().and_then(|d| self.export_workspace(d, p)),
             m => Err(ApiError::new(ErrorKind::Unknown, format!("no method {m}"))),
-        })
+        };
+        // what devices fetch, send and change (lists and status asks are too many to log)
+        let quiet = call.method.ends_with(".list") || call.method == "transfer.status";
+        match &reply {
+            Err(e) => tracing::warn!(method = call.method, device = ?device, error = e.message, "editor sync"),
+            Ok(_) if !quiet => tracing::info!(method = call.method, device = ?device, "editor sync"),
+            Ok(_) => {}
+        }
+        Some(reply)
     }
 
     // ------------------------------------------------------------------ listing
@@ -320,7 +353,7 @@ impl EditorSync {
                     "height": height,
                     "fps": fps,
                     "has_camera": has_camera,
-                    "thumbnail": thumbnail(i.thumbnail.as_ref()),
+                    "thumbnail": thumbnail(thumbnail_of(&ws, i).as_ref()),
                     "markers": i.markers.iter().map(|m| json!({"at_ms": m.at_ms, "label": m.label})).collect::<Vec<_>>(),
                     "missing": !i.missing().is_empty(),
                     "checked_out": checkouts.get(&i.id.to_string()).map(|c| c["device_name"].clone()),
@@ -713,7 +746,10 @@ impl EditorSync {
                 _ => Err("an upload of an unknown kind".to_string()),
             };
             let item = match result {
-                Ok(v) => v,
+                Ok(v) => {
+                    tracing::info!(kind, token = %f.transfer.token, files = f.transfer.manifest.len(), "editor sync: an upload taken in");
+                    v
+                }
                 Err(e) => {
                     tracing::warn!(e, "editor sync: an upload couldn't be taken in");
                     json!({"error": e})
@@ -913,6 +949,30 @@ mod round_trip {
         sync.connect(transfers.clone(), pairing);
         sync.set_workspace(Some(ws.to_path_buf()));
         (sync, transfers)
+    }
+
+    #[test]
+    fn a_take_copied_in_gets_a_thumbnail() {
+        let Ok(ff) = lightair_render::media::ffmpeg() else {
+            eprintln!("FFmpeg isn't installed; skipping");
+            return;
+        };
+        let (ws, take, _, _) = workspace();
+        let screen = ws.join("recordings/Studio take 10.32.lightair-take/screen.mp4");
+        let made = std::process::Command::new(ff)
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x2060C0:s=640x360:r=30:d=2", "-pix_fmt", "yuv420p"])
+            .arg(&screen)
+            .status()
+            .is_ok_and(|s| s.success());
+        assert!(made);
+        let (sync, _) = sync_for(&ws);
+        let list = call(&sync, "takes.list", json!({})).unwrap();
+        let t = list["items"].as_array().unwrap().iter().find(|i| i["id"] == json!(take)).unwrap().clone();
+        assert_eq!(t["thumbnail"]["mime"], "image/jpeg", "{}", t["thumbnail"]);
+        assert_eq!((t["thumbnail"]["width"].as_u64(), t["thumbnail"]["height"].as_u64()), (Some(320), Some(180)));
+        // made once, kept
+        assert!(recordings::thumbnails_dir(&ws).join(format!("{take}.png")).is_file());
+        let _ = std::fs::remove_dir_all(&ws);
     }
 
     #[test]
